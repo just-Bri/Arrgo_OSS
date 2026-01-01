@@ -1,2 +1,2 @@
 # Arrgo
-A *arr alternative written in Go
+An *arr alternative written in Go
