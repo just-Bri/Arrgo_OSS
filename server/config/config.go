@@ -16,6 +16,8 @@ type Config struct {
 	TMDBAPIKey    string
 	TVDBAPIKey    string
 	OpenSubtitlesAPIKey string
+	OpenSubtitlesUser string
+	OpenSubtitlesPass string
 	Debug         bool
 }
 
@@ -32,6 +34,8 @@ func Load() *Config {
 		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
 		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
 		OpenSubtitlesAPIKey: getEnv("OPENSUBTITLES_API_KEY", ""),
+		OpenSubtitlesUser:   getEnv("OPENSUBTITLES_USER", ""),
+		OpenSubtitlesPass:   getEnv("OPENSUBTITLES_PASS", ""),
 		Debug:         getEnv("DEBUG", "false") == "true",
 	}
 }
