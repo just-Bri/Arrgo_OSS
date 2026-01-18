@@ -71,7 +71,9 @@ type TVDBShowDetails struct {
 	Image         string   `json:"image"`
 	FirstAired    string   `json:"firstAired"`
 	LastAired     string   `json:"lastAired"`
-	Status        string   `json:"status"`
+	Status        struct {
+		Name string `json:"name"`
+	} `json:"status"`
 	Genres        []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`

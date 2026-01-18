@@ -203,21 +203,41 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 
 	sanitizedShowTitle := sanitizePath(sh.Title)
 	
-	// Clean up episode title if it still looks like a filename
+	// Better episode title cleaning
 	epTitle := e.Title
-	if strings.Contains(epTitle, ".") || strings.Contains(epTitle, "-") {
-		// Strip extension if present
-		epTitle = strings.TrimSuffix(epTitle, filepath.Ext(epTitle))
-		// Remove SXXEXX patterns
-		epRegex := regexp.MustCompile(`(?i)S\d+E\d+`)
-		epTitle = epRegex.ReplaceAllString(epTitle, "")
-		// Remove common junk (reuse logic similar to parseMovieName but simpler)
-		junkRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
-		epTitle = junkRegex.ReplaceAllString(epTitle, "")
+	// If title contains the extension or looks like a scene filename, deep clean it
+	if strings.Contains(epTitle, ".") || strings.Contains(epTitle, "-") || strings.Contains(strings.ToLower(epTitle), "s0") {
+		// Strip extension if present in title
+		if filepath.Ext(epTitle) != "" {
+			epTitle = strings.TrimSuffix(epTitle, filepath.Ext(epTitle))
+		}
+		
+		// Remove common uploader/junk patterns
+		// 1. Try to find the title before SXXEXX
+		junkRegex := regexp.MustCompile(`(?i)(.*?)(S\d+E\d+).*`)
+		if matches := junkRegex.FindStringSubmatch(epTitle); len(matches) > 1 {
+			// If it contains SXXEXX, usually the stuff AFTER it is junk, 
+			// and if the stuff BEFORE it is just the show title, we want to be careful.
+			// However, if we already have official titles synced, this logic shouldn't even hit.
+			prefix := strings.TrimSpace(matches[1])
+			if prefix != "" && !strings.EqualFold(prefix, sh.Title) {
+				epTitle = prefix
+			} else {
+				// If prefix is empty or just the show title, try to find something AFTER SXXEXX
+				afterRegex := regexp.MustCompile(`(?i)S\d+E\d+\s*[-_.]?\s*(.*)`)
+				if afterMatches := afterRegex.FindStringSubmatch(epTitle); len(afterMatches) > 1 {
+					epTitle = afterMatches[1]
+				}
+			}
+		}
+		
+		// Final strip of common scene tags
+		cleanRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
+		epTitle = cleanRegex.ReplaceAllString(epTitle, "")
 		epTitle = strings.Trim(epTitle, " -._")
 	}
 	
-	if epTitle == "" {
+	if epTitle == "" || strings.EqualFold(epTitle, sh.Title) {
 		epTitle = fmt.Sprintf("Episode %d", e.EpisodeNumber)
 	}
 	
