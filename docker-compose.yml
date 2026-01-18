@@ -1,0 +1,36 @@
+services:
+  arrgo-app:
+    build: .
+    container_name: arrgo-app
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://arrgo:arrgo@arrgo-db:5432/arrgo?sslmode=disable
+      - SESSION_SECRET=change-me-in-production
+      - PORT=8080
+      - ENV=production
+      - MOVIES_PATH=/mnt/user/media/movies
+    depends_on:
+      - arrgo-db
+    volumes:
+      - ./templates:/root/templates:ro
+      - ./static:/root/static:ro
+      - /mnt/user/media/movies:/mnt/user/media/movies:ro
+    restart: unless-stopped
+
+  arrgo-db:
+    image: postgres:16-alpine
+    container_name: arrgo-db
+    environment:
+      - POSTGRES_USER=arrgo
+      - POSTGRES_PASSWORD=arrgo
+      - POSTGRES_DB=arrgo
+    volumes:
+      - arrgo-db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  arrgo-db-data:
+
