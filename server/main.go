@@ -50,6 +50,9 @@ func main() {
 		log.Fatal("Failed to seed admin user:", err)
 	}
 
+	// Start background workers
+	services.StartIncomingScanner(cfg)
+
 	// Setup routes
 	mux := http.NewServeMux()
 
@@ -85,6 +88,7 @@ func main() {
 	mux.Handle("/requests", middleware.RequireAuth(http.HandlerFunc(handlers.RequestsHandler)))
 	mux.Handle("/requests/create", middleware.RequireAuth(http.HandlerFunc(handlers.CreateRequestHandler)))
 	mux.Handle("/scan", middleware.RequireAuth(http.HandlerFunc(handlers.ScanHandler)))
+	mux.Handle("/scan/incoming", middleware.RequireAuth(http.HandlerFunc(handlers.ScanIncomingHandler)))
 	mux.Handle("/rename/movie", middleware.RequireAuth(http.HandlerFunc(handlers.RenameMovieHandler)))
 	mux.Handle("/rename/show", middleware.RequireAuth(http.HandlerFunc(handlers.RenameShowHandler)))
 

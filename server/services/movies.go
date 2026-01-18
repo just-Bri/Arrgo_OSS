@@ -25,7 +25,7 @@ var movieExtensions = map[string]bool{
 	".webm": true,
 }
 
-func ScanMovies(cfg *config.Config) error {
+func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 	log.Printf("[SCANNER] Starting movie scan with 4 workers...")
 
 	taskChan := make(chan string, 100)
@@ -42,8 +42,14 @@ func ScanMovies(cfg *config.Config) error {
 		}()
 	}
 
-	// Scan both media path and incoming path
-	paths := []string{cfg.MoviesPath, cfg.IncomingPath}
+	// Scan paths based on preference
+	var paths []string
+	if onlyIncoming {
+		paths = []string{cfg.IncomingPath}
+	} else {
+		paths = []string{cfg.MoviesPath}
+	}
+
 	for _, p := range paths {
 		if p == "" {
 			continue

@@ -22,7 +22,7 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.Load()
-	log.Printf("Manual scan triggered")
+	log.Printf("Manual full scan triggered")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -30,7 +30,7 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	// Scan Movies in parallel
 	go func() {
 		defer wg.Done()
-		if err := services.ScanMovies(cfg); err != nil {
+		if err := services.ScanMovies(cfg, false); err != nil {
 			log.Printf("Error scanning movies: %v", err)
 		}
 	}()
@@ -38,13 +38,53 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	// Scan Shows in parallel
 	go func() {
 		defer wg.Done()
-		if err := services.ScanShows(cfg); err != nil {
+		if err := services.ScanShows(cfg, false); err != nil {
 			log.Printf("Error scanning shows: %v", err)
 		}
 	}()
 
 	wg.Wait()
-	log.Printf("Manual scan complete")
+	log.Printf("Manual full scan complete")
+
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+
+func ScanIncomingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	cfg := config.Load()
+	log.Printf("Manual incoming scan triggered")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Scan Movies in parallel
+	go func() {
+		defer wg.Done()
+		if err := services.ScanMovies(cfg, true); err != nil {
+			log.Printf("Error scanning movies: %v", err)
+		}
+	}()
+
+	// Scan Shows in parallel
+	go func() {
+		defer wg.Done()
+		if err := services.ScanShows(cfg, true); err != nil {
+			log.Printf("Error scanning shows: %v", err)
+		}
+	}()
+
+	wg.Wait()
+	log.Printf("Manual incoming scan complete")
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

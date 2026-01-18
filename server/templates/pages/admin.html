@@ -10,11 +10,18 @@
         <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Management</h2>
             <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Detect new files and fetch metadata from TMDB/TVDB.</p>
-            <form action="/scan" method="POST">
-                <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                    🚀 Full Library Scan
-                </button>
-            </form>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <form action="/scan/incoming" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        📥 Scan Incoming Folder
+                    </button>
+                </form>
+                <form action="/scan" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        🚀 Full Library Scan
+                    </button>
+                </form>
+            </div>
         </div>
 
         <!-- System Info -->

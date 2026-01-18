@@ -14,7 +14,7 @@ import (
 	"sync"
 )
 
-func ScanShows(cfg *config.Config) error {
+func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 	log.Printf("[SCANNER] Starting TV show scan with 4 workers...")
 
 	type showTask struct {
@@ -36,8 +36,14 @@ func ScanShows(cfg *config.Config) error {
 		}()
 	}
 
-	// Scan both media path and incoming path
-	paths := []string{cfg.TVShowsPath, cfg.IncomingPath}
+	// Scan paths based on preference
+	var paths []string
+	if onlyIncoming {
+		paths = []string{cfg.IncomingPath}
+	} else {
+		paths = []string{cfg.TVShowsPath}
+	}
+
 	for _, p := range paths {
 		if p == "" {
 			continue
