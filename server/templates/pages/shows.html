@@ -83,7 +83,7 @@
                                     <span style="background: var(--badge-bg); padding: 1px 6px; border-radius: 4px; font-size: 11px; color: var(--badge-text);">{{.Status}}</span>
                                 </div>
                             </div>
-                            {{if eq .Status "matched"}}
+                            {{if and $.IsAdmin (eq .Status "matched")}}
                             <form action="/rename/show?id={{.ID}}" method="POST">
                                 <button type="submit" style="padding: 4px 10px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
                             </form>
