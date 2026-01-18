@@ -4,7 +4,6 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,10 +36,10 @@ func ScanMovies(cfg *config.Config) error {
 			return err
 		}
 	}
-	
+
 	// Trigger metadata fetching in background
 	go FetchMetadataForAllDiscovered(cfg)
-	
+
 	return nil
 }
 
@@ -80,49 +79,6 @@ func scanPath(cfg *config.Config, root string) error {
 
 		return upsertMovie(movie)
 	})
-}
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		ext := strings.ToLower(filepath.Ext(path))
-		if !movieExtensions[ext] {
-			return nil
-		}
-
-		// Parse title and year from filename or parent directory name
-		// For now, let's try to parse from the filename (without extension)
-		filename := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
-		title, year := parseMovieName(filename)
-
-		// If filename doesn't have year, try parent directory
-		if year == 0 {
-			parentDir := filepath.Base(filepath.Dir(path))
-			if parentDir != "." && parentDir != filepath.Base(cfg.MoviesPath) {
-				title, year = parseMovieName(parentDir)
-			}
-		}
-
-		movie := models.Movie{
-			Title:  title,
-			Year:   year,
-			Path:   path,
-			Status: "discovered",
-		}
-
-		return upsertMovie(movie)
-	})
-
-	if err == nil {
-		// Trigger metadata fetching in background
-		go FetchMetadataForAllDiscovered(cfg)
-	}
-
-	return err
 }
 
 func parseMovieName(name string) (string, int) {
@@ -170,4 +126,3 @@ func GetMovies() ([]models.Movie, error) {
 	}
 	return movies, nil
 }
-

@@ -6,19 +6,18 @@ import (
 	"Arrgo/models"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 )
 
 type TMDBMovieSearchResponse struct {
 	Results []struct {
-		ID           int     `json:"id"`
-		Title        string  `json:"title"`
-		ReleaseDate  string  `json:"release_date"`
-		Overview     string  `json:"overview"`
-		PosterPath   string  `json:"poster_path"`
-		VoteAverage  float64 `json:"vote_average"`
+		ID          int     `json:"id"`
+		Title       string  `json:"title"`
+		ReleaseDate string  `json:"release_date"`
+		Overview    string  `json:"overview"`
+		PosterPath  string  `json:"poster_path"`
+		VoteAverage float64 `json:"vote_average"`
 	} `json:"results"`
 }
 
@@ -36,7 +35,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 2. Search TMDB
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s", 
+	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s",
 		cfg.TMDBAPIKey, url.QueryEscape(m.Title))
 	if m.Year > 0 {
 		searchURL += fmt.Sprintf("&year=%d", m.Year)
@@ -59,7 +58,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	// 3. Take the first result
 	result := searchResults.Results[0]
-	
+
 	// Fetch full movie details or just use search result
 	// Let's store the raw JSON from TMDB too
 	rawMetadata, _ := json.Marshal(result)
@@ -101,7 +100,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 		return fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s", 
+	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s",
 		cfg.TMDBAPIKey, url.QueryEscape(s.Title))
 	if s.Year > 0 {
 		searchURL += fmt.Sprintf("&first_air_date_year=%d", s.Year)

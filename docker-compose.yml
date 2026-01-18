@@ -3,21 +3,25 @@ services:
     build: .
     container_name: arrgo-app
     ports:
-      - "8080:8080"
+      - "5003:5003"
     environment:
       - DATABASE_URL=postgres://arrgo:arrgo@arrgo-db:5432/arrgo?sslmode=disable
       - SESSION_SECRET=change-me-in-production
-      - PORT=8080
-      - ENV=production
-      - MOVIES_PATH=/mnt/user/media/movies
-      - TV_SHOWS_PATH=/mnt/user/media/tv
+      - PORT=5003
+      - ENV=development
+      - MOVIES_PATH=/mnt/movies
+      - TV_SHOWS_PATH=/mnt/tv
+      - INCOMING_PATH=/mnt/incoming
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - TVDB_API_KEY=${TVDB_API_KEY}
     depends_on:
       - arrgo-db
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
-      - /mnt/user/media/movies:/mnt/user/media/movies:ro
-      - /mnt/user/media/tv:/mnt/user/media/tv:ro
+      - /mnt/user/media/movies:/mnt/movies
+      - /mnt/user/media/tv:/mnt/tv
+      - /mnt/user/media/incoming:/mnt/incoming
     restart: unless-stopped
 
   arrgo-db:
@@ -30,7 +34,7 @@ services:
     volumes:
       - arrgo-db-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     restart: unless-stopped
 
 volumes:

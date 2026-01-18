@@ -20,11 +20,11 @@ func Load() *Config {
 	return &Config{
 		DatabaseURL:   getEnv("DATABASE_URL", "postgres://arrgo:arrgo@localhost:5432/arrgo?sslmode=disable"),
 		SessionSecret: getEnv("SESSION_SECRET", "change-me-in-production"),
-		ServerPort:    getEnv("PORT", "8080"),
+		ServerPort:    getEnv("PORT", "5003"),
 		Environment:   getEnv("ENV", "development"),
-		MoviesPath:    getEnv("MOVIES_PATH", "/mnt/user/media/movies"),
-		TVShowsPath:   getEnv("TV_SHOWS_PATH", "/mnt/user/media/tv"),
-		IncomingPath:  getEnv("INCOMING_PATH", "/mnt/user/media/incoming"),
+		MoviesPath:    getEnv("MOVIES_PATH", "/mnt/movies"),
+		TVShowsPath:   getEnv("TV_SHOWS_PATH", "/mnt/tv"),
+		IncomingPath:  getEnv("INCOMING_PATH", "/mnt/incoming"),
 		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
 		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
 	}

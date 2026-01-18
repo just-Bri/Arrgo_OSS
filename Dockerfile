@@ -25,7 +25,7 @@ COPY --from=builder /app/arrgo .
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/static ./static
 
-EXPOSE 8080
+EXPOSE 5003
 
 CMD ["./arrgo"]
 

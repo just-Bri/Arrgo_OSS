@@ -11,11 +11,17 @@ var store *sessions.CookieStore
 
 func InitSessionStore(cfg *config.Config) {
 	store = sessions.NewCookieStore([]byte(cfg.SessionSecret))
+	
+	secure := false
+	if cfg.Environment == "production" {
+		secure = true
+	}
+
 	store.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
-		Secure:   cfg.Environment == "production",
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}
 }

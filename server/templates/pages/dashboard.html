@@ -19,7 +19,7 @@
                     <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                     {{else}}
                     <div style="width: 100px; height: 150px; background: #eee; border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: #999;">No Poster</div>
-                    {{/if}}
+                    {{end}}
                     <div style="flex: 1;">
                         <div style="font-size: 18px; font-weight: 500; color: #333;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
                         <div style="font-size: 14px; color: #666; margin-top: 5px;">

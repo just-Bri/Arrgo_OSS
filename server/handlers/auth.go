@@ -43,10 +43,12 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := services.AuthenticateUser(username, password)
 	if err != nil {
+		log.Printf("Login failed for user %s: %v", username, err)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
+	log.Printf("User %s logged in successfully", username)
 	// Create session
 	session, err := services.GetSession(r)
 	if err != nil {

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"Arrgo/config"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,8 +14,6 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	// TMDB images don't require API key in the URL, but good to have for other things
 	tmdbURL := fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", path)
 
 	resp, err := http.Get(tmdbURL)
