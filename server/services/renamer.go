@@ -186,7 +186,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	var sh models.Show
 
 	query := `
-		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tmdb_id, sh.imdb_id, sh.poster_path
+		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.imdb_id, sh.poster_path
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		JOIN shows sh ON s.show_id = sh.id
@@ -289,7 +289,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 
 	// Trigger subtitle download for episode
 	go func() {
-		if err := DownloadSubtitlesForEpisode(cfg, sh.IMDBID, sh.TMDBID, sh.Title, s.SeasonNumber, e.EpisodeNumber, destDirPath); err != nil {
+		if err := DownloadSubtitlesForEpisode(cfg, sh.IMDBID, "", sh.Title, s.SeasonNumber, e.EpisodeNumber, destDirPath); err != nil {
 			log.Printf("[RENAMER] Subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
 		}
 	}()

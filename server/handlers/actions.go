@@ -249,18 +249,18 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			var sh models.Show
 			var s models.Season
 			query := `
-				SELECT e.id, e.episode_number, e.file_path, s.season_number, sh.title, sh.tmdb_id, sh.imdb_id
+				SELECT e.id, e.episode_number, e.file_path, s.season_number, sh.title, sh.imdb_id
 				FROM episodes e
 				JOIN seasons s ON e.season_id = s.id
 				JOIN shows sh ON s.show_id = sh.id
 				WHERE e.id = $1
 			`
-			err := database.DB.QueryRow(query, id).Scan(&e.ID, &e.EpisodeNumber, &e.FilePath, &s.SeasonNumber, &sh.Title, &sh.TMDBID, &sh.IMDBID)
+			err := database.DB.QueryRow(query, id).Scan(&e.ID, &e.EpisodeNumber, &e.FilePath, &s.SeasonNumber, &sh.Title, &sh.IMDBID)
 			if err != nil {
 				log.Printf("[HANDLERS] Error fetching episode %d for subtitle download: %v", id, err)
 				return
 			}
-			if err := services.DownloadSubtitlesForEpisode(cfg, sh.IMDBID, sh.TMDBID, sh.Title, s.SeasonNumber, e.EpisodeNumber, filepath.Dir(e.FilePath)); err != nil {
+			if err := services.DownloadSubtitlesForEpisode(cfg, sh.IMDBID, "", sh.Title, s.SeasonNumber, e.EpisodeNumber, filepath.Dir(e.FilePath)); err != nil {
 				log.Printf("[HANDLERS] Manual subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
 			}
 		}()

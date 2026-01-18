@@ -582,10 +582,10 @@ func MatchShow(cfg *config.Config, showID int) error {
 			Name:     searchResult.Name,
 			Overview: searchResult.Overview,
 			Image:    searchResult.ImageURL,
-			Genres:   []struct{ID int; Name string}{},
+			Genres:   []struct{ID int `json:"id"`; Name string `json:"name"`}{},
 		}
 		for _, g := range searchResult.Genres {
-			details.Genres = append(details.Genres, struct{ID int; Name string}{Name: g})
+			details.Genres = append(details.Genres, struct{ID int `json:"id"`; Name string `json:"name"`}{Name: g})
 		}
 	}
 
