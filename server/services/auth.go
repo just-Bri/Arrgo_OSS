@@ -39,6 +39,33 @@ func AuthenticateUser(username, password string) (*models.User, error) {
 	return &user, nil
 }
 
+func RegisterUser(username, email, password string) (*models.User, error) {
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	var user models.User
+	err = database.DB.QueryRow(
+		"INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email, password_hash, created_at, updated_at",
+		username, email, string(hashedPassword),
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to register user: %w", err)
+	}
+
+	return &user, nil
+}
+
 func GetUserByID(userID int64) (*models.User, error) {
 	var user models.User
 	err := database.DB.QueryRow(

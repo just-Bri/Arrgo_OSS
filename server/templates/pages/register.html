@@ -1,16 +1,26 @@
-{{define "title"}}Login - Arrgo{{end}}
+{{define "title"}}Register - Arrgo{{end}}
 
 {{define "content"}}
 <div class="container" style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
     <div style="background: var(--container-bg); padding: 40px; border-radius: 8px; box-shadow: var(--card-shadow); width: 100%; max-width: 400px;">
-        <h1 style="margin-bottom: 30px; text-align: center; color: var(--text-color);">Arrgo Login</h1>
-        <form action="/login" method="POST">
+        <h1 style="margin-bottom: 30px; text-align: center; color: var(--text-color);">Arrgo Registration</h1>
+        <form action="/register" method="POST">
             <div style="margin-bottom: 20px;">
                 <label for="username" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color);">Username</label>
                 <input 
                     type="text" 
                     id="username" 
                     name="username" 
+                    required 
+                    style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 16px; background: var(--bg-color); color: var(--text-color);"
+                >
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label for="email" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color);">Email</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    name="email" 
                     required 
                     style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 16px; background: var(--bg-color); color: var(--text-color);"
                 >
@@ -29,13 +39,12 @@
                 type="submit" 
                 style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: 500;"
             >
-                Login
+                Register
             </button>
             <div style="margin-top: 20px; text-align: center;">
-                <a href="/register" style="color: var(--accent-color); text-decoration: none; font-size: 14px;">Don't have an account? Register</a>
+                <a href="/login" style="color: var(--accent-color); text-decoration: none; font-size: 14px;">Already have an account? Login</a>
             </div>
         </form>
     </div>
 </div>
 {{end}}
-

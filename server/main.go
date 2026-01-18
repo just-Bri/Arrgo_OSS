@@ -62,6 +62,7 @@ func main() {
 		w.Write([]byte("pong"))
 	})
 	mux.HandleFunc("/login", handlers.LoginHandler)
+	mux.HandleFunc("/register", handlers.RegisterHandler)
 	mux.HandleFunc("/logout", handlers.LogoutHandler)
 	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
 	mux.HandleFunc("/images/movie/", handlers.ServeMovieImage)
