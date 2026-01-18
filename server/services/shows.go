@@ -281,7 +281,7 @@ func PurgeMissingShows() {
 
 func SearchShowsLocal(query string) ([]models.Show, error) {
 	dbQuery := `
-		SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at 
+		SELECT id, title, year, tvdb_id, imdb_id, path, overview, poster_path, genres, status, created_at, updated_at 
 		FROM shows 
 		WHERE title ILIKE $1 OR overview ILIKE $1 OR genres ILIKE $1
 		ORDER BY title ASC
@@ -295,12 +295,13 @@ func SearchShowsLocal(query string) ([]models.Show, error) {
 	var shows []models.Show
 	for rows.Next() {
 		var s models.Show
-		var tvdbID, overview, posterPath, genres sql.NullString
-		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		var tvdbID, imdbID, overview, posterPath, genres sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &imdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		s.TVDBID = tvdbID.String
+		s.IMDBID = imdbID.String
 		s.Overview = overview.String
 		s.PosterPath = posterPath.String
 		s.Genres = genres.String
@@ -310,7 +311,7 @@ func SearchShowsLocal(query string) ([]models.Show, error) {
 }
 
 func GetShows() ([]models.Show, error) {
-	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows ORDER BY title ASC`
+	query := `SELECT id, title, year, tvdb_id, imdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows ORDER BY title ASC`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -320,12 +321,13 @@ func GetShows() ([]models.Show, error) {
 	shows := []models.Show{}
 	for rows.Next() {
 		var s models.Show
-		var tvdbID, overview, posterPath, genres sql.NullString
-		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		var tvdbID, imdbID, overview, posterPath, genres sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &imdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		s.TVDBID = tvdbID.String
+		s.IMDBID = imdbID.String
 		s.Overview = overview.String
 		s.PosterPath = posterPath.String
 		s.Genres = genres.String
@@ -335,14 +337,15 @@ func GetShows() ([]models.Show, error) {
 }
 
 func GetShowByID(id int) (*models.Show, error) {
-	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows WHERE id = $1`
+	query := `SELECT id, title, year, tvdb_id, imdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows WHERE id = $1`
 	var s models.Show
-	var tvdbID, overview, posterPath, genres sql.NullString
-	err := database.DB.QueryRow(query, id).Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	var tvdbID, imdbID, overview, posterPath, genres sql.NullString
+	err := database.DB.QueryRow(query, id).Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &imdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	s.TVDBID = tvdbID.String
+	s.IMDBID = imdbID.String
 	s.Overview = overview.String
 	s.PosterPath = posterPath.String
 	s.Genres = genres.String

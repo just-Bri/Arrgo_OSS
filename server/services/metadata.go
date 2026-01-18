@@ -401,18 +401,18 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 1.5 Check if we already have metadata for this movie title/year in the DB
-	var existingTMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
+	var existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
-	checkQuery := `SELECT tmdb_id, overview, poster_path, genres, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
+	checkQuery := `SELECT tmdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' AND imdb_id IS NOT NULL AND imdb_id != '' LIMIT 1`
+	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
 		log.Printf("[METADATA] Found existing metadata for %s (%d) in DB, reusing...", m.Title, m.Year)
 		updateQuery := `
 			UPDATE movies 
-			SET tmdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $6
+			SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $7
 		`
-		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
+		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
 		return err
 	}
 
@@ -506,18 +506,18 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	// 1. Check if we already have metadata for this Title and Year in the DB
-	var existingTVDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
+	var existingTVDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
-	checkQuery := `SELECT tvdb_id, overview, poster_path, genres, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
+	checkQuery := `SELECT tvdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' AND imdb_id IS NOT NULL AND imdb_id != '' LIMIT 1`
+	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
 		log.Printf("[METADATA] Found existing metadata for show %s (%d) in DB, reusing...", s.Title, s.Year)
 		updateQuery := `
 			UPDATE shows 
-			SET tvdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $6
+			SET tvdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $7
 		`
-		_, err = database.DB.Exec(updateQuery, existingTVDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, s.ID)
+		_, err = database.DB.Exec(updateQuery, existingTVDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, s.ID)
 		return err
 	}
 

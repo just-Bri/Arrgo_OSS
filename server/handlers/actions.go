@@ -234,6 +234,16 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Movie not found", http.StatusNotFound)
 			return
 		}
+
+		// If IMDB ID is missing, try to re-match it first
+		if m.IMDBID == "" {
+			log.Printf("[HANDLERS] IMDB ID missing for movie %s, attempting re-match...", m.Title)
+			if err := services.MatchMovie(cfg, m.ID); err == nil {
+				// Reload movie to get new IMDB ID
+				m, _ = services.GetMovieByID(id)
+			}
+		}
+
 		go func() {
 			if err := services.DownloadSubtitlesForMovie(cfg, m.IMDBID, m.TMDBID, m.Title, m.Year, filepath.Dir(m.Path)); err != nil {
 				log.Printf("[HANDLERS] Manual subtitle download failed for %s: %v", m.Title, err)
@@ -241,25 +251,32 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		}()
 	} else if mediaType == "episode" {
 		// Need to fetch episode details to get parent show info
-		// For simplicity, let's just use a helper in services
 		go func() {
-			// We can reuse RenameAndMoveEpisode's logic or just fetch what we need
-			// For now, let's just fetch the episode and parent show info
 			var e models.Episode
 			var sh models.Show
 			var s models.Season
 			query := `
-				SELECT e.id, e.episode_number, e.file_path, s.season_number, sh.title, sh.imdb_id
+				SELECT e.id, e.episode_number, e.file_path, s.season_number, sh.id, sh.title, sh.imdb_id
 				FROM episodes e
 				JOIN seasons s ON e.season_id = s.id
 				JOIN shows sh ON s.show_id = sh.id
 				WHERE e.id = $1
 			`
-			err := database.DB.QueryRow(query, id).Scan(&e.ID, &e.EpisodeNumber, &e.FilePath, &s.SeasonNumber, &sh.Title, &sh.IMDBID)
+			err := database.DB.QueryRow(query, id).Scan(&e.ID, &e.EpisodeNumber, &e.FilePath, &s.SeasonNumber, &sh.ID, &sh.Title, &sh.IMDBID)
 			if err != nil {
 				log.Printf("[HANDLERS] Error fetching episode %d for subtitle download: %v", id, err)
 				return
 			}
+
+			// If IMDB ID is missing, try to re-match the parent show first
+			if sh.IMDBID == "" {
+				log.Printf("[HANDLERS] IMDB ID missing for show %s, attempting re-match...", sh.Title)
+				if err := services.MatchShow(cfg, sh.ID); err == nil {
+					// Reload IMDB ID
+					database.DB.QueryRow("SELECT imdb_id FROM shows WHERE id = $1", sh.ID).Scan(&sh.IMDBID)
+				}
+			}
+
 			if err := services.DownloadSubtitlesForEpisode(cfg, sh.IMDBID, "", sh.Title, s.SeasonNumber, e.EpisodeNumber, filepath.Dir(e.FilePath)); err != nil {
 				log.Printf("[HANDLERS] Manual subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
 			}
