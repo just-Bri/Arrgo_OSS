@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 )
 
 var searchTmpl *template.Template
@@ -70,6 +71,11 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 1. Search Local Movies
 		localMovies, _ := services.SearchMoviesLocal(query)
 		for _, m := range localMovies {
+			isIncoming := strings.HasPrefix(m.Path, cfg.IncomingPath)
+			if isIncoming && !user.IsAdmin {
+				continue
+			}
+
 			results = append(results, UnifiedSearchResult{
 				ID:         m.TMDBID,
 				Title:      m.Title,
@@ -89,6 +95,11 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 2. Search Local Shows
 		localShows, _ := services.SearchShowsLocal(query)
 		for _, s := range localShows {
+			isIncoming := strings.HasPrefix(s.Path, cfg.IncomingPath)
+			if isIncoming && !user.IsAdmin {
+				continue
+			}
+
 			results = append(results, UnifiedSearchResult{
 				ID:         s.TVDBID,
 				Title:      s.Title,

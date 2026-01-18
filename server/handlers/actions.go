@@ -79,16 +79,19 @@ func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := r.URL.Query().Get("id")
-	_, err := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
 
-	// cfg := config.Load()
+	cfg := config.Load()
 
-	// Fetch all episodes for this show and rename them
-	// ... implementation pending ...
+	if err := services.RenameAndMoveShow(cfg, id); err != nil {
+		log.Printf("Error renaming show %d: %v", id, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

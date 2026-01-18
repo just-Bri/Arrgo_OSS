@@ -214,9 +214,14 @@ func GetMovieByID(id int) (*models.Movie, error) {
 	return &m, nil
 }
 
-func GetMovieCount() (int, error) {
+func GetMovieCount(excludeIncomingPath string) (int, error) {
 	var count int
-	err := database.DB.QueryRow("SELECT COUNT(*) FROM movies").Scan(&count)
+	var err error
+	if excludeIncomingPath != "" {
+		err = database.DB.QueryRow("SELECT COUNT(*) FROM movies WHERE path NOT LIKE $1 || '%'", excludeIncomingPath).Scan(&count)
+	} else {
+		err = database.DB.QueryRow("SELECT COUNT(*) FROM movies").Scan(&count)
+	}
 	return count, err
 }
 

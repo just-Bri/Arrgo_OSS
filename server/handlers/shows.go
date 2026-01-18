@@ -43,6 +43,7 @@ type ShowsData struct {
 	IsAdmin       bool
 	SearchQuery   string
 	Shows         []models.Show
+	IncomingShows []models.Show
 	AllGenres     []string
 	SelectedGenre string
 }
@@ -72,11 +73,32 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 		allShows = []models.Show{}
 	}
 
+	cfg := config.Load()
 	selectedGenre := r.URL.Query().Get("genre")
 
-	// Extract unique genres
-	genreMap := make(map[string]bool)
+	// Separate incoming and library shows
+	var libraryShows []models.Show
+	var incomingShows []models.Show
+
 	for _, s := range allShows {
+		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingPath)
+
+		if isIncoming {
+			if user.IsAdmin {
+				incomingShows = append(incomingShows, s)
+			}
+			// Normal users don't see incoming shows at all
+		} else {
+			// Apply genre filter only to library shows
+			if selectedGenre == "" || strings.Contains(s.Genres, selectedGenre) {
+				libraryShows = append(libraryShows, s)
+			}
+		}
+	}
+
+	// Extract unique genres from library shows only
+	genreMap := make(map[string]bool)
+	for _, s := range libraryShows {
 		if s.Genres != "" {
 			gs := strings.Split(s.Genres, ", ")
 			for _, g := range gs {
@@ -92,23 +114,12 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(allGenres)
 
-	// Filter shows
-	var filteredShows []models.Show
-	if selectedGenre != "" {
-		for _, s := range allShows {
-			if strings.Contains(s.Genres, selectedGenre) {
-				filteredShows = append(filteredShows, s)
-			}
-		}
-	} else {
-		filteredShows = allShows
-	}
-
 	data := ShowsData{
 		Username:      user.Username,
 		IsAdmin:       user.IsAdmin,
 		SearchQuery:   "",
-		Shows:         filteredShows,
+		Shows:         libraryShows,
+		IncomingShows: incomingShows,
 		AllGenres:     allGenres,
 		SelectedGenre: selectedGenre,
 	}

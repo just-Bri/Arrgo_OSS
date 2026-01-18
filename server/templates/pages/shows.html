@@ -7,6 +7,45 @@
         <h1 style="color: var(--text-color);">TV Shows</h1>
         <a href="/dashboard" style="text-decoration: none; color: var(--accent-color);">&larr; Back to Dashboard</a>
     </div>
+
+    {{if and .IsAdmin .IncomingShows}}
+    <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 30px; border: 2px solid var(--accent-color);">
+        <h2 style="margin: 0 0 20px 0; font-size: 24px; color: var(--accent-color);">Incoming Media ({{len .IncomingShows}})</h2>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+            {{range .IncomingShows}}
+            <li style="padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start;">
+                {{if .PosterPath}}
+                <a href="/tv/details?id={{.ID}}">
+                    <img src="/images/tv/{{.ID}}" alt="{{.Title}}" style="width: 80px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                </a>
+                {{else}}
+                <a href="/tv/details?id={{.ID}}" style="text-decoration: none;">
+                    <div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>
+                </a>
+                {{end}}
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <a href="/tv/details?id={{.ID}}" style="text-decoration: none;">
+                                <div style="font-size: 16px; font-weight: 500; color: var(--text-color);">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                            </a>
+                            <div style="font-size: 12px; color: var(--muted-text); margin-top: 5px;">
+                                <span style="background: var(--badge-bg); padding: 2px 6px; border-radius: 4px; font-size: 11px; color: var(--badge-text);">{{.Status}}</span>
+                                <span style="margin-left: 10px; word-break: break-all; opacity: 0.7;">{{.Path}}</span>
+                            </div>
+                        </div>
+                        {{if eq .Status "matched"}}
+                        <form action="/rename/show?id={{.ID}}" method="POST">
+                            <button type="submit" style="padding: 5px 10px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Rename & Move</button>
+                        </form>
+                        {{end}}
+                    </div>
+                </div>
+            </li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
     
     <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">

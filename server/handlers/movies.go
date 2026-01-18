@@ -39,12 +39,13 @@ func init() {
 }
 
 type MoviesData struct {
-	Username      string
-	IsAdmin       bool
-	SearchQuery   string
-	Movies        []models.Movie
-	AllGenres     []string
-	SelectedGenre string
+	Username       string
+	IsAdmin        bool
+	SearchQuery    string
+	Movies         []models.Movie
+	IncomingMovies []models.Movie
+	AllGenres      []string
+	SelectedGenre  string
 }
 
 func MoviesHandler(w http.ResponseWriter, r *http.Request) {
@@ -72,11 +73,32 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 		allMovies = []models.Movie{}
 	}
 
+	cfg := config.Load()
 	selectedGenre := r.URL.Query().Get("genre")
 
-	// Extract unique genres
-	genreMap := make(map[string]bool)
+	// Separate incoming and library movies
+	var libraryMovies []models.Movie
+	var incomingMovies []models.Movie
+
 	for _, m := range allMovies {
+		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingPath)
+		
+		if isIncoming {
+			if user.IsAdmin {
+				incomingMovies = append(incomingMovies, m)
+			}
+			// Normal users don't see incoming movies at all
+		} else {
+			// Apply genre filter only to library movies
+			if selectedGenre == "" || strings.Contains(m.Genres, selectedGenre) {
+				libraryMovies = append(libraryMovies, m)
+			}
+		}
+	}
+
+	// Extract unique genres from library movies only
+	genreMap := make(map[string]bool)
+	for _, m := range libraryMovies {
 		if m.Genres != "" {
 			gs := strings.Split(m.Genres, ", ")
 			for _, g := range gs {
@@ -92,25 +114,14 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(allGenres)
 
-	// Filter movies
-	var filteredMovies []models.Movie
-	if selectedGenre != "" {
-		for _, m := range allMovies {
-			if strings.Contains(m.Genres, selectedGenre) {
-				filteredMovies = append(filteredMovies, m)
-			}
-		}
-	} else {
-		filteredMovies = allMovies
-	}
-
 	data := MoviesData{
-		Username:      user.Username,
-		IsAdmin:       user.IsAdmin,
-		SearchQuery:   "",
-		Movies:        filteredMovies,
-		AllGenres:     allGenres,
-		SelectedGenre: selectedGenre,
+		Username:       user.Username,
+		IsAdmin:        user.IsAdmin,
+		SearchQuery:    "",
+		Movies:         libraryMovies,
+		IncomingMovies: incomingMovies,
+		AllGenres:      allGenres,
+		SelectedGenre:  selectedGenre,
 	}
 
 	if err := moviesTmpl.ExecuteTemplate(w, "base", data); err != nil {

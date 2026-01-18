@@ -8,7 +8,48 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 )
+
+func sanitizePath(name string) string {
+	// Remove or replace characters that are problematic for filesystems
+	// Specifically :, /, \, *, ?, ", <, >, |
+	replacer := strings.NewReplacer(
+		":", " -",
+		"/", "-",
+		"\\", "-",
+		"*", "",
+		"?", "",
+		"\"", "",
+		"<", "",
+		">", "",
+		"|", "-",
+	)
+	sanitized := replacer.Replace(name)
+	// Remove trailing dots and spaces
+	sanitized = strings.TrimRight(sanitized, ". ")
+	return sanitized
+}
+
+func cleanupEmptyDirs(startPath string, stopAt string) {
+	parent := filepath.Dir(startPath)
+	// Don't go above the root scan paths
+	if stopAt == "" || parent == stopAt || parent == "." || parent == "/" {
+		return
+	}
+
+	files, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+
+	if len(files) == 0 {
+		log.Printf("[CLEANUP] Removing empty directory: %s", parent)
+		os.Remove(parent)
+		cleanupEmptyDirs(parent, stopAt)
+	}
+}
 
 func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	var m models.Movie
@@ -23,10 +64,11 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	}
 
 	ext := filepath.Ext(m.Path)
-	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", m.Title, m.Year, m.TMDBID, ext)
+	sanitizedTitle := sanitizePath(m.Title)
+	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, ext)
 
 	// Create destination directory: Movies/Title (Year) {tmdb-id}/Title (Year) {tmdb-id}.ext
-	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}", m.Title, m.Year, m.TMDBID)
+	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}", sanitizedTitle, m.Year, m.TMDBID)
 	destDirPath := filepath.Join(cfg.MoviesPath, destDirName)
 	destPath := filepath.Join(destDirPath, newName)
 
@@ -51,16 +93,20 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 				// Candidate is LOWER quality than existing.
 				// Keep the existing file, delete the candidate.
 				log.Printf("[RENAMER] Candidate %s is lower quality (%s) than existing (%s). Deleting candidate.", m.Path, m.Quality, existingQuality)
-				os.Remove(m.Path)
+				oldPath := m.Path
+				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
+				cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 				return nil
 			} else if comp == 0 {
 				// Qualities are equal, compare size.
 				if m.Size <= existingSize {
 					// Candidate is smaller or equal size. Delete candidate.
 					log.Printf("[RENAMER] Candidate %s has same quality (%s) but smaller/equal size than existing. Deleting candidate.", m.Path, m.Quality)
-					os.Remove(m.Path)
+					oldPath := m.Path
+					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
+					cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 					return nil
 				}
 				// Candidate is larger, proceed to replace.
@@ -77,9 +123,13 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// Move the file
-	if err := os.Rename(m.Path, destPath); err != nil {
+	oldPath := m.Path
+	if err := os.Rename(oldPath, destPath); err != nil {
 		return err
 	}
+
+	// Cleanup old directory if it was in incoming
+	cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 
 	// Update DB with new path and status
 	updateQuery := `UPDATE movies SET path = $1, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $2`
@@ -108,13 +158,16 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	// TV Shows: Title (Year) {tvdb-ID}/Season XX/Title - SXXEXX - Episode Title.ext
 	ext := filepath.Ext(e.FilePath)
 
-	showDirName := fmt.Sprintf("%s (%d)", sh.Title, sh.Year)
+	sanitizedShowTitle := sanitizePath(sh.Title)
+	sanitizedEpTitle := sanitizePath(e.Title)
+
+	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
 	if sh.TVDBID != "" {
-		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sh.Title, sh.Year, sh.TVDBID)
+		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
 	}
 	seasonDirName := fmt.Sprintf("Season %02d", s.SeasonNumber)
 
-	newFileName := fmt.Sprintf("%s - S%02dE%02d - %s%s", sh.Title, s.SeasonNumber, e.EpisodeNumber, e.Title, ext)
+	newFileName := fmt.Sprintf("%s - S%02dE%02d - %s%s", sanitizedShowTitle, s.SeasonNumber, e.EpisodeNumber, sanitizedEpTitle, ext)
 
 	destDirPath := filepath.Join(cfg.TVShowsPath, showDirName, seasonDirName)
 	destPath := filepath.Join(destDirPath, newFileName)
@@ -136,14 +189,18 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 			comp := CompareQuality(e.Quality, existingQuality)
 			if comp < 0 {
 				log.Printf("[RENAMER] Candidate episode %s is lower quality (%s) than existing (%s). Deleting candidate.", e.FilePath, e.Quality, existingQuality)
-				os.Remove(e.FilePath)
+				oldPath := e.FilePath
+				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
+				cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 				return nil
 			} else if comp == 0 {
 				if e.Size <= existingSize {
 					log.Printf("[RENAMER] Candidate episode %s has same quality but smaller/equal size. Deleting candidate.", e.FilePath)
-					os.Remove(e.FilePath)
+					oldPath := e.FilePath
+					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
+					cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 					return nil
 				}
 			}
@@ -154,11 +211,41 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		}
 	}
 
-	if err := os.Rename(e.FilePath, destPath); err != nil {
+	oldPath := e.FilePath
+	if err := os.Rename(oldPath, destPath); err != nil {
 		return err
 	}
+
+	cleanupEmptyDirs(oldPath, cfg.IncomingPath)
 
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
 	return err
+}
+
+func RenameAndMoveShow(cfg *config.Config, showID int) error {
+	// Fetch all episodes for this show
+	query := `
+		SELECT e.id
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1
+	`
+	rows, err := database.DB.Query(query, showID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var epID int
+		if err := rows.Scan(&epID); err != nil {
+			continue
+		}
+		if err := RenameAndMoveEpisode(cfg, epID); err != nil {
+			log.Printf("[RENAMER] Error renaming episode %d: %v", epID, err)
+		}
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"Arrgo/config"
 	"Arrgo/services"
 	"html/template"
 	"log"
@@ -26,11 +27,13 @@ func init() {
 }
 
 type DashboardData struct {
-	Username    string
-	IsAdmin     bool
-	SearchQuery string
-	MovieCount  int
-	ShowCount   int
+	Username            string
+	IsAdmin             bool
+	SearchQuery         string
+	MovieCount          int
+	IncomingMovieCount  int
+	ShowCount           int
+	IncomingShowCount   int
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -42,22 +45,39 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[DASHBOARD] Loading dashboard for user: %s", user.Username)
 
-	movieCount, err := services.GetMovieCount()
+	cfg := config.Load()
+	
+	// Library counts (excluding incoming)
+	movieCount, err := services.GetMovieCount(cfg.IncomingPath)
 	if err != nil {
 		log.Printf("Error getting movie count: %v", err)
 	}
 
-	showCount, err := services.GetShowCount()
+	showCount, err := services.GetShowCount(cfg.IncomingPath)
 	if err != nil {
 		log.Printf("Error getting show count: %v", err)
 	}
 
+	incomingMovieCount := 0
+	incomingShowCount := 0
+
+	if user.IsAdmin {
+		// Total counts (including incoming)
+		totalMovies, _ := services.GetMovieCount("")
+		totalShows, _ := services.GetShowCount("")
+		
+		incomingMovieCount = totalMovies - movieCount
+		incomingShowCount = totalShows - showCount
+	}
+
 	data := DashboardData{
-		Username:    user.Username,
-		IsAdmin:     user.IsAdmin,
-		SearchQuery: "",
-		MovieCount:  movieCount,
-		ShowCount:   showCount,
+		Username:            user.Username,
+		IsAdmin:             user.IsAdmin,
+		SearchQuery:         "",
+		MovieCount:          movieCount,
+		IncomingMovieCount:  incomingMovieCount,
+		ShowCount:           showCount,
+		IncomingShowCount:   incomingShowCount,
 	}
 
 	if err := dashboardTmpl.ExecuteTemplate(w, "base", data); err != nil {

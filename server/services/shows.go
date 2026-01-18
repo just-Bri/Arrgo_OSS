@@ -216,9 +216,14 @@ func upsertEpisode(seasonID int, episodeNum int, title string, path string, qual
 	database.DB.Exec(query, seasonID, episodeNum, title, path, quality, size)
 }
 
-func GetShowCount() (int, error) {
+func GetShowCount(excludeIncomingPath string) (int, error) {
 	var count int
-	err := database.DB.QueryRow("SELECT COUNT(*) FROM shows").Scan(&count)
+	var err error
+	if excludeIncomingPath != "" {
+		err = database.DB.QueryRow("SELECT COUNT(*) FROM shows WHERE path NOT LIKE $1 || '%'", excludeIncomingPath).Scan(&count)
+	} else {
+		err = database.DB.QueryRow("SELECT COUNT(*) FROM shows").Scan(&count)
+	}
 	return count, err
 }
 

@@ -12,16 +12,26 @@
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
         <a href="/movies" style="text-decoration: none; color: inherit;">
-            <div style="background: var(--container-bg); padding: 40px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
-                <div style="font-size: 48px; font-weight: bold; color: var(--accent-color); margin-bottom: 10px;">{{.MovieCount}}</div>
-                <div style="font-size: 20px; color: var(--muted-text); font-weight: 500;">Movies</div>
+            <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
+                <div style="font-size: 48px; font-weight: bold; color: var(--accent-color); margin-bottom: 5px;">{{.MovieCount}}</div>
+                <div style="font-size: 20px; color: var(--text-color); font-weight: 500;">Movies in Library</div>
+                {{if .IsAdmin}}
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); color: var(--muted-text); font-size: 14px;">
+                    <strong style="color: var(--accent-color);">{{.IncomingMovieCount}}</strong> Incoming
+                </div>
+                {{end}}
             </div>
         </a>
 
         <a href="/tv" style="text-decoration: none; color: inherit;">
-            <div style="background: var(--container-bg); padding: 40px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
-                <div style="font-size: 48px; font-weight: bold; color: var(--success-color); margin-bottom: 10px;">{{.ShowCount}}</div>
-                <div style="font-size: 20px; color: var(--muted-text); font-weight: 500;">TV Shows</div>
+            <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
+                <div style="font-size: 48px; font-weight: bold; color: var(--success-color); margin-bottom: 5px;">{{.ShowCount}}</div>
+                <div style="font-size: 20px; color: var(--text-color); font-weight: 500;">Shows in Library</div>
+                {{if .IsAdmin}}
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); color: var(--muted-text); font-size: 14px;">
+                    <strong style="color: var(--success-color);">{{.IncomingShowCount}}</strong> Incoming
+                </div>
+                {{end}}
             </div>
         </a>
     </div>
