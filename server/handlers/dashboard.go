@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 )
 
@@ -27,16 +28,16 @@ func init() {
 }
 
 type DashboardData struct {
-	Username            string
-	IsAdmin             bool
-	CurrentPage         string
-	SearchQuery         string
-	MovieCount          int
-	IncomingMovieCount  int
-	MovieRequestCount   int
-	ShowCount           int
-	IncomingShowCount   int
-	ShowRequestCount    int
+	Username           string
+	IsAdmin            bool
+	CurrentPage        string
+	SearchQuery        string
+	MovieCount         int
+	IncomingMovieCount int
+	MovieRequestCount  int
+	ShowCount          int
+	IncomingShowCount  int
+	ShowRequestCount   int
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -49,14 +50,14 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DASHBOARD] Loading dashboard for user: %s", user.Username)
 
 	cfg := config.Load()
-	
-	// Library counts (excluding incoming)
-	movieCount, err := services.GetMovieCount(cfg.IncomingPath)
+
+	// Library counts (excluding incoming subfolders)
+	movieCount, err := services.GetMovieCount(filepath.Join(cfg.IncomingPath, "movies"))
 	if err != nil {
 		log.Printf("Error getting movie count: %v", err)
 	}
 
-	showCount, err := services.GetShowCount(cfg.IncomingPath)
+	showCount, err := services.GetShowCount(filepath.Join(cfg.IncomingPath, "tv"))
 	if err != nil {
 		log.Printf("Error getting show count: %v", err)
 	}
@@ -70,7 +71,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		// Total counts (including incoming)
 		totalMovies, _ := services.GetMovieCount("")
 		totalShows, _ := services.GetShowCount("")
-		
+
 		incomingMovieCount = totalMovies - movieCount
 		incomingShowCount = totalShows - showCount
 
@@ -79,16 +80,16 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := DashboardData{
-		Username:            user.Username,
-		IsAdmin:             user.IsAdmin,
-		CurrentPage:         "/dashboard",
-		SearchQuery:         "",
-		MovieCount:          movieCount,
-		IncomingMovieCount:  incomingMovieCount,
-		MovieRequestCount:   movieRequestCount,
-		ShowCount:           showCount,
-		IncomingShowCount:   incomingShowCount,
-		ShowRequestCount:    showRequestCount,
+		Username:           user.Username,
+		IsAdmin:            user.IsAdmin,
+		CurrentPage:        "/dashboard",
+		SearchQuery:        "",
+		MovieCount:         movieCount,
+		IncomingMovieCount: incomingMovieCount,
+		MovieRequestCount:  movieRequestCount,
+		ShowCount:          showCount,
+		IncomingShowCount:  incomingShowCount,
+		ShowRequestCount:   showRequestCount,
 	}
 
 	if err := dashboardTmpl.ExecuteTemplate(w, "base", data); err != nil {

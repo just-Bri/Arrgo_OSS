@@ -28,6 +28,9 @@ var movieExtensions = map[string]bool{
 func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 	log.Printf("[SCANNER] Starting movie scan with 4 workers...")
 
+	// Clean up missing files first
+	PurgeMissingMovies()
+
 	taskChan := make(chan string, 100)
 	var wg sync.WaitGroup
 
@@ -230,6 +233,28 @@ func GetMovieCount(excludeIncomingPath string) (int, error) {
 		err = database.DB.QueryRow("SELECT COUNT(*) FROM movies").Scan(&count)
 	}
 	return count, err
+}
+
+func PurgeMissingMovies() {
+	log.Printf("[SCANNER] Checking for missing movies...")
+	rows, err := database.DB.Query("SELECT id, path FROM movies")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			continue
+		}
+
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			log.Printf("[SCANNER] Removing missing movie from DB: %s", path)
+			database.DB.Exec("DELETE FROM movies WHERE id = $1", id)
+		}
+	}
 }
 
 func SearchMoviesLocal(query string) ([]models.Movie, error) {

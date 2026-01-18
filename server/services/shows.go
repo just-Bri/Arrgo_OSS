@@ -17,6 +17,9 @@ import (
 func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 	log.Printf("[SCANNER] Starting TV show scan with 4 workers...")
 
+	// Clean up missing files first
+	PurgeMissingShows()
+
 	type showTask struct {
 		root string
 		name string
@@ -231,6 +234,49 @@ func GetShowCount(excludeIncomingPath string) (int, error) {
 		err = database.DB.QueryRow("SELECT COUNT(*) FROM shows").Scan(&count)
 	}
 	return count, err
+}
+
+func PurgeMissingShows() {
+	log.Printf("[SCANNER] Checking for missing shows...")
+
+	// Check Shows
+	rows, err := database.DB.Query("SELECT id, path FROM shows")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var path string
+		if err := rows.Scan(&id, &path); err != nil {
+			continue
+		}
+
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			log.Printf("[SCANNER] Removing missing show from DB: %s", path)
+			database.DB.Exec("DELETE FROM shows WHERE id = $1", id)
+		}
+	}
+
+	// Also check individual episodes
+	epRows, err := database.DB.Query("SELECT id, file_path FROM episodes")
+	if err != nil {
+		return
+	}
+	defer epRows.Close()
+
+	for epRows.Next() {
+		var id int
+		var path string
+		if err := epRows.Scan(&id, &path); err != nil {
+			continue
+		}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			log.Printf("[SCANNER] Removing missing episode from DB: %s", path)
+			database.DB.Exec("DELETE FROM episodes WHERE id = $1", id)
+		}
+	}
 }
 
 func SearchShowsLocal(query string) ([]models.Show, error) {
