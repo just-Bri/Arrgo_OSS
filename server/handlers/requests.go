@@ -143,6 +143,26 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	req.UserID = int(interfaceToInt64(userID))
 
+	// Final server-side check to prevent duplicate requests or requesting library items
+	var externalID string
+	if req.MediaType == "movie" {
+		externalID = req.TMDBID
+	} else {
+		externalID = req.TVDBID
+	}
+
+	status, err := services.CheckLibraryStatus(req.MediaType, externalID)
+	if err != nil {
+		log.Printf("Error checking library status: %v", err)
+		http.Error(w, "Failed to verify media status", http.StatusInternalServerError)
+		return
+	}
+
+	if status.Exists || strings.Contains(status.Message, "Already requested") {
+		http.Error(w, "Media already exists or has been requested", http.StatusConflict)
+		return
+	}
+
 	if err := services.CreateRequest(req); err != nil {
 		log.Printf("Error creating request: %v", err)
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
