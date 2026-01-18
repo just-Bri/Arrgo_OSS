@@ -70,7 +70,7 @@
             width: 280px;
             background: var(--header-bg);
             border-left: 1px solid var(--border-color);
-            z-index: 1000;
+            z-index: 1100;
             transition: right 0.3s ease;
             padding: 20px;
             overflow-y: auto;
@@ -85,7 +85,7 @@
             right: 0;
             bottom: 0;
             background: rgba(0,0,0,0.5);
-            z-index: 999;
+            z-index: 1050;
             display: none;
         }
         .sidebar-overlay.active {
@@ -104,11 +104,15 @@
                 padding: 15px;
             }
             .main-nav {
+                position: fixed !important;
                 top: auto !important;
                 bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
                 border-bottom: none !important;
                 border-top: 1px solid var(--border-color) !important;
                 padding-bottom: env(safe-area-inset-bottom, 10px) !important;
+                z-index: 1000 !important;
             }
             body {
                 padding-bottom: 80px; /* Space for bottom nav */
