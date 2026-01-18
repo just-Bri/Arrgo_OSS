@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
 	"encoding/json"

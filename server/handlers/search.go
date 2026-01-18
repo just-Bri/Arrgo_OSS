@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"Arrgo/config"
-	"Arrgo/models"
 	"Arrgo/services"
 	"html/template"
 	"log"
