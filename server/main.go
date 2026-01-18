@@ -64,6 +64,8 @@ func main() {
 	mux.HandleFunc("/login", handlers.LoginHandler)
 	mux.HandleFunc("/logout", handlers.LogoutHandler)
 	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
+	mux.HandleFunc("/images/movie/", handlers.ServeMovieImage)
+	mux.HandleFunc("/images/tv/", handlers.ServeShowImage)
 
 	// Protected routes
 	mux.Handle("/dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.DashboardHandler)))

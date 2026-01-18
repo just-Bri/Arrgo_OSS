@@ -1,14 +1,190 @@
 package handlers
 
 import (
+	"Arrgo/database"
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+func EnsureImageDir(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.MkdirAll(path, 0755)
+	}
+	return nil
+}
+
+func downloadImage(url, destPath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download image: %s", resp.Status)
+	}
+
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
+func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
+	// URL: /images/movie/{id}
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	idStr := parts[3]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Look up movie in DB to get poster path
+	var posterPath sql.NullString
+	err = database.DB.QueryRow("SELECT poster_path FROM movies WHERE id = $1", id).Scan(&posterPath)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Movie not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if !posterPath.Valid || posterPath.String == "" {
+		// Serve default/placeholder or 404
+		http.Error(w, "No poster available", http.StatusNotFound)
+		return
+	}
+
+	// Determine file extension
+	ext := filepath.Ext(posterPath.String)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	
+	// Local path: data/images/movies/{id}{ext}
+	localDir := "data/images/movies"
+	if err := EnsureImageDir(localDir); err != nil {
+		log.Printf("Error creating image dir: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	
+	localPath := filepath.Join(localDir, fmt.Sprintf("%d%s", id, ext))
+
+	// 2. Check if file exists locally
+	if _, err := os.Stat(localPath); err == nil {
+		http.ServeFile(w, r, localPath)
+		return
+	}
+
+	// 3. Not found locally, download it
+	var sourceURL string
+	pp := posterPath.String
+	if strings.HasPrefix(pp, "http") {
+		sourceURL = pp
+	} else {
+		// Remove potential leading slash for consistency when joining
+		cleanPP := strings.TrimPrefix(pp, "/")
+		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPP)
+	}
+
+	log.Printf("[IMAGE] Downloading movie poster for ID %d from %s", id, sourceURL)
+	if err := downloadImage(sourceURL, localPath); err != nil {
+		log.Printf("[IMAGE] Failed to download: %v", err)
+		http.Error(w, "Failed to fetch image", http.StatusBadGateway)
+		return
+	}
+
+	http.ServeFile(w, r, localPath)
+}
+
+func ServeShowImage(w http.ResponseWriter, r *http.Request) {
+	// URL: /images/tv/{id}
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	idStr := parts[3]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Look up show in DB to get poster path
+	var posterPath sql.NullString
+	err = database.DB.QueryRow("SELECT poster_path FROM shows WHERE id = $1", id).Scan(&posterPath)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Show not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if !posterPath.Valid || posterPath.String == "" {
+		http.Error(w, "No poster available", http.StatusNotFound)
+		return
+	}
+
+	ext := filepath.Ext(posterPath.String)
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	// Local path: data/images/tv/{id}{ext}
+	localDir := "data/images/tv"
+	if err := EnsureImageDir(localDir); err != nil {
+		log.Printf("Error creating image dir: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	localPath := filepath.Join(localDir, fmt.Sprintf("%d%s", id, ext))
+
+	if _, err := os.Stat(localPath); err == nil {
+		http.ServeFile(w, r, localPath)
+		return
+	}
+
+	var sourceURL string
+	pp := posterPath.String
+	if strings.HasPrefix(pp, "http") {
+		sourceURL = pp
+	} else {
+		cleanPP := strings.TrimPrefix(pp, "/")
+		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPP)
+	}
+
+	log.Printf("[IMAGE] Downloading show poster for ID %d from %s", id, sourceURL)
+	if err := downloadImage(sourceURL, localPath); err != nil {
+		log.Printf("[IMAGE] Failed to download: %v", err)
+		http.Error(w, "Failed to fetch image", http.StatusBadGateway)
+		return
+	}
+
+	http.ServeFile(w, r, localPath)
+}
 
 func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Format: /images/tmdb/{path_or_id}

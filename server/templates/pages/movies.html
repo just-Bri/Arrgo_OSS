@@ -15,7 +15,7 @@
                 {{range .Movies}}
                 <li style="padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start;">
                     {{if .PosterPath}}
-                    <img src="/images/tmdb{{if not (or (hasPrefix .PosterPath "http") (hasPrefix .PosterPath "/"))}}/{{end}}{{.PosterPath}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    <img src="/images/movie/{{.ID}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                     {{else}}
                     <div style="width: 100px; height: 150px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
                     {{end}}
