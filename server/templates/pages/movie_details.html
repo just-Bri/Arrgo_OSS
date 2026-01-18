@@ -12,6 +12,8 @@
             {{if .Movie.PosterPath}}
                 {{if hasPrefix .Movie.PosterPath "http"}}
                     <img src="{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{else if gt .Movie.ID 0}}
+                    <img src="/images/movie/{{.Movie.ID}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else}}
                     <img src="/images/tmdb/{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{end}}

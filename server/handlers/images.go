@@ -240,6 +240,12 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "http") {
 		// It's a full URL (likely TVDB)
 		sourceURL = path
+	} else if strings.HasPrefix(path, "/") {
+		// This should have been caught by step 1 if the file existed.
+		// If it reaches here, it's a local path that doesn't exist.
+		// We should NOT try to download it from TMDB.
+		http.Error(w, "Local image not found", http.StatusNotFound)
+		return
 	} else {
 		// It's a TMDB relative path
 		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", path)

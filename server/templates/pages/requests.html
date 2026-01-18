@@ -16,7 +16,15 @@
                 {{range .Requests}}
                 <li style="padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start;">
                     {{if .PosterPath}}
-                    <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 80px; border-radius: 4px; margin-right: 20px;">
+                        {{if hasPrefix .PosterPath "http"}}
+                            <img src="{{.PosterPath}}" alt="{{.Title}}" style="width: 80px; border-radius: 4px; margin-right: 20px;">
+                        {{else if hasPrefix .PosterPath "/"}}
+                            {{/* It's an absolute local path, but we don't have an ID here easily. 
+                                 However, ImageProxyHandler now handles local paths if they start with / */}}
+                            <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 80px; border-radius: 4px; margin-right: 20px;">
+                        {{else}}
+                            <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 80px; border-radius: 4px; margin-right: 20px;">
+                        {{end}}
                     {{else}}
                     <div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>
                     {{end}}

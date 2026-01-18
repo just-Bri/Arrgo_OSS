@@ -32,6 +32,12 @@
                         {{if .PosterPath}}
                             {{if hasPrefix .PosterPath "http"}}
                                 <img src="{{.PosterPath}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                            {{else if eq .Source "local"}}
+                                {{if $isShow}}
+                                    <img src="/images/tv/{{.LocalID}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                {{else}}
+                                    <img src="/images/movie/{{.LocalID}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                {{end}}
                             {{else}}
                                 <img src="/images/tmdb/{{.PosterPath}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
                             {{end}}
