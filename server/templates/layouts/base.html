@@ -64,19 +64,19 @@
         /* Mobile First Sidebar */
         .sidebar {
             position: fixed;
-            left: -280px;
+            right: -280px;
             top: 0;
             bottom: 0;
             width: 280px;
             background: var(--header-bg);
-            border-right: 1px solid var(--border-color);
+            border-left: 1px solid var(--border-color);
             z-index: 1000;
-            transition: left 0.3s ease;
+            transition: right 0.3s ease;
             padding: 20px;
             overflow-y: auto;
         }
         .sidebar.active {
-            left: 0;
+            right: 0;
         }
         .sidebar-overlay {
             position: fixed;
@@ -102,6 +102,16 @@
             }
             .container {
                 padding: 15px;
+            }
+            .main-nav {
+                top: auto !important;
+                bottom: 0 !important;
+                border-bottom: none !important;
+                border-top: 1px solid var(--border-color) !important;
+                padding-bottom: env(safe-area-inset-bottom, 10px) !important;
+            }
+            body {
+                padding-bottom: 80px; /* Space for bottom nav */
             }
         }
         @media (min-width: 769px) {
