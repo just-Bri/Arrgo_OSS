@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"Arrgo/config"
+	"Arrgo/models"
+	"Arrgo/services"
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 )
 
 var adminTmpl *template.Template
@@ -22,10 +26,12 @@ func init() {
 }
 
 type AdminPageData struct {
-	Username    string
-	IsAdmin     bool
-	CurrentPage string
-	SearchQuery string
+	Username       string
+	IsAdmin        bool
+	CurrentPage    string
+	SearchQuery    string
+	IncomingMovies []models.Movie
+	IncomingShows  []models.Show
 }
 
 func AdminHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,11 +46,39 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cfg := config.Load()
+
+	// Get incoming movies
+	allMovies, err := services.GetMovies()
+	if err != nil {
+		log.Printf("Error getting movies for admin: %v", err)
+	}
+	var incomingMovies []models.Movie
+	for _, m := range allMovies {
+		if strings.HasPrefix(m.Path, cfg.IncomingPath) {
+			incomingMovies = append(incomingMovies, m)
+		}
+	}
+
+	// Get incoming shows
+	allShows, err := services.GetShows()
+	if err != nil {
+		log.Printf("Error getting shows for admin: %v", err)
+	}
+	var incomingShows []models.Show
+	for _, s := range allShows {
+		if strings.HasPrefix(s.Path, cfg.IncomingPath) {
+			incomingShows = append(incomingShows, s)
+		}
+	}
+
 	data := AdminPageData{
-		Username:    user.Username,
-		IsAdmin:     user.IsAdmin,
-		CurrentPage: "/admin",
-		SearchQuery: "",
+		Username:       user.Username,
+		IsAdmin:        user.IsAdmin,
+		CurrentPage:    "/admin",
+		SearchQuery:    "",
+		IncomingMovies: incomingMovies,
+		IncomingShows:  incomingShows,
 	}
 
 	if err := adminTmpl.ExecuteTemplate(w, "base", data); err != nil {

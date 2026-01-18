@@ -8,47 +8,6 @@
         <a href="/dashboard" style="text-decoration: none; color: var(--accent-color);">&larr; Back to Dashboard</a>
     </div>
 
-    {{if and .IsAdmin .IncomingMovies}}
-    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 25px; border: 2px solid var(--accent-color);">
-        <h2 style="margin: 0 0 15px 0; font-size: 20px; color: var(--accent-color);">Incoming Media ({{len .IncomingMovies}})</h2>
-        <ul style="list-style: none; padding: 0; margin: 0;">
-            {{range .IncomingMovies}}
-            <li style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
-                {{if .PosterPath}}
-                <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
-                    <img src="/images/movie/{{.ID}}" alt="{{.Title}}" style="width: 60px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                </a>
-                {{else}}
-                <a href="/movies/details?id={{.ID}}" style="text-decoration: none; flex-shrink: 0;">
-                    <div style="width: 60px; height: 90px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center;">No Poster</div>
-                </a>
-                {{end}}
-                <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
-                        <div style="min-width: 0;">
-                            <a href="/movies/details?id={{.ID}}" style="text-decoration: none;">
-                                <div style="font-size: 15px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
-                            </a>
-                            <div style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
-                                <span style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
-                                {{if .Quality}}
-                                <span style="background: var(--quality-bg); padding: 1px 4px; border-radius: 4px; color: var(--quality-text);">{{.Quality}}</span>
-                                {{end}}
-                            </div>
-                        </div>
-                        {{if eq .Status "matched"}}
-                        <form action="/rename/movie?id={{.ID}}" method="POST">
-                            <button type="submit" style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
-                        </form>
-                        {{end}}
-                    </div>
-                </div>
-            </li>
-            {{end}}
-        </ul>
-    </div>
-    {{end}}
-    
     <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
         <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;">
             <h2 style="margin: 0; font-size: 20px; color: var(--text-color);">Library ({{len .Movies}})</h2>

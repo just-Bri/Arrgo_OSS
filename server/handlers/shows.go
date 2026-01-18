@@ -121,7 +121,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentPage:   "/tv",
 		SearchQuery:   "",
 		Shows:         libraryShows,
-		IncomingShows: incomingShows,
+		IncomingShows: []models.Show{},
 		AllGenres:     allGenres,
 		SelectedGenre: selectedGenre,
 	}

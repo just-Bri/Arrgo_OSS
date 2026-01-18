@@ -83,7 +83,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, m := range allMovies {
 		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingPath)
-		
+
 		if isIncoming {
 			if user.IsAdmin {
 				incomingMovies = append(incomingMovies, m)
@@ -121,7 +121,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentPage:    "/movies",
 		SearchQuery:    "",
 		Movies:         libraryMovies,
-		IncomingMovies: incomingMovies,
+		IncomingMovies: []models.Movie{},
 		AllGenres:      allGenres,
 		SelectedGenre:  selectedGenre,
 	}
@@ -196,7 +196,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		if status.Exists {
 			movie.ID = status.LocalID
 			movie.Status = "In Library"
-			
+
 			// Try to get full movie info if it exists
 			if localMovie, err := services.GetMovieByID(status.LocalID); err == nil {
 				movie = localMovie

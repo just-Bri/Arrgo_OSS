@@ -5,11 +5,50 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+func safeRename(src, dst string) error {
+	// Try renaming first (efficient if on same device)
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	// Fallback for "invalid cross-device link" (EXDEV)
+	log.Printf("[RENAMER] Cross-device move detected, falling back to copy+delete: %s -> %s", src, dst)
+
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	// Ensure everything is written to disk
+	if err := destFile.Sync(); err != nil {
+		return err
+	}
+
+	// Important to close before removing
+	sourceFile.Close()
+	destFile.Close()
+
+	return os.Remove(src)
+}
 
 func sanitizePath(name string) string {
 	// Remove or replace characters that are problematic for filesystems
@@ -114,7 +153,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 				// Candidate is HIGHER quality. Proceed to replace.
 				log.Printf("[RENAMER] Candidate %s is higher quality (%s) than existing (%s). Replacing existing.", m.Path, m.Quality, existingQuality)
 			}
-			
+
 			// If we are replacing, remove the existing file and its DB entry
 			os.Remove(destPath)
 			database.DB.Exec("DELETE FROM movies WHERE path = $1", destPath)
@@ -123,7 +162,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 
 	// Move the file
 	oldPath := m.Path
-	if err := os.Rename(oldPath, destPath); err != nil {
+	if err := safeRename(oldPath, destPath); err != nil {
 		return err
 	}
 
@@ -203,7 +242,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 					return nil
 				}
 			}
-			
+
 			log.Printf("[RENAMER] Candidate episode %s is better. Replacing existing.", e.FilePath)
 			os.Remove(destPath)
 			database.DB.Exec("DELETE FROM episodes WHERE file_path = $1", destPath)
@@ -211,7 +250,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	oldPath := e.FilePath
-	if err := os.Rename(oldPath, destPath); err != nil {
+	if err := safeRename(oldPath, destPath); err != nil {
 		return err
 	}
 

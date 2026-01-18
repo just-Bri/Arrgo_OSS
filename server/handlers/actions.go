@@ -46,7 +46,7 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	log.Printf("Manual full scan complete")
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func ScanIncomingHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func ScanIncomingHandler(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	log.Printf("Manual incoming scan complete")
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func RenameMovieHandler(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +109,7 @@ func RenameMovieHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
 func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
@@ -133,5 +133,5 @@ func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
