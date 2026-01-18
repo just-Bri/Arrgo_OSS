@@ -37,6 +37,7 @@ type UnifiedSearchResult struct {
 
 type SearchPageData struct {
 	Username    string
+	IsAdmin     bool
 	SearchQuery string
 	Results     []UnifiedSearchResult
 }
@@ -162,6 +163,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := SearchPageData{
 		Username:    user.Username,
+		IsAdmin:     user.IsAdmin,
 		SearchQuery: query,
 		Results:     results,
 	}

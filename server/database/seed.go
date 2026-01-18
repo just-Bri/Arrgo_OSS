@@ -27,10 +27,11 @@ func SeedAdminUser() error {
 
 	// Insert admin user
 	_, err = DB.Exec(
-		"INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3)",
+		"INSERT INTO users (username, email, password_hash, is_admin) VALUES ($1, $2, $3, $4)",
 		"admin",
 		"admin@arrgo.local",
 		string(hashedPassword),
+		true,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to seed admin user: %w", err)

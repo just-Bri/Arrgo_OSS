@@ -11,6 +11,7 @@ func RunMigrations() error {
 		username VARCHAR(255) UNIQUE NOT NULL,
 		email VARCHAR(255) UNIQUE NOT NULL,
 		password_hash VARCHAR(255) NOT NULL,
+		is_admin BOOLEAN DEFAULT FALSE,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
@@ -19,6 +20,20 @@ func RunMigrations() error {
 	_, err := DB.Exec(migrationSQL)
 	if err != nil {
 		return fmt.Errorf("failed to run users migration: %w", err)
+	}
+
+	// Migration for existing users table
+	DO_USERS := `
+	DO $$ 
+	BEGIN 
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='is_admin') THEN
+			ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+		END IF;
+	END $$;
+	`
+	_, err = DB.Exec(DO_USERS)
+	if err != nil {
+		return fmt.Errorf("failed to run users column migration: %w", err)
 	}
 
 	moviesTableSQL := `

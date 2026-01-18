@@ -27,6 +27,7 @@ func init() {
 
 type DashboardData struct {
 	Username    string
+	IsAdmin     bool
 	SearchQuery string
 	MovieCount  int
 	ShowCount   int
@@ -53,6 +54,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := DashboardData{
 		Username:    user.Username,
+		IsAdmin:     user.IsAdmin,
 		SearchQuery: "",
 		MovieCount:  movieCount,
 		ShowCount:   showCount,

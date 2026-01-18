@@ -40,6 +40,7 @@ func init() {
 
 type MoviesData struct {
 	Username      string
+	IsAdmin       bool
 	SearchQuery   string
 	Movies        []models.Movie
 	AllGenres     []string
@@ -105,6 +106,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := MoviesData{
 		Username:      user.Username,
+		IsAdmin:       user.IsAdmin,
 		SearchQuery:   "",
 		Movies:        filteredMovies,
 		AllGenres:     allGenres,
@@ -188,10 +190,12 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Username    string
+		IsAdmin     bool
 		SearchQuery string
 		Movie       *models.Movie
 	}{
 		Username:    user.Username,
+		IsAdmin:     user.IsAdmin,
 		SearchQuery: "",
 		Movie:       movie,
 	}

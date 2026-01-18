@@ -20,6 +20,16 @@ The primary goal of Arrgo is to provide a modern, consolidated alternative to th
 - **Metadata**: [TMDB](https://www.themoviedb.org/) (Movies) & [TVDB](https://www.thetvdb.com/) (TV Shows)
 - **Deployment**: [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
 
+## 🌟 Current Features
+
+- **Consolidated Management**: Handle both movies and TV shows in one application.
+- **Unified Search**: Search across your local library and external sources (TMDB/TVDB) simultaneously from any page.
+- **Media Details**: Deep dive into your library with rich metadata, posters, and episode-level library status.
+- **Request System**: Users can request new movies or specific seasons of TV shows.
+- **Secure Auth**: Password-based login with bcrypt hashing and session management.
+- **Role-Based Access**: Restrict dangerous actions (like library scans) to admin users.
+- **Automatic Organization**: Automatically organize and rename files to follow standard naming conventions.
+
 ## 📂 Project Structure
 
 - `/handlers`: HTTP request handlers and routing logic.
@@ -83,15 +93,19 @@ This invalidates the Docker build cache and forces it to pick up your latest fil
 
 ## 🗺 Roadmap
 
-- [x] Basic Login & Authentication
+- [x] Basic Login & Authentication (bcrypt hashing)
+- [x] User Registration & Admin Permissions
 - [x] Dashboard with Movie/TV Library Overview
+- [x] Unified Search (Local Library + TMDB/TVDB)
+- [x] Media Details Pages (Extended metadata, episode lists)
 - [x] Library Scanner (Automatic detection of new media)
 - [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
 - [x] Unraid Optimization (Permissions, Docker-ready)
 - [ ] TV Show Organization (Auto-renaming episodes)
 - [ ] Subtitle Management (Bazarr functionality)
 - [ ] Integration with Download Clients (qBittorrent, etc.)
-- [ ] Advanced Library Search and Filtering
+- [ ] User Management UI (Promote/Demote admins)
+- [ ] Advanced Library Filtering & Bulk Actions
 
 ## 📝 Note on Database Choice
 

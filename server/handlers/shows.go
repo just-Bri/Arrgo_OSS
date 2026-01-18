@@ -40,6 +40,7 @@ func init() {
 
 type ShowsData struct {
 	Username      string
+	IsAdmin       bool
 	SearchQuery   string
 	Shows         []models.Show
 	AllGenres     []string
@@ -105,6 +106,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := ShowsData{
 		Username:      user.Username,
+		IsAdmin:       user.IsAdmin,
 		SearchQuery:   "",
 		Shows:         filteredShows,
 		AllGenres:     allGenres,
@@ -288,11 +290,13 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Username    string
+		IsAdmin     bool
 		SearchQuery string
 		Show        *models.Show
 		Seasons     []EnhancedSeason
 	}{
 		Username:    user.Username,
+		IsAdmin:     user.IsAdmin,
 		SearchQuery: "",
 		Show:        show,
 		Seasons:     enhancedSeasons,

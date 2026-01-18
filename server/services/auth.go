@@ -12,13 +12,14 @@ import (
 func AuthenticateUser(username, password string) (*models.User, error) {
 	var user models.User
 	err := database.DB.QueryRow(
-		"SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE username = $1",
+		"SELECT id, username, email, password_hash, is_admin, created_at, updated_at FROM users WHERE username = $1",
 		username,
 	).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.IsAdmin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -48,13 +49,14 @@ func RegisterUser(username, email, password string) (*models.User, error) {
 
 	var user models.User
 	err = database.DB.QueryRow(
-		"INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email, password_hash, created_at, updated_at",
+		"INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email, password_hash, is_admin, created_at, updated_at",
 		username, email, string(hashedPassword),
 	).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.IsAdmin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -69,13 +71,14 @@ func RegisterUser(username, email, password string) (*models.User, error) {
 func GetUserByID(userID int64) (*models.User, error) {
 	var user models.User
 	err := database.DB.QueryRow(
-		"SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE id = $1",
+		"SELECT id, username, email, password_hash, is_admin, created_at, updated_at FROM users WHERE id = $1",
 		userID,
 	).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.IsAdmin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)

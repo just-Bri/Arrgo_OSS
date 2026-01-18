@@ -29,6 +29,7 @@ func init() {
 
 type RequestsData struct {
 	Username    string
+	IsAdmin     bool
 	SearchQuery string
 	Requests    []models.Request
 }
@@ -60,6 +61,7 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := RequestsData{
 		Username:    user.Username,
+		IsAdmin:     user.IsAdmin,
 		SearchQuery: "",
 		Requests:    requests,
 	}

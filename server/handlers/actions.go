@@ -15,6 +15,12 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
 	cfg := config.Load()
 	log.Printf("Manual scan triggered")
 
