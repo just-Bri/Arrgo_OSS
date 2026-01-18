@@ -95,7 +95,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 				oldPath := m.Path
 				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-				cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+				cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
 				return nil
 			} else if comp == 0 {
 				// Qualities are equal, compare size.
@@ -105,7 +105,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 					oldPath := m.Path
 					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-					cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+					cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
 					return nil
 				}
 				// Candidate is larger, proceed to replace.
@@ -128,7 +128,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// Cleanup old directory if it was in incoming
-	cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+	cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
 
 	// Update DB with new path and status
 	updateQuery := `UPDATE movies SET path = $1, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $2`
@@ -191,7 +191,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 				oldPath := e.FilePath
 				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-				cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+				cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
 				return nil
 			} else if comp == 0 {
 				if e.Size <= existingSize {
@@ -199,7 +199,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 					oldPath := e.FilePath
 					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-					cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+					cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
 					return nil
 				}
 			}
@@ -215,7 +215,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		return err
 	}
 
-	cleanupEmptyDirs(oldPath, cfg.IncomingPath)
+	cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
 
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
