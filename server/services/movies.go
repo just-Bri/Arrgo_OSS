@@ -147,12 +147,15 @@ func processMovieFile(cfg *config.Config, path string) {
 
 func parseMovieName(name string) (string, int) {
 	// 1. Clean up ID tags like [tmdbid-343423], {tmdb-343423}, [tvdb-12345], etc.
-	// Make it case-insensitive and handle different variations
 	idRegex := regexp.MustCompile(`(?i)[\[\{](tmdb|tvdb|tmdbid|imdb)[- ]?([a-z0-9]+)[\]\}]`)
 	name = idRegex.ReplaceAllString(name, "")
+
+	// 2. Remove common junk suffixes
+	junkRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|\[.*\]|\{.*\}|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
+	name = junkRegex.ReplaceAllString(name, "")
 	name = strings.TrimSpace(name)
 
-	// 2. Match "Title (Year)"
+	// 3. Match "Title (Year)"
 	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)
 	matches := re.FindStringSubmatch(name)
 	if len(matches) == 3 {

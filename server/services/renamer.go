@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -201,7 +202,26 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	ext := filepath.Ext(e.FilePath)
 
 	sanitizedShowTitle := sanitizePath(sh.Title)
-	sanitizedEpTitle := sanitizePath(e.Title)
+	
+	// Clean up episode title if it still looks like a filename
+	epTitle := e.Title
+	if strings.Contains(epTitle, ".") || strings.Contains(epTitle, "-") {
+		// Strip extension if present
+		epTitle = strings.TrimSuffix(epTitle, filepath.Ext(epTitle))
+		// Remove SXXEXX patterns
+		epRegex := regexp.MustCompile(`(?i)S\d+E\d+`)
+		epTitle = epRegex.ReplaceAllString(epTitle, "")
+		// Remove common junk (reuse logic similar to parseMovieName but simpler)
+		junkRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
+		epTitle = junkRegex.ReplaceAllString(epTitle, "")
+		epTitle = strings.Trim(epTitle, " -._")
+	}
+	
+	if epTitle == "" {
+		epTitle = fmt.Sprintf("Episode %d", e.EpisodeNumber)
+	}
+	
+	sanitizedEpTitle := sanitizePath(epTitle)
 
 	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
 	if sh.TVDBID != "" {

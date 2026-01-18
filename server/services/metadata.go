@@ -483,13 +483,21 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	// Let's store the raw JSON from TMDB too
 	rawMetadata, _ := json.Marshal(details)
 
-	// 4. Update DB
+	// 4. Update DB with official metadata
 	updateQuery := `
 		UPDATE movies 
-		SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $7
+		SET title = $1, year = $2, tmdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, genres = $7, status = 'matched', raw_metadata = $8, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $9
 	`
-	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
+	// Use details.ReleaseDate to update year if possible
+	matchedYear := m.Year
+	if len(details.ReleaseDate) >= 4 {
+		if year, err := strconv.Atoi(details.ReleaseDate[:4]); err == nil {
+			matchedYear = year
+		}
+	}
+
+	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for movie %s: %v", m.Title, err)
 	}
@@ -596,17 +604,56 @@ func MatchShow(cfg *config.Config, showID int) error {
 	genreString := strings.Join(genres, ", ")
 	rawMetadata, _ := json.Marshal(details)
 
-	// 4. Update DB
+	// 4. Update DB with official metadata
 	updateQuery := `
 		UPDATE shows 
-		SET tvdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $7
+		SET title = $1, year = $2, tvdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, genres = $7, status = 'matched', raw_metadata = $8, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $9
 	`
-	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", details.ID), imdbID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
+	matchedYear := s.Year
+	if len(details.FirstAired) >= 4 {
+		if year, err := strconv.Atoi(details.FirstAired[:4]); err == nil {
+			matchedYear = year
+		}
+	}
+
+	_, err = database.DB.Exec(updateQuery, details.Name, matchedYear, fmt.Sprintf("%d", details.ID), imdbID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for show %s: %v", s.Title, err)
+		return err
 	}
-	return err
+
+	// 5. Sync episode titles from TVDB
+	go SyncShowEpisodes(cfg, s.ID)
+
+	return nil
+}
+
+func SyncShowEpisodes(cfg *config.Config, showID int) error {
+	var tvdbID string
+	err := database.DB.QueryRow("SELECT tvdb_id FROM shows WHERE id = $1", showID).Scan(&tvdbID)
+	if err != nil || tvdbID == "" {
+		return fmt.Errorf("show has no TVDB ID")
+	}
+
+	episodes, err := GetTVDBShowEpisodes(cfg, tvdbID)
+	if err != nil {
+		return err
+	}
+
+	for _, ep := range episodes {
+		// Update existing episodes with official titles
+		query := `
+			UPDATE episodes 
+			SET title = $1 
+			WHERE season_id IN (SELECT id FROM seasons WHERE show_id = $2 AND season_number = $3)
+			AND episode_number = $4
+		`
+		database.DB.Exec(query, ep.Name, showID, ep.SeasonNumber, ep.Number)
+	}
+
+	log.Printf("[METADATA] Synced %d episodes for show ID %d", len(episodes), showID)
+	return nil
 }
 
 func interfaceToInt(v interface{}) int {
