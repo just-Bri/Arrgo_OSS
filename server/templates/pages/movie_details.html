@@ -3,43 +3,43 @@
 {{define "content"}}
 {{template "navigation" .}}
 <div class="container">
-    <div style="margin-bottom: 20px;">
-        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color);">&larr; Back</a>
+    <div style="margin-bottom: 15px;">
+        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color); font-size: 14px;">&larr; Back</a>
     </div>
 
-    <div style="display: flex; gap: 40px; background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow);">
-        <div style="flex-shrink: 0;">
+    <div style="display: flex; flex-direction: column; gap: 20px; background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
+        <div style="align-self: center;">
             {{if .Movie.PosterPath}}
                 {{if hasPrefix .Movie.PosterPath "http"}}
-                    <img src="{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else if gt .Movie.ID 0}}
-                    <img src="/images/movie/{{.Movie.ID}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/images/movie/{{.Movie.ID}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else}}
-                    <img src="/images/tmdb/{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/images/tmdb/{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{end}}
             {{else}}
-                <div style="width: 300px; height: 450px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+                <div style="width: 260px; height: 390px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
             {{end}}
         </div>
 
-        <div style="flex: 1;">
-            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 36px;">{{.Movie.Title}} {{if .Movie.Year}}({{.Movie.Year}}){{end}}</h1>
+        <div style="flex: 1; min-width: 0;">
+            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 28px;">{{.Movie.Title}} {{if .Movie.Year}}({{.Movie.Year}}){{end}}</h1>
             
-            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
                 {{if .Movie.Genres}}
                     {{range (split .Movie.Genres ", ")}}
-                        <span style="background: var(--bg-color); padding: 4px 12px; border-radius: 20px; font-size: 14px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
+                        <span style="background: var(--bg-color); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
                     {{end}}
                 {{end}}
-                <span style="background: var(--badge-bg); padding: 4px 12px; border-radius: 20px; font-size: 14px; color: var(--badge-text);">{{.Movie.Status}}</span>
+                <span style="background: var(--badge-bg); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--badge-text);">{{.Movie.Status}}</span>
             </div>
 
-            <h3 style="color: var(--text-color); margin-bottom: 10px;">Overview</h3>
-            <p style="color: var(--text-color); line-height: 1.6; margin-bottom: 30px; font-size: 16px;">{{.Movie.Overview}}</p>
+            <h3 style="color: var(--text-color); margin-bottom: 8px; font-size: 18px;">Overview</h3>
+            <p style="color: var(--text-color); line-height: 1.5; margin-bottom: 25px; font-size: 15px;">{{.Movie.Overview}}</p>
 
-            <div style="background: var(--bg-color); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
-                <h4 style="margin: 0 0 15px 0; color: var(--text-color);">File Information</h4>
-                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 14px;">
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 16px;">File Info</h4>
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px;">
                     <div style="color: var(--muted-text);">Path:</div>
                     <div style="color: var(--text-color); word-break: break-all;">{{if .Movie.Path}}{{.Movie.Path}}{{else}}N/A{{end}}</div>
                     
@@ -52,7 +52,7 @@
             </div>
 
             {{if eq .Movie.Status "search_result"}}
-                <div style="margin-top: 30px;">
+                <div style="margin-top: 25px;">
                     <button onclick="submitRequest({
                         title: '{{js .Movie.Title}}',
                         media_type: 'movie',
@@ -60,7 +60,7 @@
                         year: {{.Movie.Year}},
                         poster_path: '{{.Movie.PosterPath}}',
                         overview: '{{js .Movie.Overview}}'
-                    })" style="padding: 12px 30px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px; font-weight: 500;">
+                    })" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
                         Request Movie
                     </button>
                 </div>
@@ -68,6 +68,19 @@
         </div>
     </div>
 </div>
+
+<style>
+@media (min-width: 769px) {
+    .container > div:last-child {
+        flex-direction: row !important;
+        padding: 30px !important;
+        gap: 40px !important;
+    }
+    .container h1 {
+        font-size: 36px !important;
+    }
+}
+</style>
 
 <script>
 async function submitRequest(item) {

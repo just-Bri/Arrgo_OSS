@@ -8,7 +8,7 @@
         <a href="/dashboard" style="text-decoration: none; color: var(--accent-color);">&larr; Back to Dashboard</a>
     </div>
 
-    <div id="search-results" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+    <div id="search-results" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
         {{if .Results}}
             {{range .Results}}
                 {{$isShow := eq .MediaType "show"}}
@@ -27,53 +27,50 @@
                     {{end}}
                 {{end}}
 
-                <div style="background: var(--container-bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; gap: 15px; box-shadow: var(--card-shadow);">
-                    <a href="{{$detailsUrl}}">
+                <div style="background: var(--container-bg); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; gap: 12px; box-shadow: var(--card-shadow);">
+                    <a href="{{$detailsUrl}}" style="flex-shrink: 0;">
                         {{if .PosterPath}}
                             {{if hasPrefix .PosterPath "http"}}
-                                <img src="{{.PosterPath}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                <img src="{{.PosterPath}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                             {{else if eq .Source "local"}}
                                 {{if $isShow}}
-                                    <img src="/images/tv/{{.LocalID}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                    <img src="/images/tv/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                 {{else}}
-                                    <img src="/images/movie/{{.LocalID}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                    <img src="/images/movie/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                 {{end}}
                             {{else}}
-                                <img src="/images/tmdb/{{.PosterPath}}" style="width: 100px; border-radius: 4px; height: 150px; object-fit: cover;">
+                                <img src="/images/tmdb/{{.PosterPath}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                             {{end}}
                         {{else}}
-                            <div style="width: 100px; height: 150px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px; text-align: center;">No Poster</div>
+                            <div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center; padding: 5px;">No Poster</div>
                         {{end}}
                     </a>
                     
-                    <div style="flex: 1; display: flex; flex-direction: column;">
+                    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
                         <a href="{{$detailsUrl}}" style="text-decoration: none; color: inherit;">
-                            <div style="font-weight: 500; font-size: 18px;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                            <div style="font-weight: 500; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
                         </a>
-                        <div style="font-size: 12px; color: var(--muted-text); margin-top: 4px; display: flex; gap: 8px; align-items: center;">
-                            <span style="text-transform: uppercase; background: var(--bg-color); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">{{.MediaType}}</span>
+                        <div style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            <span style="text-transform: uppercase; background: var(--bg-color); padding: 1px 4px; border-radius: 4px; border: 1px solid var(--border-color);">{{.MediaType}}</span>
                             {{if eq .Source "local"}}
-                                <span style="color: var(--success-color); font-weight: bold;">(In Library)</span>
+                                <span style="color: var(--success-color); font-weight: bold;">In Library</span>
                             {{else}}
-                                <span style="color: var(--accent-color);">(External)</span>
+                                <span style="color: var(--accent-color);">External</span>
                             {{end}}
                         </div>
                         
-                        <div style="font-size: 12px; color: var(--accent-color); margin-top: 8px; font-weight: 500;">
+                        <div style="font-size: 11px; color: var(--accent-color); margin-top: 6px; font-weight: 500;">
                             {{.LibraryStatus.Message}}
-                            {{if .LibraryStatus.Seasons}}
-                                (Seasons: {{range $i, $s := .LibraryStatus.Seasons}}{{if $i}}, {{end}}{{$s}}{{end}})
-                            {{end}}
                         </div>
 
-                        <p style="font-size: 13px; color: var(--muted-text); margin: 10px 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;">
+                        <p style="font-size: 12px; color: var(--muted-text); margin: 8px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3;">
                             {{.Overview}}
                         </p>
 
-                        <div style="margin-top: auto; padding-top: 10px;">
+                        <div style="margin-top: auto; padding-top: 5px;">
                             {{if eq .Source "local"}}
                                 <a href="{{$detailsUrl}}" style="text-decoration: none;">
-                                    <button style="width: 100%; padding: 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">View Details</button>
+                                    <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">View</button>
                                 </a>
                             {{else}}
                                 {{$inLibrary := .LibraryStatus.Exists}}
@@ -83,7 +80,7 @@
                                 {{if not $isDisabled}}
                                     {{if $isShow}}
                                         <a href="{{$detailsUrl}}" style="text-decoration: none;">
-                                            <button style="width: 100%; padding: 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Select Seasons</button>
+                                            <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Select Seasons</button>
                                         </a>
                                     {{else}}
                                         <button onclick='submitRequest({
@@ -93,10 +90,10 @@
                                             year: {{.Year}},
                                             poster_path: "{{.PosterPath}}",
                                             overview: "{{js .Overview}}"
-                                        })' style="width: 100%; padding: 8px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Request Movie</button>
+                                        })' style="width: 100%; padding: 6px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Request</button>
                                     {{end}}
                                 {{else}}
-                                    <button disabled style="width: 100%; padding: 8px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px;">
+                                    <button disabled style="width: 100%; padding: 6px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; cursor: not-allowed; font-size: 12px;">
                                         {{if $inLibrary}}In Library{{else}}Requested{{end}}
                                     </button>
                                 {{end}}
@@ -106,8 +103,8 @@
                 </div>
             {{end}}
         {{else}}
-            <div style="grid-column: 1 / -1; text-align: center; padding: 50px; background: var(--container-bg); border-radius: 8px; border: 1px solid var(--border-color);">
-                <p style="color: var(--muted-text); font-size: 18px;">No results found for "{{.SearchQuery}}".</p>
+            <div style="grid-column: 1 / -1; text-align: center; padding: 40px 20px; background: var(--container-bg); border-radius: 8px; border: 1px solid var(--border-color);">
+                <p style="color: var(--muted-text); font-size: 16px;">No results found for "{{.SearchQuery}}".</p>
             </div>
         {{end}}
     </div>

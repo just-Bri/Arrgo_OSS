@@ -3,43 +3,43 @@
 {{define "content"}}
 {{template "navigation" .}}
 <div class="container">
-    <div style="margin-bottom: 20px;">
-        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color);">&larr; Back</a>
+    <div style="margin-bottom: 15px;">
+        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color); font-size: 14px;">&larr; Back</a>
     </div>
 
-    <div style="display: flex; gap: 40px; background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 30px;">
-        <div style="flex-shrink: 0;">
+    <div style="display: flex; flex-direction: column; gap: 20px; background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 25px;">
+        <div style="align-self: center;">
             {{if .Show.PosterPath}}
                 {{if hasPrefix .Show.PosterPath "http"}}
-                    <img src="{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else if gt .Show.ID 0}}
-                    <img src="/images/tv/{{.Show.ID}}" alt="{{.Show.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/images/tv/{{.Show.ID}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else}}
-                    <img src="/images/tmdb/{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 300px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/images/tmdb/{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{end}}
             {{else}}
-                <div style="width: 300px; height: 450px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+                <div style="width: 260px; height: 390px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
             {{end}}
         </div>
 
-        <div style="flex: 1;">
-            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 36px;">{{.Show.Title}} {{if .Show.Year}}({{.Show.Year}}){{end}}</h1>
+        <div style="flex: 1; min-width: 0;">
+            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 28px;">{{.Show.Title}} {{if .Show.Year}}({{.Show.Year}}){{end}}</h1>
             
-            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
                 {{if .Show.Genres}}
                     {{range (split .Show.Genres ", ")}}
-                        <span style="background: var(--bg-color); padding: 4px 12px; border-radius: 20px; font-size: 14px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
+                        <span style="background: var(--bg-color); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
                     {{end}}
                 {{end}}
-                <span style="background: var(--badge-bg); padding: 4px 12px; border-radius: 20px; font-size: 14px; color: var(--badge-text);">{{.Show.Status}}</span>
+                <span style="background: var(--badge-bg); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--badge-text);">{{.Show.Status}}</span>
             </div>
 
-            <h3 style="color: var(--text-color); margin-bottom: 10px;">Overview</h3>
-            <p style="color: var(--text-color); line-height: 1.6; margin-bottom: 30px; font-size: 16px;">{{.Show.Overview}}</p>
+            <h3 style="color: var(--text-color); margin-bottom: 8px; font-size: 18px;">Overview</h3>
+            <p style="color: var(--text-color); line-height: 1.5; margin-bottom: 25px; font-size: 15px;">{{.Show.Overview}}</p>
 
-            <div style="background: var(--bg-color); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
-                <h4 style="margin: 0 0 15px 0; color: var(--text-color);">Show Information</h4>
-                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 14px;">
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 16px;">Show Info</h4>
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px;">
                     <div style="color: var(--muted-text);">Path:</div>
                     <div style="color: var(--text-color); word-break: break-all;">{{if .Show.Path}}{{.Show.Path}}{{else}}N/A{{end}}</div>
                     
@@ -49,8 +49,8 @@
             </div>
 
             {{if or (eq .Show.Status "search_result") (eq .Show.Status "Show exists but no seasons found") (hasPrefix .Show.Status "Partial")}}
-                <div style="margin-top: 30px;">
-                    <h3 style="color: var(--text-color); margin-bottom: 10px;">Request Seasons</h3>
+                <div style="margin-top: 25px;">
+                    <h3 style="color: var(--text-color); margin-bottom: 10px; font-size: 18px;">Request Seasons</h3>
                     <div id="season-selector" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
                         {{range .Seasons}}
                             {{$allInLibrary := true}}
@@ -58,14 +58,14 @@
                                 {{if not .InLibrary}}{{$allInLibrary = false}}{{end}}
                             {{end}}
                             
-                            <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 15px; border-radius: 4px; border: 1px solid var(--border-color); cursor: {{if $allInLibrary}}not-allowed{{else}}pointer{{end}}; opacity: {{if $allInLibrary}}0.5{{else}}1{{end}};">
+                            <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); cursor: {{if $allInLibrary}}not-allowed{{else}}pointer{{end}}; opacity: {{if $allInLibrary}}0.5{{else}}1{{end}}; font-size: 14px;">
                                 <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $allInLibrary}}disabled{{end}} style="cursor: {{if $allInLibrary}}not-allowed{{else}}pointer{{end}};">
-                                <span style="color: var(--text-color);">Season {{.SeasonNumber}}</span>
+                                <span style="color: var(--text-color);">S{{.SeasonNumber}}</span>
                             </label>
                         {{end}}
                     </div>
-                    <button id="request-btn" onclick="submitSeasonRequest()" style="padding: 12px 30px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 18px; font-weight: 500;">
-                        Request Selected Seasons
+                    <button id="request-btn" onclick="submitSeasonRequest()" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        Request Selected
                     </button>
                 </div>
             {{end}}
@@ -73,40 +73,36 @@
     </div>
 
     {{if .Seasons}}
-    <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow);">
-        <h2 style="color: var(--text-color); margin-bottom: 20px;">Seasons & Episodes</h2>
+    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
+        <h2 style="color: var(--text-color); margin-bottom: 15px; font-size: 20px;">Seasons & Episodes</h2>
         
         {{range .Seasons}}
-        <div style="margin-bottom: 30px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-            <div style="background: var(--bg-color); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleSeason('season-{{.SeasonNumber}}')">
-                <h3 style="margin: 0; color: var(--text-color);">Season {{.SeasonNumber}}</h3>
-                <span style="color: var(--muted-text);">{{len .Episodes}} Episodes &darr;</span>
+        <div style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+            <div style="background: var(--bg-color); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleSeason('season-{{.SeasonNumber}}')">
+                <h3 style="margin: 0; color: var(--text-color); font-size: 16px;">Season {{.SeasonNumber}}</h3>
+                <span style="color: var(--muted-text); font-size: 12px;">{{len .Episodes}} Ep &darr;</span>
             </div>
-            <div id="season-{{.SeasonNumber}}" style="padding: 0 20px;">
-                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <div id="season-{{.SeasonNumber}}" style="padding: 0 10px; display: none; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; margin: 10px 0; min-width: 400px;">
                     <thead>
-                        <tr style="border-bottom: 2px solid var(--border-color);">
-                            <th style="text-align: left; padding: 10px; color: var(--muted-text);">#</th>
-                            <th style="text-align: left; padding: 10px; color: var(--muted-text);">Title</th>
-                            <th style="text-align: left; padding: 10px; color: var(--muted-text);">Status</th>
-                            <th style="text-align: left; padding: 10px; color: var(--muted-text);">Quality</th>
-                            <th style="text-align: left; padding: 10px; color: var(--muted-text);">Size</th>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">#</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Title</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         {{range .Episodes}}
                         <tr style="border-bottom: 1px solid var(--border-color);">
-                            <td style="padding: 10px; color: var(--text-color);">{{.Number}}</td>
-                            <td style="padding: 10px; color: var(--text-color);">{{.Title}}</td>
-                            <td style="padding: 10px;">
+                            <td style="padding: 8px; color: var(--text-color); font-size: 13px;">{{.Number}}</td>
+                            <td style="padding: 8px; color: var(--text-color); font-size: 13px;">{{.Title}}</td>
+                            <td style="padding: 8px;">
                                 {{if .InLibrary}}
-                                    <span style="color: var(--success-color); font-size: 14px;">&#10004; In Library</span>
+                                    <span style="color: var(--success-color); font-size: 12px;">&#10004;</span>
                                 {{else}}
-                                    <span style="color: var(--muted-text); font-size: 14px;">&#10006; Missing</span>
+                                    <span style="color: var(--muted-text); font-size: 12px;">&#10006;</span>
                                 {{end}}
                             </td>
-                            <td style="padding: 10px; color: var(--text-color);">{{if .Quality}}{{.Quality}}{{else}}N/A{{end}}</td>
-                            <td style="padding: 10px; color: var(--text-color);">{{if .Size}}{{formatSize .Size}}{{else}}N/A{{end}}</td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -117,6 +113,27 @@
     </div>
     {{end}}
 </div>
+
+<style>
+@media (min-width: 769px) {
+    .container > div:nth-child(2) {
+        flex-direction: row !important;
+        padding: 30px !important;
+        gap: 40px !important;
+    }
+    .container h1 {
+        font-size: 36px !important;
+    }
+    #request-btn {
+        width: auto !important;
+        padding-left: 30px !important;
+        padding-right: 30px !important;
+    }
+    #season-selector label {
+        padding: 8px 15px !important;
+    }
+}
+</style>
 
 <script>
 function toggleSeason(id) {

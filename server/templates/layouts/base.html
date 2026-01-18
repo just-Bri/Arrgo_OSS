@@ -60,6 +60,62 @@
             margin: 0 auto;
             padding: 20px;
         }
+
+        /* Mobile First Sidebar */
+        .sidebar {
+            position: fixed;
+            left: -280px;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            background: var(--header-bg);
+            border-right: 1px solid var(--border-color);
+            z-index: 1000;
+            transition: left 0.3s ease;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sidebar.active {
+            left: 0;
+        }
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            display: none;
+        }
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .desktop-nav {
+                display: none !important;
+            }
+            .mobile-nav-toggle {
+                display: block !important;
+            }
+            .container {
+                padding: 15px;
+            }
+        }
+        @media (min-width: 769px) {
+            .desktop-nav {
+                display: flex !important;
+            }
+            .mobile-nav-toggle {
+                display: none !important;
+            }
+            .sidebar {
+                display: none;
+            }
+        }
+
         {{block "styles" .}}{{end}}
     </style>
     <script>
@@ -75,9 +131,42 @@
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
         }
+
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
     </script>
 </head>
 <body>
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <a href="/dashboard" style="text-decoration: none; color: var(--text-color);"><h2 style="margin: 0; font-size: 24px;">Arrgo</h2></a>
+                <button onclick="toggleSidebar()" style="background: none; border: none; color: var(--text-color); font-size: 32px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0;">
+                <li><a href="/dashboard" style="color: var(--text-color); text-decoration: none; font-size: 18px; display: block; padding: 12px; border-radius: 8px; background: var(--bg-color);">Dashboard</a></li>
+                <li><a href="/movies" style="color: var(--text-color); text-decoration: none; font-size: 18px; display: block; padding: 12px;">Movies</a></li>
+                <li><a href="/tv" style="color: var(--text-color); text-decoration: none; font-size: 18px; display: block; padding: 12px;">TV Shows</a></li>
+                <li><a href="/requests" style="color: var(--text-color); text-decoration: none; font-size: 18px; display: block; padding: 12px;">Requests</a></li>
+                {{if .IsAdmin}}
+                <li><a href="/admin" style="color: var(--accent-color); text-decoration: none; font-size: 18px; display: block; padding: 12px;">Admin</a></li>
+                {{end}}
+            </ul>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 5px 0;">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button onclick="toggleTheme(); toggleSidebar();" style="width: 100%; text-align: left; background: none; border: 1px solid var(--border-color); color: var(--text-color); padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                    🌓 Toggle Theme
+                </button>
+                <div style="padding: 12px; color: var(--muted-text); font-size: 14px;">Logged in as: <strong>{{.Username}}</strong></div>
+                <a href="/logout" style="color: white; background: var(--accent-color); text-decoration: none; font-weight: 500; padding: 12px; border-radius: 8px; text-align: center;">Logout</a>
+            </div>
+        </div>
+    </div>
     {{block "content" .}}{{end}}
 </body>
 </html>

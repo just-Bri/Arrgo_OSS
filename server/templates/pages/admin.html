@@ -3,24 +3,24 @@
 {{define "content"}}
 {{template "navigation" .}}
 <div class="container">
-    <h1 style="margin-bottom: 20px; color: var(--text-color);">Admin Dashboard</h1>
+    <h1 style="margin-bottom: 20px; color: var(--text-color); font-size: 24px;">Admin Dashboard</h1>
     
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
         <!-- Library Management -->
-        <div style="background: var(--container-bg); padding: 25px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
-            <h2 style="margin: 0 0 15px 0; color: var(--text-color); font-size: 20px;">Library Management</h2>
-            <p style="color: var(--muted-text); font-size: 14px; margin-bottom: 20px;">Detect new files in your media folders and fetch metadata from TMDB/TVDB.</p>
+        <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Management</h2>
+            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Detect new files and fetch metadata from TMDB/TVDB.</p>
             <form action="/scan" method="POST">
-                <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 16px;">
+                <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
                     🚀 Full Library Scan
                 </button>
             </form>
         </div>
 
         <!-- System Info -->
-        <div style="background: var(--container-bg); padding: 25px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
-            <h2 style="margin: 0 0 15px 0; color: var(--text-color); font-size: 20px;">User Info</h2>
-            <div style="color: var(--text-color); font-size: 14px;">
+        <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">User Info</h2>
+            <div style="color: var(--text-color); font-size: 13px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <span style="color: var(--muted-text);">Current User:</span>
                     <span style="font-weight: 500;">{{.Username}}</span>
