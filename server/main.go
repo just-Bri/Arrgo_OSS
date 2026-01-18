@@ -61,6 +61,12 @@ func main() {
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("pong"))
 	})
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/favicon.ico")
+	})
+	mux.HandleFunc("/site.webmanifest", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/site.webmanifest")
+	})
 	mux.HandleFunc("/login", handlers.LoginHandler)
 	mux.HandleFunc("/register", handlers.RegisterHandler)
 	mux.HandleFunc("/logout", handlers.LogoutHandler)
