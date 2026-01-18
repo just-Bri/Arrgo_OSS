@@ -170,7 +170,7 @@ func upsertMovie(movie models.Movie) error {
 }
 
 func GetMovies() ([]models.Movie, error) {
-	query := `SELECT id, title, year, tmdb_id, path, quality, size, overview, poster_path, status, created_at, updated_at FROM movies ORDER BY title ASC`
+	query := `SELECT id, title, year, tmdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at FROM movies ORDER BY title ASC`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -180,8 +180,8 @@ func GetMovies() ([]models.Movie, error) {
 	movies := []models.Movie{}
 	for rows.Next() {
 		var m models.Movie
-		var tmdbID, overview, posterPath, quality sql.NullString
-		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+		var tmdbID, overview, posterPath, quality, genres sql.NullString
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -189,6 +189,7 @@ func GetMovies() ([]models.Movie, error) {
 		m.Overview = overview.String
 		m.PosterPath = posterPath.String
 		m.Quality = quality.String
+		m.Genres = genres.String
 		movies = append(movies, m)
 	}
 	return movies, nil

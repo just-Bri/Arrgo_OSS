@@ -10,6 +10,7 @@ type Show struct {
 	Path        string    `json:"path"`
 	Overview    string    `json:"overview"`
 	PosterPath  string    `json:"poster_path"`
+	Genres      string    `json:"genres"`
 	Status      string    `json:"status"`
 	RawMetadata []byte    `json:"raw_metadata"`
 	CreatedAt   time.Time `json:"created_at"`

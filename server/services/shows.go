@@ -222,7 +222,7 @@ func GetShowCount() (int, error) {
 }
 
 func GetShows() ([]models.Show, error) {
-	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, status, created_at, updated_at FROM shows ORDER BY title ASC`
+	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows ORDER BY title ASC`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -232,14 +232,15 @@ func GetShows() ([]models.Show, error) {
 	shows := []models.Show{}
 	for rows.Next() {
 		var s models.Show
-		var tvdbID, overview, posterPath sql.NullString
-		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		var tvdbID, overview, posterPath, genres sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		s.TVDBID = tvdbID.String
 		s.Overview = overview.String
 		s.PosterPath = posterPath.String
+		s.Genres = genres.String
 		shows = append(shows, s)
 	}
 	return shows, nil

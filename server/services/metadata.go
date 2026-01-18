@@ -11,14 +11,37 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
 
 var (
-	tvdbToken      string
+	tvdbToken       string
 	tvdbTokenExpiry time.Time
-	tvdbMutex      sync.Mutex
+	tvdbMutex       sync.Mutex
+
+	tmdbGenres = map[int]string{
+		28:    "Action",
+		12:    "Adventure",
+		16:    "Animation",
+		35:    "Comedy",
+		80:    "Crime",
+		99:    "Documentary",
+		18:    "Drama",
+		10751: "Family",
+		14:    "Fantasy",
+		36:    "History",
+		27:    "Horror",
+		10402: "Music",
+		9648:  "Mystery",
+		10749: "Romance",
+		878:   "Science Fiction",
+		10770: "TV Movie",
+		53:    "Thriller",
+		10752: "War",
+		37:    "Western",
+	}
 )
 
 type TMDBMovieSearchResponse struct {
@@ -29,6 +52,7 @@ type TMDBMovieSearchResponse struct {
 		Overview    string  `json:"overview"`
 		PosterPath  string  `json:"poster_path"`
 		VoteAverage float64 `json:"vote_average"`
+		GenreIDs    []int   `json:"genre_ids"`
 	} `json:"results"`
 }
 
@@ -41,12 +65,13 @@ type TVDBAuthResponse struct {
 
 type TVDBSearchResponse struct {
 	Data []struct {
-		TVDBID     string   `json:"tvdb_id"`
-		Name       string   `json:"name"`
-		Overview   string   `json:"overview"`
-		ImageURL   string   `json:"image_url"`
-		Year       string   `json:"year"`
-		PrimaryLanguage string `json:"primary_language"`
+		TVDBID          string   `json:"tvdb_id"`
+		Name            string   `json:"name"`
+		Overview        string   `json:"overview"`
+		ImageURL        string   `json:"image_url"`
+		Year            string   `json:"year"`
+		PrimaryLanguage string   `json:"primary_language"`
+		Genres          []string `json:"genres"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -92,18 +117,18 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 1.5 Check if we already have metadata for this movie title/year in the DB
-	var existingTMDBID, existingOverview, existingPosterPath sql.NullString
+	var existingTMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
-	checkQuery := `SELECT tmdb_id, overview, poster_path, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingOverview, &existingPosterPath, &existingRawMetadata)
+	checkQuery := `SELECT tmdb_id, overview, poster_path, genres, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
+	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
 		log.Printf("[METADATA] Found existing metadata for %s (%d) in DB, reusing...", m.Title, m.Year)
 		updateQuery := `
 			UPDATE movies 
-			SET tmdb_id = $1, overview = $2, poster_path = $3, status = 'matched', raw_metadata = $4, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $5
+			SET tmdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $6
 		`
-		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingOverview, existingPosterPath, existingRawMetadata, m.ID)
+		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
 		return err
 	}
 
@@ -141,16 +166,25 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	result := searchResults.Results[0]
 	log.Printf("[METADATA] Found match for %s: %s (TMDB ID: %d)", m.Title, result.Title, result.ID)
 
+	// Get genre names
+	var genres []string
+	for _, id := range result.GenreIDs {
+		if name, ok := tmdbGenres[id]; ok {
+			genres = append(genres, name)
+		}
+	}
+	genreString := strings.Join(genres, ", ")
+
 	// Let's store the raw JSON from TMDB too
 	rawMetadata, _ := json.Marshal(result)
 
 	// 4. Update DB
 	updateQuery := `
 		UPDATE movies 
-		SET tmdb_id = $1, overview = $2, poster_path = $3, status = 'matched', raw_metadata = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5
+		SET tmdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $6
 	`
-	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", result.ID), result.Overview, result.PosterPath, rawMetadata, m.ID)
+	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", result.ID), result.Overview, result.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for movie %s: %v", m.Title, err)
 	}
@@ -167,18 +201,18 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	// 1. Check if we already have metadata for this Title and Year in the DB
-	var existingTVDBID, existingOverview, existingPosterPath sql.NullString
+	var existingTVDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
-	checkQuery := `SELECT tvdb_id, overview, poster_path, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingOverview, &existingPosterPath, &existingRawMetadata)
+	checkQuery := `SELECT tvdb_id, overview, poster_path, genres, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' LIMIT 1`
+	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
 		log.Printf("[METADATA] Found existing metadata for show %s (%d) in DB, reusing...", s.Title, s.Year)
 		updateQuery := `
 			UPDATE shows 
-			SET tvdb_id = $1, overview = $2, poster_path = $3, status = 'matched', raw_metadata = $4, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $5
+			SET tvdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $6
 		`
-		_, err = database.DB.Exec(updateQuery, existingTVDBID, existingOverview, existingPosterPath, existingRawMetadata, s.ID)
+		_, err = database.DB.Exec(updateQuery, existingTVDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, s.ID)
 		return err
 	}
 
@@ -200,7 +234,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -223,15 +257,16 @@ func MatchShow(cfg *config.Config, showID int) error {
 	// 3. Take the first result
 	result := searchResults.Data[0]
 	log.Printf("[METADATA] Found match for show %s: %s (TVDB ID: %s)", s.Title, result.Name, result.TVDBID)
+	genreString := strings.Join(result.Genres, ", ")
 	rawMetadata, _ := json.Marshal(result)
 
 	// 4. Update DB
 	updateQuery := `
 		UPDATE shows 
-		SET tvdb_id = $1, overview = $2, poster_path = $3, status = 'matched', raw_metadata = $4, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $5
+		SET tvdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $6
 	`
-	_, err = database.DB.Exec(updateQuery, result.TVDBID, result.Overview, result.ImageURL, rawMetadata, s.ID)
+	_, err = database.DB.Exec(updateQuery, result.TVDBID, result.Overview, result.ImageURL, genreString, rawMetadata, s.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for show %s: %v", s.Title, err)
 	}

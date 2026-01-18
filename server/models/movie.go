@@ -12,6 +12,7 @@ type Movie struct {
 	Size       int64     `json:"size"`
 	Overview    string    `json:"overview"`
 	PosterPath  string    `json:"poster_path"`
+	Genres      string    `json:"genres"`
 	Status      string    `json:"status"` // e.g., "discovered", "matching", "ready"
 	RawMetadata []byte    `json:"raw_metadata"`
 	CreatedAt   time.Time `json:"created_at"`

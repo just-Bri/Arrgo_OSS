@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -27,8 +28,10 @@ func init() {
 }
 
 type MoviesData struct {
-	Username string
-	Movies   []models.Movie
+	Username      string
+	Movies        []models.Movie
+	AllGenres     []string
+	SelectedGenre string
 }
 
 func MoviesHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,15 +53,49 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	movies, err := services.GetMovies()
+	allMovies, err := services.GetMovies()
 	if err != nil {
 		log.Printf("Error getting movies: %v", err)
-		movies = []models.Movie{}
+		allMovies = []models.Movie{}
+	}
+
+	selectedGenre := r.URL.Query().Get("genre")
+
+	// Extract unique genres
+	genreMap := make(map[string]bool)
+	for _, m := range allMovies {
+		if m.Genres != "" {
+			gs := strings.Split(m.Genres, ", ")
+			for _, g := range gs {
+				if g != "" {
+					genreMap[g] = true
+				}
+			}
+		}
+	}
+	var allGenres []string
+	for g := range genreMap {
+		allGenres = append(allGenres, g)
+	}
+	sort.Strings(allGenres)
+
+	// Filter movies
+	var filteredMovies []models.Movie
+	if selectedGenre != "" {
+		for _, m := range allMovies {
+			if strings.Contains(m.Genres, selectedGenre) {
+				filteredMovies = append(filteredMovies, m)
+			}
+		}
+	} else {
+		filteredMovies = allMovies
 	}
 
 	data := MoviesData{
-		Username: user.Username,
-		Movies:   movies,
+		Username:      user.Username,
+		Movies:        filteredMovies,
+		AllGenres:     allGenres,
+		SelectedGenre: selectedGenre,
 	}
 
 	if err := moviesTmpl.ExecuteTemplate(w, "base", data); err != nil {

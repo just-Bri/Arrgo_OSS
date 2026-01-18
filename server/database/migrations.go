@@ -32,6 +32,7 @@ func RunMigrations() error {
 		size BIGINT DEFAULT 0,
 		overview TEXT,
 		poster_path VARCHAR(255),
+		genres TEXT,
 		status VARCHAR(50) DEFAULT 'discovered',
 		raw_metadata JSONB,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -46,6 +47,9 @@ func RunMigrations() error {
 		END IF;
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='size') THEN
 			ALTER TABLE movies ADD COLUMN size BIGINT DEFAULT 0;
+		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='genres') THEN
+			ALTER TABLE movies ADD COLUMN genres TEXT;
 		END IF;
 	END $$;
 	`
@@ -63,6 +67,7 @@ func RunMigrations() error {
 		path TEXT UNIQUE NOT NULL,
 		overview TEXT,
 		poster_path VARCHAR(255),
+		genres TEXT,
 		status VARCHAR(50) DEFAULT 'discovered',
 		raw_metadata JSONB,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -101,6 +106,9 @@ func RunMigrations() error {
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='episodes' AND column_name='size') THEN
 			ALTER TABLE episodes ADD COLUMN size BIGINT DEFAULT 0;
 		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shows' AND column_name='genres') THEN
+			ALTER TABLE shows ADD COLUMN genres TEXT;
+		END IF;
 	END $$;
 	`
 	_, err = DB.Exec(showsTableSQL)
@@ -110,4 +118,3 @@ func RunMigrations() error {
 
 	return nil
 }
-

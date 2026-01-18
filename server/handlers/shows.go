@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -27,8 +28,10 @@ func init() {
 }
 
 type ShowsData struct {
-	Username string
-	Shows    []models.Show
+	Username      string
+	Shows         []models.Show
+	AllGenres     []string
+	SelectedGenre string
 }
 
 func ShowsHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,15 +53,49 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shows, err := services.GetShows()
+	allShows, err := services.GetShows()
 	if err != nil {
 		log.Printf("Error getting shows: %v", err)
-		shows = []models.Show{}
+		allShows = []models.Show{}
+	}
+
+	selectedGenre := r.URL.Query().Get("genre")
+
+	// Extract unique genres
+	genreMap := make(map[string]bool)
+	for _, s := range allShows {
+		if s.Genres != "" {
+			gs := strings.Split(s.Genres, ", ")
+			for _, g := range gs {
+				if g != "" {
+					genreMap[g] = true
+				}
+			}
+		}
+	}
+	var allGenres []string
+	for g := range genreMap {
+		allGenres = append(allGenres, g)
+	}
+	sort.Strings(allGenres)
+
+	// Filter shows
+	var filteredShows []models.Show
+	if selectedGenre != "" {
+		for _, s := range allShows {
+			if strings.Contains(s.Genres, selectedGenre) {
+				filteredShows = append(filteredShows, s)
+			}
+		}
+	} else {
+		filteredShows = allShows
 	}
 
 	data := ShowsData{
-		Username: user.Username,
-		Shows:    shows,
+		Username:      user.Username,
+		Shows:         filteredShows,
+		AllGenres:     allGenres,
+		SelectedGenre: selectedGenre,
 	}
 
 	if err := showsTmpl.ExecuteTemplate(w, "base", data); err != nil {
