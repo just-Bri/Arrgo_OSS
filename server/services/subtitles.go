@@ -97,7 +97,7 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 	return osToken, osBaseURL, nil
 }
 
-func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string, year int, destDir string) error {
+func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string, year int, videoPath string) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
 	}
@@ -219,14 +219,13 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	}
 	defer fileResp.Body.Close()
 
-	// Plex naming convention: MovieTitle (Year) {tmdb-ID}.en.sdh.srt or .en.srt
-	sanitizedTitle := sanitizePath(title)
+	// Plex naming convention: Match the video filename but with .en.srt or .en.sdh.srt
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
 	suffix := ".en"
 	if isSDH {
 		suffix = ".en.sdh"
 	}
-	subtitleName := fmt.Sprintf("%s (%d) {tmdb-%s}%s.srt", sanitizedTitle, year, tmdbID, suffix)
-	destPath := filepath.Join(destDir, subtitleName)
+	destPath := base + suffix + ".srt"
 
 	out, err := os.Create(destPath)
 	if err != nil {
@@ -243,7 +242,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	return nil
 }
 
-func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle string, season, episode int, destDir string) error {
+func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle string, season, episode int, videoPath string) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
 	}
@@ -361,14 +360,13 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	}
 	defer fileResp.Body.Close()
 
-	// Plex naming: ShowTitle - SXXEXX - EpisodeTitle.en.sdh.srt
-	sanitizedShowTitle := sanitizePath(showTitle)
+	// Plex naming convention: Match the video filename but with .en.srt or .en.sdh.srt
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
 	suffix := ".en"
 	if isSDH {
 		suffix = ".en.sdh"
 	}
-	subtitleName := fmt.Sprintf("%s - S%02dE%02d%s.srt", sanitizedShowTitle, season, episode, suffix)
-	destPath := filepath.Join(destDir, subtitleName)
+	destPath := base + suffix + ".srt"
 
 	out, err := os.Create(destPath)
 	if err != nil {
@@ -385,19 +383,43 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	return nil
 }
 
-func HasSubtitles(dir string) bool {
-	files, err := os.ReadDir(dir)
-	if err != nil {
+func HasSubtitles(videoPath string) bool {
+	if videoPath == "" {
 		return false
 	}
 
-	for _, f := range files {
-		if !f.IsDir() {
-			name := strings.ToLower(f.Name())
-			if strings.HasSuffix(name, ".srt") && (strings.Contains(name, ".en.") || strings.Contains(name, ".eng.")) {
-				return true
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+
+	// Check for common Plex/Arrgo subtitle patterns
+	checks := []string{
+		base + ".en.srt",
+		base + ".en.sdh.srt",
+		base + ".eng.srt",
+		base + ".eng.sdh.srt",
+	}
+
+	for _, c := range checks {
+		if _, err := os.Stat(c); err == nil {
+			return true
+		}
+	}
+
+	// Also check for a simple .srt if there's only one in the folder (loose check)
+	dir := filepath.Dir(videoPath)
+	files, err := os.ReadDir(dir)
+	if err == nil {
+		videoBase := filepath.Base(base)
+		for _, f := range files {
+			if !f.IsDir() {
+				name := strings.ToLower(f.Name())
+				if strings.HasSuffix(name, ".srt") && strings.Contains(name, strings.ToLower(videoBase)) {
+					if strings.Contains(name, ".en") || strings.Contains(name, ".eng") {
+						return true
+					}
+				}
 			}
 		}
 	}
+
 	return false
 }

@@ -264,7 +264,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 							size = le.Size
 							localID = le.ID
 							if le.FilePath != "" {
-								hasSubtitles = services.HasSubtitles(filepath.Dir(le.FilePath))
+								hasSubtitles = services.HasSubtitles(le.FilePath)
 							}
 							break
 						}
@@ -307,7 +307,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			for _, e := range s.Episodes {
 				hasSubtitles := false
 				if e.FilePath != "" {
-					hasSubtitles = services.HasSubtitles(filepath.Dir(e.FilePath))
+					hasSubtitles = services.HasSubtitles(e.FilePath)
 				}
 				es.Episodes = append(es.Episodes, struct {
 					ID           int

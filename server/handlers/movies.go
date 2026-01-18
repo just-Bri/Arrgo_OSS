@@ -223,7 +223,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentPage: "/movies",
 		SearchQuery: "",
 		Movie:       movie,
-		HasSubtitles: movie.Path != "" && services.HasSubtitles(filepath.Dir(movie.Path)),
+		HasSubtitles: services.HasSubtitles(movie.Path),
 	}
 
 	if err := movieDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {
