@@ -43,6 +43,7 @@ func main() {
 	// Public routes
 	mux.HandleFunc("/login", handlers.LoginHandler)
 	mux.HandleFunc("/logout", handlers.LogoutHandler)
+	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
 
 	// Protected routes
 	mux.Handle("/dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.DashboardHandler)))

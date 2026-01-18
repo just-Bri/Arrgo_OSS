@@ -10,12 +10,14 @@ services:
       - PORT=8080
       - ENV=production
       - MOVIES_PATH=/mnt/user/media/movies
+      - TV_SHOWS_PATH=/mnt/user/media/tv
     depends_on:
       - arrgo-db
     volumes:
-      - ./templates:/root/templates:ro
-      - ./static:/root/static:ro
+      - ./server/templates:/root/templates:ro
+      - ./server/static:/root/static:ro
       - /mnt/user/media/movies:/mnt/user/media/movies:ro
+      - /mnt/user/media/tv:/mnt/user/media/tv:ro
     restart: unless-stopped
 
   arrgo-db:

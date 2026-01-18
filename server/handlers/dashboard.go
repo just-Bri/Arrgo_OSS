@@ -67,12 +67,16 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load config and scan for movies
+	// Load config and scan for movies (synchronously for now, but should be background)
 	cfg := config.Load()
-	movies, err := services.ScanMovies(cfg)
-	if err != nil {
+	if err := services.ScanMovies(cfg); err != nil {
 		log.Printf("Warning: Failed to scan movies: %v", err)
-		movies = []models.Movie{} // Empty slice on error
+	}
+
+	movies, err := services.GetMovies()
+	if err != nil {
+		log.Printf("Error getting movies from DB: %v", err)
+		movies = []models.Movie{}
 	}
 
 	data := DashboardData{
