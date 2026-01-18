@@ -36,6 +36,12 @@ func RunMigrations() error {
 		return fmt.Errorf("failed to run users column migration: %w", err)
 	}
 
+	// Ensure user named 'admin' is actually an admin
+	_, err = DB.Exec("UPDATE users SET is_admin = TRUE WHERE username = 'admin'")
+	if err != nil {
+		return fmt.Errorf("failed to ensure admin user has admin flag: %w", err)
+	}
+
 	moviesTableSQL := `
 	CREATE TABLE IF NOT EXISTS movies (
 		id SERIAL PRIMARY KEY,

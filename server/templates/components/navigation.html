@@ -8,6 +8,9 @@
                 <li><a href="/movies" style="color: var(--text-color); text-decoration: none; font-weight: 500;">Movies</a></li>
                 <li><a href="/tv" style="color: var(--text-color); text-decoration: none; font-weight: 500;">TV Shows</a></li>
                 <li><a href="/requests" style="color: var(--text-color); text-decoration: none; font-weight: 500;">Requests</a></li>
+                {{if .IsAdmin}}
+                <li><a href="/admin" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Admin</a></li>
+                {{end}}
             </ul>
             <form action="/search" method="GET" style="margin-left: 20px; flex: 1; max-width: 400px; position: relative;">
                 <input type="text" name="q" placeholder="Search movies, shows, or request new..." 

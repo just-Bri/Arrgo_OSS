@@ -70,6 +70,7 @@ func main() {
 
 	// Protected routes
 	mux.Handle("/dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.DashboardHandler)))
+	mux.Handle("/admin", middleware.RequireAuth(http.HandlerFunc(handlers.AdminHandler)))
 	mux.Handle("/movies", middleware.RequireAuth(http.HandlerFunc(handlers.MoviesHandler)))
 	mux.Handle("/movies/details", middleware.RequireAuth(http.HandlerFunc(handlers.MovieDetailsHandler)))
 	mux.Handle("/tv", middleware.RequireAuth(http.HandlerFunc(handlers.ShowsHandler)))
