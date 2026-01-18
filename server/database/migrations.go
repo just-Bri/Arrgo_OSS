@@ -54,6 +54,7 @@ func RunMigrations() error {
 		overview TEXT,
 		poster_path VARCHAR(255),
 		genres TEXT,
+		imdb_id VARCHAR(50),
 		status VARCHAR(50) DEFAULT 'discovered',
 		raw_metadata JSONB,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -72,6 +73,9 @@ func RunMigrations() error {
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='genres') THEN
 			ALTER TABLE movies ADD COLUMN genres TEXT;
 		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='imdb_id') THEN
+			ALTER TABLE movies ADD COLUMN imdb_id VARCHAR(50);
+		END IF;
 	END $$;
 	`
 	_, err = DB.Exec(moviesTableSQL)
@@ -89,6 +93,7 @@ func RunMigrations() error {
 		overview TEXT,
 		poster_path VARCHAR(255),
 		genres TEXT,
+		imdb_id VARCHAR(50),
 		status VARCHAR(50) DEFAULT 'discovered',
 		raw_metadata JSONB,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -130,6 +135,9 @@ func RunMigrations() error {
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shows' AND column_name='genres') THEN
 			ALTER TABLE shows ADD COLUMN genres TEXT;
 		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shows' AND column_name='imdb_id') THEN
+			ALTER TABLE shows ADD COLUMN imdb_id VARCHAR(50);
+		END IF;
 	END $$;
 	`
 	_, err = DB.Exec(showsTableSQL)
@@ -145,6 +153,7 @@ func RunMigrations() error {
 		media_type VARCHAR(20) NOT NULL, -- 'movie' or 'show'
 		tmdb_id VARCHAR(50),
 		tvdb_id VARCHAR(50),
+		imdb_id VARCHAR(50),
 		year INTEGER,
 		poster_path VARCHAR(255),
 		overview TEXT,
@@ -159,6 +168,9 @@ func RunMigrations() error {
 	BEGIN 
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='seasons') THEN
 			ALTER TABLE requests ADD COLUMN seasons TEXT;
+		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='imdb_id') THEN
+			ALTER TABLE requests ADD COLUMN imdb_id VARCHAR(50);
 		END IF;
 	END $$;
 	`

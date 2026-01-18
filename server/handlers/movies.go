@@ -82,7 +82,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	var incomingMovies []models.Movie
 
 	for _, m := range allMovies {
-		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingPath)
+		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
 
 		if isIncoming {
 			if user.IsAdmin {

@@ -7,6 +7,7 @@ type Show struct {
 	Title       string    `json:"title"`
 	Year        int       `json:"year"`
 	TVDBID      string    `json:"tvdb_id"`
+	IMDBID      string    `json:"imdb_id"`
 	Path        string    `json:"path"`
 	Overview    string    `json:"overview"`
 	PosterPath  string    `json:"poster_path"`

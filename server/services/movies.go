@@ -48,7 +48,7 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 	// Scan paths based on preference
 	var paths []string
 	if onlyIncoming {
-		paths = []string{filepath.Join(cfg.IncomingPath, "movies")}
+		paths = []string{cfg.IncomingMoviesPath}
 	} else {
 		paths = []string{cfg.MoviesPath}
 	}
@@ -96,7 +96,7 @@ func processMovieFile(cfg *config.Config, path string) {
 		parentDir := filepath.Base(filepath.Dir(path))
 		// Check if parentDir is not just one of the root scan paths
 		if parentDir != "." && parentDir != filepath.Base(cfg.MoviesPath) &&
-			parentDir != filepath.Base(cfg.IncomingPath) && parentDir != "movies" {
+			parentDir != filepath.Base(cfg.IncomingMoviesPath) {
 			title, year = parseMovieName(parentDir)
 		}
 	}

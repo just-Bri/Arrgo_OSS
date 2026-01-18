@@ -11,9 +11,11 @@ type Config struct {
 	Environment   string
 	MoviesPath    string
 	TVShowsPath   string
-	IncomingPath  string
+	IncomingMoviesPath string
+	IncomingTVPath     string
 	TMDBAPIKey    string
 	TVDBAPIKey    string
+	OpenSubtitlesAPIKey string
 	Debug         bool
 }
 
@@ -25,9 +27,11 @@ func Load() *Config {
 		Environment:   getEnv("ENV", "development"),
 		MoviesPath:    getEnv("MOVIES_PATH", "/mnt/movies"),
 		TVShowsPath:   getEnv("TV_SHOWS_PATH", "/mnt/tv"),
-		IncomingPath:  getEnv("INCOMING_PATH", "/mnt/incoming"),
+		IncomingMoviesPath: getEnv("INCOMING_MOVIES_PATH", "/mnt/incoming/movies"),
+		IncomingTVPath:     getEnv("INCOMING_TV_PATH", "/mnt/incoming/tv"),
 		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
 		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
+		OpenSubtitlesAPIKey: getEnv("OPENSUBTITLES_API_KEY", ""),
 		Debug:         getEnv("DEBUG", "false") == "true",
 	}
 }

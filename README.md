@@ -29,6 +29,9 @@ The primary goal of Arrgo is to provide a modern, consolidated alternative to th
 - **Secure Auth**: Password-based login with bcrypt hashing and session management.
 - **Role-Based Access**: Restrict dangerous actions (like library scans) to admin users.
 - **Automatic Organization**: Automatically organize and rename files to follow standard naming conventions.
+- **Smart Scanning**: Split scanning logic for library and incoming media, with a background worker that automatically polls for new media hourly.
+- **Cross-Device Support**: Efficiently handles moving media across different disks or mount points with a safe fallback mechanism.
+- **Library Sanitization**: Automatically cleans up database records for files or folders that have been deleted or moved manually.
 
 ## 📂 Project Structure
 
@@ -67,9 +70,11 @@ Configure the following variables in `docker-compose.yml`:
 - `PUID/PGID`: User/Group ID for file permissions (e.g., 99/100 for Unraid).
 - `MOVIES_PATH`: Local path where your processed movies are stored.
 - `TV_SHOWS_PATH`: Local path where your processed TV shows are stored.
-- `INCOMING_PATH`: Path where new, unprocessed media is located.
+- `INCOMING_MOVIES_PATH`: Path where new, unprocessed movies are located.
+- `INCOMING_TV_PATH`: Path where new, unprocessed TV shows are located.
 - `TMDB_API_KEY`: Your [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) (Required for metadata).
 - `TVDB_API_KEY`: Your [TheTVDB API Key](https://thetvdb.com/api-information) (Required for TV shows).
+- `OPENSUBTITLES_API_KEY`: Your [OpenSubtitles.com API Key](https://www.opensubtitles.com/en/consumers) (Required for subtitles).
 - `DEBUG`: Set to `true` for verbose logging.
 
 ### 💡 Tips for Unraid Users
@@ -101,7 +106,7 @@ This invalidates the Docker build cache and forces it to pick up your latest fil
 - [x] Library Scanner (Automatic detection of new media)
 - [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
 - [x] Unraid Optimization (Permissions, Docker-ready)
-- [ ] TV Show Organization (Auto-renaming episodes)
+- [x] TV Show Organization (Auto-renaming episodes)
 - [ ] Subtitle Management (Bazarr functionality)
 - [ ] Integration with Download Clients (qBittorrent, etc.)
 - [ ] User Management UI (Promote/Demote admins)

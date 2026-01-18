@@ -82,7 +82,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	var incomingShows []models.Show
 
 	for _, s := range allShows {
-		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingPath)
+		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingTVPath)
 
 		if isIncoming {
 			if user.IsAdmin {

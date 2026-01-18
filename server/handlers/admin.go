@@ -55,7 +55,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var incomingMovies []models.Movie
 	for _, m := range allMovies {
-		if strings.HasPrefix(m.Path, cfg.IncomingPath) {
+		if strings.HasPrefix(m.Path, cfg.IncomingMoviesPath) {
 			incomingMovies = append(incomingMovies, m)
 		}
 	}
@@ -67,7 +67,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var incomingShows []models.Show
 	for _, s := range allShows {
-		if strings.HasPrefix(s.Path, cfg.IncomingPath) {
+		if strings.HasPrefix(s.Path, cfg.IncomingTVPath) {
 			incomingShows = append(incomingShows, s)
 		}
 	}

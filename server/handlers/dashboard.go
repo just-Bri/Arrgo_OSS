@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"path/filepath"
 	"strings"
 )
 
@@ -52,12 +51,12 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
 
 	// Library counts (excluding incoming subfolders)
-	movieCount, err := services.GetMovieCount(filepath.Join(cfg.IncomingPath, "movies"))
+	movieCount, err := services.GetMovieCount(cfg.IncomingMoviesPath)
 	if err != nil {
 		log.Printf("Error getting movie count: %v", err)
 	}
 
-	showCount, err := services.GetShowCount(filepath.Join(cfg.IncomingPath, "tv"))
+	showCount, err := services.GetShowCount(cfg.IncomingTVPath)
 	if err != nil {
 		log.Printf("Error getting show count: %v", err)
 	}

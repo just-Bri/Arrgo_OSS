@@ -18,9 +18,11 @@ services:
       - GOLOG_LOG_LEVEL=debug
       - MOVIES_PATH=/mnt/movies
       - TV_SHOWS_PATH=/mnt/tv
-      - INCOMING_PATH=/mnt/incoming
+      - INCOMING_MOVIES_PATH=/mnt/incoming/movies
+      - INCOMING_TV_PATH=/mnt/incoming/tv
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TVDB_API_KEY=${TVDB_API_KEY}
+      - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
     depends_on:
       - arrgo-db
     volumes:

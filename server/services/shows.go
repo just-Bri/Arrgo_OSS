@@ -42,7 +42,7 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 	// Scan paths based on preference
 	var paths []string
 	if onlyIncoming {
-		paths = []string{filepath.Join(cfg.IncomingPath, "tv")}
+		paths = []string{cfg.IncomingTVPath}
 	} else {
 		paths = []string{cfg.TVShowsPath}
 	}

@@ -72,7 +72,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 1. Search Local Movies
 		localMovies, _ := services.SearchMoviesLocal(query)
 		for _, m := range localMovies {
-			isIncoming := strings.HasPrefix(m.Path, cfg.IncomingPath)
+			isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
 			if isIncoming && !user.IsAdmin {
 				continue
 			}
@@ -96,7 +96,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 2. Search Local Shows
 		localShows, _ := services.SearchShowsLocal(query)
 		for _, s := range localShows {
-			isIncoming := strings.HasPrefix(s.Path, cfg.IncomingPath)
+			isIncoming := strings.HasPrefix(s.Path, cfg.IncomingTVPath)
 			if isIncoming && !user.IsAdmin {
 				continue
 			}

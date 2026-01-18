@@ -70,29 +70,10 @@ func sanitizePath(name string) string {
 	return sanitized
 }
 
-func cleanupEmptyDirs(startPath string, stopAt string) {
-	parent := filepath.Dir(startPath)
-	// Don't go above the root scan paths
-	if stopAt == "" || parent == stopAt || parent == "." || parent == "/" {
-		return
-	}
-
-	files, err := os.ReadDir(parent)
-	if err != nil {
-		return
-	}
-
-	if len(files) == 0 {
-		log.Printf("[CLEANUP] Removing empty directory: %s", parent)
-		os.Remove(parent)
-		cleanupEmptyDirs(parent, stopAt)
-	}
-}
-
 func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	var m models.Movie
-	query := `SELECT id, title, year, tmdb_id, path, quality, size FROM movies WHERE id = $1`
-	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.Path, &m.Quality, &m.Size)
+	query := `SELECT id, title, year, tmdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
+	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -134,7 +115,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 				oldPath := m.Path
 				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-				cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
+				CleanupEmptyDirs(cfg.IncomingMoviesPath)
 				return nil
 			} else if comp == 0 {
 				// Qualities are equal, compare size.
@@ -144,7 +125,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 					oldPath := m.Path
 					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-					cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
+					CleanupEmptyDirs(cfg.IncomingMoviesPath)
 					return nil
 				}
 				// Candidate is larger, proceed to replace.
@@ -166,12 +147,25 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 		return err
 	}
 
+	// Move the poster if it exists and is in the same directory as the movie
+	newPosterPath := ""
+	if m.PosterPath != "" {
+		if strings.HasPrefix(m.PosterPath, filepath.Dir(oldPath)) {
+			posterExt := filepath.Ext(m.PosterPath)
+			newPosterPath = filepath.Join(destDirPath, "poster"+posterExt)
+			if err := safeRename(m.PosterPath, newPosterPath); err != nil {
+				log.Printf("[RENAMER] Failed to move poster: %v", err)
+				newPosterPath = "" // Reset if failed
+			}
+		}
+	}
+
 	// Cleanup old directory if it was in incoming
-	cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "movies"))
+	CleanupEmptyDirs(cfg.IncomingMoviesPath)
 
 	// Update DB with new path and status
-	updateQuery := `UPDATE movies SET path = $1, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $2`
-	_, err = database.DB.Exec(updateQuery, destPath, m.ID)
+	updateQuery := `UPDATE movies SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
+	_, err = database.DB.Exec(updateQuery, destPath, newPosterPath, m.ID)
 
 	return err
 }
@@ -182,13 +176,13 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	var sh models.Show
 
 	query := `
-		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tvdb_id
+		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.poster_path
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		JOIN shows sh ON s.show_id = sh.id
 		WHERE e.id = $1
 	`
-	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID)
+	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -230,7 +224,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 				oldPath := e.FilePath
 				os.Remove(oldPath)
 				database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-				cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
+				CleanupEmptyDirs(cfg.IncomingTVPath)
 				return nil
 			} else if comp == 0 {
 				if e.Size <= existingSize {
@@ -238,7 +232,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 					oldPath := e.FilePath
 					os.Remove(oldPath)
 					database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-					cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
+					CleanupEmptyDirs(cfg.IncomingTVPath)
 					return nil
 				}
 			}
@@ -254,7 +248,28 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		return err
 	}
 
-	cleanupEmptyDirs(oldPath, filepath.Join(cfg.IncomingPath, "tv"))
+	// If there's a show poster in the incoming folder, move it to the show root
+	newShowPosterPath := sh.PosterPath
+	if sh.PosterPath != "" {
+		if strings.HasPrefix(sh.PosterPath, cfg.IncomingTVPath) {
+			// Show root in library
+			showRoot := filepath.Dir(filepath.Dir(destDirPath))
+			posterExt := filepath.Ext(sh.PosterPath)
+			newShowPosterPath = filepath.Join(showRoot, "poster"+posterExt)
+			
+			// Only move if destination doesn't exist yet
+			if _, err := os.Stat(newShowPosterPath); os.IsNotExist(err) {
+				if err := safeRename(sh.PosterPath, newShowPosterPath); err == nil {
+					database.DB.Exec("UPDATE shows SET poster_path = $1 WHERE id = (SELECT show_id FROM seasons WHERE id = $2)", newShowPosterPath, e.SeasonID)
+				}
+			} else {
+				// Destination exists, just update DB path to match
+				database.DB.Exec("UPDATE shows SET poster_path = $1 WHERE id = (SELECT show_id FROM seasons WHERE id = $2)", newShowPosterPath, e.SeasonID)
+			}
+		}
+	}
+
+	CleanupEmptyDirs(cfg.IncomingTVPath)
 
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
