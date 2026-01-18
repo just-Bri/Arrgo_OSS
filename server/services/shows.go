@@ -62,9 +62,7 @@ func ScanShows(cfg *config.Config) error {
 	close(taskChan)
 	wg.Wait()
 
-	log.Printf("[SCANNER] TV show scan complete. Triggering metadata matching...")
-	// Trigger metadata fetching in background
-	go FetchMetadataForAllDiscovered(cfg)
+	log.Printf("[SCANNER] TV show scan complete.")
 
 	return nil
 }
@@ -103,6 +101,9 @@ func processShowDir(cfg *config.Config, root string, name string) {
 		log.Printf("[SCANNER] Error upserting show %s: %v", title, err)
 		return
 	}
+
+	// Fetch metadata immediately
+	MatchShow(cfg, showID)
 
 	scanSeasons(showID, showPath)
 }

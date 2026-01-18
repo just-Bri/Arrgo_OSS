@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 )
 
 func ScanHandler(w http.ResponseWriter, r *http.Request) {
@@ -16,16 +17,28 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.Load()
 	log.Printf("Manual scan triggered")
-	
-	// Scan Movies
-	if err := services.ScanMovies(cfg); err != nil {
-		log.Printf("Error scanning movies: %v", err)
-	}
-	
-	// Scan Shows
-	if err := services.ScanShows(cfg); err != nil {
-		log.Printf("Error scanning shows: %v", err)
-	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Scan Movies in parallel
+	go func() {
+		defer wg.Done()
+		if err := services.ScanMovies(cfg); err != nil {
+			log.Printf("Error scanning movies: %v", err)
+		}
+	}()
+
+	// Scan Shows in parallel
+	go func() {
+		defer wg.Done()
+		if err := services.ScanShows(cfg); err != nil {
+			log.Printf("Error scanning shows: %v", err)
+		}
+	}()
+
+	wg.Wait()
+	log.Printf("Manual scan complete")
 
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
@@ -67,9 +80,9 @@ func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// cfg := config.Load()
-	
+
 	// Fetch all episodes for this show and rename them
 	// ... implementation pending ...
-	
+
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }

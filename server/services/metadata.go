@@ -21,6 +21,10 @@ var (
 	tvdbTokenExpiry time.Time
 	tvdbMutex       sync.Mutex
 
+	// Rate limiting for TMDB/TVDB
+	lastRequestTime time.Time
+	rateLimitMutex  sync.Mutex
+
 	tmdbGenres = map[int]string{
 		28:    "Action",
 		12:    "Adventure",
@@ -43,6 +47,17 @@ var (
 		37:    "Western",
 	}
 )
+
+func throttle() {
+	rateLimitMutex.Lock()
+	defer rateLimitMutex.Unlock()
+
+	elapsed := time.Since(lastRequestTime)
+	if elapsed < 200*time.Millisecond {
+		time.Sleep(200*time.Millisecond - elapsed)
+	}
+	lastRequestTime = time.Now()
+}
 
 type TMDBMovieSearchResponse struct {
 	Results []struct {
@@ -138,6 +153,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	// 2. Search TMDB
 	log.Printf("[METADATA] Searching TMDB for movie: %s (%d)", m.Title, m.Year)
+	throttle()
 	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s",
 		cfg.TMDBAPIKey, url.QueryEscape(m.Title))
 	if m.Year > 0 {
@@ -227,6 +243,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	log.Printf("[METADATA] Searching TVDB for show: %s (%d)", s.Title, s.Year)
+	throttle()
 	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series", url.QueryEscape(s.Title))
 	if s.Year > 0 {
 		searchURL += fmt.Sprintf("&year=%d", s.Year)
@@ -284,7 +301,6 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 			var id int
 			if err := movieRows.Scan(&id); err == nil {
 				MatchMovie(cfg, id)
-				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	}
@@ -298,7 +314,6 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 			var id int
 			if err := showRows.Scan(&id); err == nil {
 				MatchShow(cfg, id)
-				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	}

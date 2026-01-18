@@ -72,9 +72,7 @@ func ScanMovies(cfg *config.Config) error {
 	close(taskChan)
 	wg.Wait()
 
-	log.Printf("[SCANNER] Movie scan complete. Triggering metadata matching...")
-	// Trigger metadata fetching in background
-	go FetchMetadataForAllDiscovered(cfg)
+	log.Printf("[SCANNER] Movie scan complete.")
 
 	return nil
 }
@@ -129,8 +127,11 @@ func processMovieFile(cfg *config.Config, path string) {
 		Status:     "discovered",
 	}
 
-	if err := upsertMovie(movie); err != nil {
+	if id, err := upsertMovie(movie); err != nil {
 		log.Printf("[SCANNER] Error upserting %s: %v", title, err)
+	} else {
+		// Fetch metadata immediately
+		MatchMovie(cfg, id)
 	}
 }
 
@@ -152,7 +153,8 @@ func parseMovieName(name string) (string, int) {
 	return name, 0
 }
 
-func upsertMovie(movie models.Movie) error {
+func upsertMovie(movie models.Movie) (int, error) {
+	var id int
 	query := `
 		INSERT INTO movies (title, year, path, quality, size, poster_path, status, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
@@ -164,9 +166,10 @@ func upsertMovie(movie models.Movie) error {
 			poster_path = COALESCE(NULLIF(EXCLUDED.poster_path, ''), movies.poster_path),
 			status = movies.status, -- Keep existing status if it was already matched
 			updated_at = CURRENT_TIMESTAMP
+		RETURNING id
 	`
-	_, err := database.DB.Exec(query, movie.Title, movie.Year, movie.Path, movie.Quality, movie.Size, movie.PosterPath, movie.Status)
-	return err
+	err := database.DB.QueryRow(query, movie.Title, movie.Year, movie.Path, movie.Quality, movie.Size, movie.PosterPath, movie.Status).Scan(&id)
+	return id, err
 }
 
 func GetMovies() ([]models.Movie, error) {
