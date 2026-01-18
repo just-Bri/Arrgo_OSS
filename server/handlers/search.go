@@ -133,6 +133,13 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			status, _ := services.CheckLibraryStatus("movie", res.ID)
+			source := "external"
+			localID := 0
+			if status.Exists {
+				source = "local"
+				localID = status.LocalID
+			}
+
 			results = append(results, UnifiedSearchResult{
 				ID:            res.ID,
 				Title:         res.Title,
@@ -140,7 +147,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				MediaType:     "movie",
 				PosterPath:    res.PosterPath,
 				Overview:      res.Overview,
-				Source:        "external",
+				Source:        source,
+				LocalID:       localID,
 				LibraryStatus: status,
 			})
 		}
@@ -160,6 +168,13 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			status, _ := services.CheckLibraryStatus("show", res.ID)
+			source := "external"
+			localID := 0
+			if status.Exists {
+				source = "local"
+				localID = status.LocalID
+			}
+
 			results = append(results, UnifiedSearchResult{
 				ID:            res.ID,
 				Title:         res.Title,
@@ -167,7 +182,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				MediaType:     "show",
 				PosterPath:    res.PosterPath,
 				Overview:      res.Overview,
-				Source:        "external",
+				Source:        source,
+				LocalID:       localID,
 				LibraryStatus: status,
 			})
 		}

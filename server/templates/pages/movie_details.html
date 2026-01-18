@@ -51,7 +51,7 @@
                 </div>
             </div>
 
-            {{if eq .Movie.Status "search_result"}}
+            {{if or (eq .Movie.Status "External") (eq .Movie.Status "search_result")}}
                 <div style="margin-top: 25px;">
                     <button onclick="submitRequest({
                         title: '{{js .Movie.Title}}',

@@ -48,7 +48,7 @@
                 </div>
             </div>
 
-            {{if or (eq .Show.Status "search_result") (eq .Show.Status "Show exists but no seasons found") (hasPrefix .Show.Status "Partial")}}
+            {{if or (eq .Show.Status "External") (eq .Show.Status "search_result") (eq .Show.Status "Show exists but no seasons found") (hasPrefix .Show.Status "Partial")}}
                 <div style="margin-top: 25px;">
                     <h3 style="color: var(--text-color); margin-bottom: 10px; font-size: 18px;">Request Seasons</h3>
                     <div id="season-selector" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">

@@ -188,12 +188,20 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			Overview:   details.Overview,
 			PosterPath: details.PosterPath,
 			Genres:     strings.Join(genres, ", "),
-			Status:     "search_result",
+			Status:     "External",
 		}
-		
+
 		// Check library status for this tmdb_id
 		status, _ := services.CheckLibraryStatus("movie", tmdbID)
-		if status.Message != "" {
+		if status.Exists {
+			movie.ID = status.LocalID
+			movie.Status = "In Library"
+			
+			// Try to get full movie info if it exists
+			if localMovie, err := services.GetMovieByID(status.LocalID); err == nil {
+				movie = localMovie
+			}
+		} else if status.Message != "" {
 			movie.Status = status.Message
 		}
 	} else {

@@ -196,15 +196,24 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			Overview:   details.Overview,
 			PosterPath: details.Image,
 			Genres:     strings.Join(genres, ", "),
-			Status:     "search_result",
+			Status:     "External",
 		}
 
 		// Fetch all episodes from TVDB
 		allEpisodes, _ = services.GetTVDBShowEpisodes(cfg, tvdbID)
-		
+
 		// Check library status
 		status, _ := services.CheckLibraryStatus("show", tvdbID)
-		if status.Message != "" {
+		if status.Exists {
+			show.ID = status.LocalID
+			show.Status = "In Library"
+
+			// Try to get full show info if it exists
+			if localShow, err := services.GetShowByID(status.LocalID); err == nil {
+				show = localShow
+			}
+			seasons, _ = services.GetShowSeasons(show.ID)
+		} else if status.Message != "" {
 			show.Status = status.Message
 		}
 	} else {

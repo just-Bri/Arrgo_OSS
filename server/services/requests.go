@@ -8,6 +8,7 @@ import (
 
 type LibraryStatus struct {
 	Exists    bool   `json:"exists"`
+	LocalID   int    `json:"local_id,omitempty"`
 	Message   string `json:"message"`
 	Seasons   []int  `json:"seasons,omitempty"` // Season numbers already in library
 }
@@ -74,6 +75,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		err := database.DB.QueryRow("SELECT id FROM movies WHERE tmdb_id = $1", externalID).Scan(&id)
 		if err == nil {
 			status.Exists = true
+			status.LocalID = id
 			status.Message = "Already in library"
 		} else if err == sql.ErrNoRows {
 			// Not in library, check if already requested
@@ -88,7 +90,8 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		err := database.DB.QueryRow("SELECT id FROM shows WHERE tvdb_id = $1", externalID).Scan(&showID)
 		if err == nil {
 			status.Exists = true
-			
+			status.LocalID = showID
+
 			// Get seasons
 			rows, err := database.DB.Query("SELECT season_number FROM seasons WHERE show_id = $1 ORDER BY season_number", showID)
 			if err == nil {

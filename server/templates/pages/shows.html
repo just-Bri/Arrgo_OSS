@@ -51,7 +51,7 @@
             <h2 style="margin: 0; font-size: 20px; color: var(--text-color);">Library ({{len .Shows}})</h2>
             <div style="display: flex; align-items: center; gap: 10px;">
                 <label for="genre-filter" style="color: var(--muted-text); font-size: 14px;">Filter:</label>
-                <select id="genre-filter" onchange="window.location.href='/shows?genre=' + this.value" style="flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                <select id="genre-filter" onchange="window.location.href='/tv?genre=' + this.value" style="flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
                     <option value="">All Genres</option>
                     {{$selected := .SelectedGenre}}
                     {{range .AllGenres}}
