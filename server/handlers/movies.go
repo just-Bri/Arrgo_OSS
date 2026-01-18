@@ -209,6 +209,9 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check library status
+	libStatus, _ := services.CheckLibraryStatus("movie", movie.TMDBID)
+
 	data := struct {
 		Username      string
 		IsAdmin       bool
@@ -216,13 +219,15 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery   string
 		Movie         *models.Movie
 		HasSubtitles  bool
+		LibraryStatus services.LibraryStatus
 	}{
-		Username:    user.Username,
-		IsAdmin:     user.IsAdmin,
-		CurrentPage: "/movies",
-		SearchQuery: "",
-		Movie:       movie,
-		HasSubtitles: services.HasSubtitles(movie.Path),
+		Username:      user.Username,
+		IsAdmin:       user.IsAdmin,
+		CurrentPage:   "/movies",
+		SearchQuery:   "",
+		Movie:         movie,
+		HasSubtitles:  services.HasSubtitles(movie.Path),
+		LibraryStatus: libStatus,
 	}
 
 	if err := movieDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {

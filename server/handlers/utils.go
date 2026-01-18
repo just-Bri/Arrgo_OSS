@@ -22,6 +22,14 @@ func GetFuncMap() template.FuncMap {
 		"hasPrefix": strings.HasPrefix,
 		"split":     strings.Split,
 		"contains":  strings.Contains,
+		"containsInt": func(slice []int, val int) bool {
+			for _, item := range slice {
+				if item == val {
+					return true
+				}
+			}
+			return false
+		},
 		"formatSize": func(size int64) string {
 			if size == 0 {
 				return "0 B"

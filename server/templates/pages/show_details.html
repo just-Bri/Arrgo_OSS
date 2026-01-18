@@ -58,9 +58,15 @@
                                 {{if not .InLibrary}}{{$allInLibrary = false}}{{end}}
                             {{end}}
                             
-                            <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); cursor: {{if $allInLibrary}}not-allowed{{else}}pointer{{end}}; opacity: {{if $allInLibrary}}0.5{{else}}1{{end}}; font-size: 14px;">
-                                <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $allInLibrary}}disabled{{end}} style="cursor: {{if $allInLibrary}}not-allowed{{else}}pointer{{end}};">
+                            {{$isRequested := containsInt $.LibraryStatus.RequestedSeasons .SeasonNumber}}
+                            {{$isDisabled := or $allInLibrary $isRequested}}
+                            
+                            <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid {{if $isRequested}}var(--accent-color){{else}}var(--border-color){{end}}; cursor: {{if $isDisabled}}not-allowed{{else}}pointer{{end}}; opacity: {{if $isDisabled}}0.6{{else}}1{{end}}; font-size: 14px; position: relative;">
+                                <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $isDisabled}}disabled{{end}} style="cursor: {{if $isDisabled}}not-allowed{{else}}pointer{{end}};">
                                 <span style="color: var(--text-color);">S{{.SeasonNumber}}</span>
+                                {{if $isRequested}}
+                                    <span style="position: absolute; top: -8px; right: -5px; background: var(--accent-color); color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: bold;">REQ</span>
+                                {{end}}
                             </label>
                         {{end}}
                     </div>
@@ -109,10 +115,12 @@
                                     {{if .HasSubtitles}}
                                         <span style="color: var(--success-color); font-size: 12px;">&#10004; EN</span>
                                     {{else}}
-                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                        <div style="display: flex; align-items: center; gap: 5px;" id="subtitle-status-episode-{{.ID}}">
                                             <span style="color: var(--danger-color); font-size: 12px;">&#10006;</span>
                                             {{if $.IsAdmin}}
-                                                <button onclick="downloadSubtitles('episode', {{.ID}})" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">Fix</button>
+                                                <button onclick="downloadSubtitles(this, 'episode', {{.ID}})" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; display: flex; align-items: center; gap: 3px;">
+                                                    <span>Fix</span>
+                                                </button>
                                             {{end}}
                                         </div>
                                     {{end}}
@@ -132,6 +140,19 @@
 </div>
 
 <style>
+.spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 @media (min-width: 769px) {
     .container > div:nth-child(2) {
         flex-direction: row !important;
@@ -211,19 +232,38 @@ async function submitSeasonRequest() {
     }
 }
 
-async function downloadSubtitles(type, id) {
+async function downloadSubtitles(btn, type, id) {
+    const originalContent = btn.innerHTML;
+    const container = btn.parentElement;
+    
+    // Show spinner
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    
     try {
         const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
             method: 'POST'
         });
+        
         if (response.ok) {
-            alert('Subtitle download triggered in background!');
+            // Success: change container to checkmark
+            container.innerHTML = '<span style="color: var(--success-color); font-size: 12px;">&#10004; EN</span>';
         } else {
-            alert('Failed to trigger subtitle download.');
+            // Error: change container to X with original button (or just X)
+            const errorText = await response.text();
+            console.error('Download failed:', errorText);
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            // Briefly show error state
+            const xIcon = container.querySelector('span');
+            if (xIcon) xIcon.style.color = 'var(--danger-color)';
+            alert('Failed to download subtitles: ' + errorText);
         }
     } catch (error) {
         console.error('Download failed:', error);
-        alert('An error occurred.');
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        alert('An error occurred during download.');
     }
 }
 </script>

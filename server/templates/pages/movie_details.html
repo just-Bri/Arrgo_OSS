@@ -50,14 +50,18 @@
                     <div style="color: var(--text-color);">{{if .Movie.Size}}{{formatSize .Movie.Size}}{{else}}N/A{{end}}</div>
 
                     <div style="color: var(--muted-text);">Subtitles:</div>
-                    <div style="color: var(--text-color);">
+                    <div style="color: var(--text-color);" id="subtitle-status-container">
                         {{if .HasSubtitles}}
                             <span style="color: var(--success-color);">English (Found)</span>
                         {{else if .Movie.Path}}
-                            <span style="color: var(--danger-color);">Missing</span>
-                            {{if .IsAdmin}}
-                                <button onclick="downloadSubtitles('movie', {{.Movie.ID}})" style="margin-left: 10px; padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Download Now</button>
-                            {{end}}
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="color: var(--danger-color);">Missing</span>
+                                {{if .IsAdmin}}
+                                    <button onclick="downloadSubtitles(this, 'movie', {{.Movie.ID}})" style="padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px;">
+                                        <span>Download Now</span>
+                                    </button>
+                                {{end}}
+                            </div>
                         {{else}}
                             N/A
                         {{end}}
@@ -84,6 +88,19 @@
 </div>
 
 <style>
+.spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 @media (min-width: 769px) {
     .container > div:last-child {
         flex-direction: row !important;
@@ -128,19 +145,35 @@ async function submitRequest(item) {
     }
 }
 
-async function downloadSubtitles(type, id) {
+async function downloadSubtitles(btn, type, id) {
+    const originalContent = btn.innerHTML;
+    const container = btn.parentElement;
+    
+    // Show spinner
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    
     try {
         const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
             method: 'POST'
         });
+        
         if (response.ok) {
-            alert('Subtitle download triggered in background!');
+            // Success: change container to success text
+            container.parentElement.innerHTML = '<span style="color: var(--success-color);">English (Found)</span>';
         } else {
-            alert('Failed to trigger subtitle download.');
+            // Error
+            const errorText = await response.text();
+            console.error('Download failed:', errorText);
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            alert('Failed to download subtitles: ' + errorText);
         }
     } catch (error) {
         console.error('Download failed:', error);
-        alert('An error occurred.');
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        alert('An error occurred during download.');
     }
 }
 </script>

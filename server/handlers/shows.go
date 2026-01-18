@@ -221,6 +221,9 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check library status
+	libStatus, _ := services.CheckLibraryStatus("show", show.TVDBID)
+
 	// Prepare data for template
 	type EnhancedSeason struct {
 		SeasonNumber int
@@ -331,19 +334,21 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Username    string
-		IsAdmin     bool
-		CurrentPage string
-		SearchQuery string
-		Show        *models.Show
-		Seasons     []EnhancedSeason
+		Username      string
+		IsAdmin       bool
+		CurrentPage   string
+		SearchQuery   string
+		Show          *models.Show
+		Seasons       []EnhancedSeason
+		LibraryStatus services.LibraryStatus
 	}{
-		Username:    user.Username,
-		IsAdmin:     user.IsAdmin,
-		CurrentPage: "/tv",
-		SearchQuery: "",
-		Show:        show,
-		Seasons:     enhancedSeasons,
+		Username:      user.Username,
+		IsAdmin:       user.IsAdmin,
+		CurrentPage:   "/tv",
+		SearchQuery:   "",
+		Show:          show,
+		Seasons:       enhancedSeasons,
+		LibraryStatus: libStatus,
 	}
 
 	if err := showDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {

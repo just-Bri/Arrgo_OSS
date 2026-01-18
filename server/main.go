@@ -94,6 +94,7 @@ func main() {
 	mux.Handle("/rename/movie", middleware.RequireAuth(http.HandlerFunc(handlers.RenameMovieHandler)))
 	mux.Handle("/rename/show", middleware.RequireAuth(http.HandlerFunc(handlers.RenameShowHandler)))
 	mux.Handle("/subtitles/download", middleware.RequireAuth(http.HandlerFunc(handlers.DownloadSubtitlesHandler)))
+	mux.Handle("/admin/nuke", middleware.RequireAuth(http.HandlerFunc(handlers.NukeLibraryHandler)))
 
 	// Root redirect
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

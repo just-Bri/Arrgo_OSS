@@ -4,16 +4,51 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"database/sql"
+	"strconv"
+	"strings"
 )
 
 type LibraryStatus struct {
-	Exists    bool   `json:"exists"`
-	LocalID   int    `json:"local_id,omitempty"`
-	Message   string `json:"message"`
-	Seasons   []int  `json:"seasons,omitempty"` // Season numbers already in library
+	Exists           bool   `json:"exists"`
+	LocalID          int    `json:"local_id,omitempty"`
+	Message          string `json:"message"`
+	Seasons          []int  `json:"seasons,omitempty"`           // Season numbers already in library
+	RequestedSeasons []int  `json:"requested_seasons,omitempty"` // Season numbers already requested
 }
 
 func CreateRequest(req models.Request) error {
+	// If it's a show, we might be adding seasons to an existing request
+	if req.MediaType == "show" {
+		var existingID int
+		var existingSeasons string
+		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status = 'pending'", req.TVDBID).Scan(&existingID, &existingSeasons)
+		if err == nil {
+			// Update existing request
+			newSeasons := existingSeasons
+			reqSeasons := strings.Split(req.Seasons, ",")
+			existingSeasonsList := strings.Split(existingSeasons, ",")
+			
+			for _, rs := range reqSeasons {
+				found := false
+				for _, es := range existingSeasonsList {
+					if rs == es {
+						found = true
+						break
+					}
+				}
+				if !found {
+					if newSeasons != "" {
+						newSeasons += ","
+					}
+					newSeasons += rs
+				}
+			}
+			
+			_, err = database.DB.Exec("UPDATE requests SET seasons = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", newSeasons, existingID)
+			return err
+		}
+	}
+
 	query := `
 		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -92,7 +127,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 			status.Exists = true
 			status.LocalID = showID
 
-			// Get seasons
+			// Get seasons in library
 			rows, err := database.DB.Query("SELECT season_number FROM seasons WHERE show_id = $1 ORDER BY season_number", showID)
 			if err == nil {
 				defer rows.Close()
@@ -103,18 +138,31 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 					}
 				}
 			}
-			
+		}
+
+		// Always check for requested seasons, even if show exists (partial match)
+		var reqSeasons sql.NullString
+		var reqStatus string
+		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status != 'cancelled' AND status != 'completed'", externalID).Scan(&reqSeasons, &reqStatus)
+		if err == nil {
+			if reqSeasons.Valid && reqSeasons.String != "" {
+				seasonStrs := strings.Split(reqSeasons.String, ",")
+				for _, s := range seasonStrs {
+					if sn, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+						status.RequestedSeasons = append(status.RequestedSeasons, sn)
+					}
+				}
+			}
+			if !status.Exists {
+				status.Message = "Already requested (Status: " + reqStatus + ")"
+			}
+		}
+
+		if status.Exists {
 			if len(status.Seasons) > 0 {
 				status.Message = "Partial/Full library match"
 			} else {
 				status.Message = "Show exists but no seasons found"
-			}
-		} else if err == sql.ErrNoRows {
-			// Not in library, check if already requested
-			var reqStatus string
-			err = database.DB.QueryRow("SELECT status FROM requests WHERE tvdb_id = $1 AND media_type = 'show'", externalID).Scan(&reqStatus)
-			if err == nil {
-				status.Message = "Already requested (Status: " + reqStatus + ")"
 			}
 		}
 	}

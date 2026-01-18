@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -114,9 +115,46 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if status.Exists || strings.Contains(status.Message, "Already requested") {
-		http.Error(w, "Media already exists or has been requested", http.StatusConflict)
-		return
+	if req.MediaType == "movie" {
+		if status.Exists || strings.Contains(status.Message, "Already requested") {
+			http.Error(w, "Movie already exists or has been requested", http.StatusConflict)
+			return
+		}
+	} else if req.MediaType == "show" {
+		// For shows, we check if the requested seasons are already in library or already requested
+		requestedSeasons := strings.Split(req.Seasons, ",")
+		allNew := true
+		for _, rs := range requestedSeasons {
+			sn, _ := strconv.Atoi(strings.TrimSpace(rs))
+			
+			// Check if in library
+			inLibrary := false
+			for _, s := range status.Seasons {
+				if s == sn {
+					inLibrary = true
+					break
+				}
+			}
+			
+			// Check if already requested
+			alreadyRequested := false
+			for _, s := range status.RequestedSeasons {
+				if s == sn {
+					alreadyRequested = true
+					break
+				}
+			}
+			
+			if inLibrary || alreadyRequested {
+				allNew = false
+				break
+			}
+		}
+		
+		if !allNew && len(requestedSeasons) == 1 {
+			http.Error(w, "Season already exists or has been requested", http.StatusConflict)
+			return
+		}
 	}
 
 	if err := services.CreateRequest(req); err != nil {

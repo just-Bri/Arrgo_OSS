@@ -38,6 +38,17 @@
                 </div>
             </div>
         </div>
+
+        <!-- Danger Zone -->
+        <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--danger-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--danger-color); font-size: 18px;">Danger Zone</h2>
+            <p style="color: var(--muted-text); font-size: 12px; margin-bottom: 15px;">These actions are permanent and cannot be undone.</p>
+            <form action="/admin/nuke" method="POST" onsubmit="return confirm('WARNING: This will permanently delete ALL movies, shows, and requests from the database. This cannot be undone. Are you absolutely sure?')">
+                <button type="submit" style="width: 100%; padding: 10px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                    ☢️ Nuke Database (Library & Requests)
+                </button>
+            </form>
+        </div>
     </div>
 
     {{if or .IncomingMovies .IncomingShows}}
