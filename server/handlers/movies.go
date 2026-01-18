@@ -40,6 +40,7 @@ func init() {
 
 type MoviesData struct {
 	Username      string
+	SearchQuery   string
 	Movies        []models.Movie
 	AllGenres     []string
 	SelectedGenre string
@@ -104,6 +105,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := MoviesData{
 		Username:      user.Username,
+		SearchQuery:   "",
 		Movies:        filteredMovies,
 		AllGenres:     allGenres,
 		SelectedGenre: selectedGenre,
@@ -185,11 +187,13 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Username string
-		Movie    *models.Movie
+		Username    string
+		SearchQuery string
+		Movie       *models.Movie
 	}{
-		Username: user.Username,
-		Movie:    movie,
+		Username:    user.Username,
+		SearchQuery: "",
+		Movie:       movie,
 	}
 
 	if err := movieDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {

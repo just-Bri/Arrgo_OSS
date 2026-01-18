@@ -219,3 +219,34 @@ func GetMovieCount() (int, error) {
 	err := database.DB.QueryRow("SELECT COUNT(*) FROM movies").Scan(&count)
 	return count, err
 }
+
+func SearchMoviesLocal(query string) ([]models.Movie, error) {
+	dbQuery := `
+		SELECT id, title, year, tmdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at 
+		FROM movies 
+		WHERE title ILIKE $1 OR overview ILIKE $1 OR genres ILIKE $1
+		ORDER BY title ASC
+	`
+	rows, err := database.DB.Query(dbQuery, "%"+query+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var movies []models.Movie
+	for rows.Next() {
+		var m models.Movie
+		var tmdbID, overview, posterPath, quality, genres sql.NullString
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		m.TMDBID = tmdbID.String
+		m.Overview = overview.String
+		m.PosterPath = posterPath.String
+		m.Quality = quality.String
+		m.Genres = genres.String
+		movies = append(movies, m)
+	}
+	return movies, nil
+}

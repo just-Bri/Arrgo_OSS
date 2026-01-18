@@ -21,6 +21,7 @@ func GetFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"hasPrefix": strings.HasPrefix,
 		"split":     strings.Split,
+		"contains":  strings.Contains,
 		"formatSize": func(size int64) string {
 			if size == 0 {
 				return "0 B"

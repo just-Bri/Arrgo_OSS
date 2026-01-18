@@ -222,6 +222,36 @@ func GetShowCount() (int, error) {
 	return count, err
 }
 
+func SearchShowsLocal(query string) ([]models.Show, error) {
+	dbQuery := `
+		SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at 
+		FROM shows 
+		WHERE title ILIKE $1 OR overview ILIKE $1 OR genres ILIKE $1
+		ORDER BY title ASC
+	`
+	rows, err := database.DB.Query(dbQuery, "%"+query+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var shows []models.Show
+	for rows.Next() {
+		var s models.Show
+		var tvdbID, overview, posterPath, genres sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		s.TVDBID = tvdbID.String
+		s.Overview = overview.String
+		s.PosterPath = posterPath.String
+		s.Genres = genres.String
+		shows = append(shows, s)
+	}
+	return shows, nil
+}
+
 func GetShows() ([]models.Show, error) {
 	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows ORDER BY title ASC`
 	rows, err := database.DB.Query(query)

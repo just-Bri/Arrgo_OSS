@@ -29,8 +29,9 @@ func init() {
 }
 
 type RequestsData struct {
-	Username string
-	Requests []models.Request
+	Username    string
+	SearchQuery string
+	Requests    []models.Request
 }
 
 func RequestsHandler(w http.ResponseWriter, r *http.Request) {
@@ -59,62 +60,14 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RequestsData{
-		Username: user.Username,
-		Requests: requests,
+		Username:    user.Username,
+		SearchQuery: "",
+		Requests:    requests,
 	}
 
 	if err := requestsTmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-func SearchHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q")
-	if query == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]interface{}{})
-		return
-	}
-
-	cfg := config.Load()
-	
-	// Search both TMDB and TVDB
-	movieResults, err := services.SearchTMDB(cfg, query)
-	if err != nil {
-		log.Printf("TMDB search error: %v", err)
-	}
-
-	showResults, err := services.SearchTVDB(cfg, query)
-	if err != nil {
-		log.Printf("TVDB search error: %v", err)
-	}
-
-	// Combine results
-	type EnhancedResult struct {
-		services.SearchResult
-		LibraryStatus services.LibraryStatus `json:"library_status"`
-	}
-
-	var combined []EnhancedResult
-	
-	for _, res := range movieResults {
-		status, _ := services.CheckLibraryStatus("movie", res.ID)
-		combined = append(combined, EnhancedResult{
-			SearchResult:  res,
-			LibraryStatus: status,
-		})
-	}
-
-	for _, res := range showResults {
-		status, _ := services.CheckLibraryStatus("show", res.ID)
-		combined = append(combined, EnhancedResult{
-			SearchResult:  res,
-			LibraryStatus: status,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(combined)
 }
 
 func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {

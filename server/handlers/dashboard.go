@@ -26,9 +26,10 @@ func init() {
 }
 
 type DashboardData struct {
-	Username   string
-	MovieCount int
-	ShowCount  int
+	Username    string
+	SearchQuery string
+	MovieCount  int
+	ShowCount   int
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -51,9 +52,10 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := DashboardData{
-		Username:   user.Username,
-		MovieCount: movieCount,
-		ShowCount:  showCount,
+		Username:    user.Username,
+		SearchQuery: "",
+		MovieCount:  movieCount,
+		ShowCount:   showCount,
 	}
 
 	if err := dashboardTmpl.ExecuteTemplate(w, "base", data); err != nil {

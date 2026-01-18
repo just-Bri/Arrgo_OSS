@@ -40,6 +40,7 @@ func init() {
 
 type ShowsData struct {
 	Username      string
+	SearchQuery   string
 	Shows         []models.Show
 	AllGenres     []string
 	SelectedGenre string
@@ -104,6 +105,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := ShowsData{
 		Username:      user.Username,
+		SearchQuery:   "",
 		Shows:         filteredShows,
 		AllGenres:     allGenres,
 		SelectedGenre: selectedGenre,
@@ -285,13 +287,15 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Username string
-		Show     *models.Show
-		Seasons  []EnhancedSeason
+		Username    string
+		SearchQuery string
+		Show        *models.Show
+		Seasons     []EnhancedSeason
 	}{
-		Username: user.Username,
-		Show:     show,
-		Seasons:  enhancedSeasons,
+		Username:    user.Username,
+		SearchQuery: "",
+		Show:        show,
+		Seasons:     enhancedSeasons,
 	}
 
 	if err := showDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {
