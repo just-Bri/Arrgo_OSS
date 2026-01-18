@@ -29,7 +29,7 @@ services:
       - ./posters:/root/data/posters
       - /mnt/user/media/movies:/mnt/movies
       - /mnt/user/media/shows:/mnt/tv
-      - /mnt/user/torrs/arrgo-incoming:/mnt/incoming
+      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/data/torrents:/mnt/incoming
     restart: unless-stopped
 
   arrgo-db:
