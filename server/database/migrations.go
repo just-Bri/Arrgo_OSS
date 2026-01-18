@@ -116,5 +116,26 @@ func RunMigrations() error {
 		return fmt.Errorf("failed to run shows migrations: %w", err)
 	}
 
+	requestsTableSQL := `
+	CREATE TABLE IF NOT EXISTS requests (
+		id SERIAL PRIMARY KEY,
+		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+		title VARCHAR(255) NOT NULL,
+		media_type VARCHAR(20) NOT NULL, -- 'movie' or 'show'
+		tmdb_id VARCHAR(50),
+		tvdb_id VARCHAR(50),
+		year INTEGER,
+		poster_path VARCHAR(255),
+		overview TEXT,
+		status VARCHAR(50) DEFAULT 'pending',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+	_, err = DB.Exec(requestsTableSQL)
+	if err != nil {
+		return fmt.Errorf("failed to run requests migration: %w", err)
+	}
+
 	return nil
 }

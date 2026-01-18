@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -89,6 +90,109 @@ type TVDBSearchResponse struct {
 		Genres          []string `json:"genres"`
 	} `json:"data"`
 	Status string `json:"status"`
+}
+
+type SearchResult struct {
+	ID         string   `json:"id"`
+	Title      string   `json:"title"`
+	Year       int      `json:"year"`
+	MediaType  string   `json:"media_type"`
+	PosterPath string   `json:"poster_path"`
+	Overview   string   `json:"overview"`
+	Genres     []string `json:"genres"`
+}
+
+func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
+	if cfg.TMDBAPIKey == "" {
+		return nil, fmt.Errorf("TMDB_API_KEY is not set")
+	}
+
+	throttle()
+	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s",
+		cfg.TMDBAPIKey, url.QueryEscape(query))
+
+	resp, err := http.Get(searchURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var searchResults TMDBMovieSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+		return nil, err
+	}
+
+	results := make([]SearchResult, 0, len(searchResults.Results))
+	for _, r := range searchResults.Results {
+		year := 0
+		if len(r.ReleaseDate) >= 4 {
+			year, _ = strconv.Atoi(r.ReleaseDate[:4])
+		}
+
+		var genres []string
+		for _, id := range r.GenreIDs {
+			if name, ok := tmdbGenres[id]; ok {
+				genres = append(genres, name)
+			}
+		}
+
+		results = append(results, SearchResult{
+			ID:         fmt.Sprintf("%d", r.ID),
+			Title:      r.Title,
+			Year:       year,
+			MediaType:  "movie",
+			PosterPath: r.PosterPath,
+			Overview:   r.Overview,
+			Genres:     genres,
+		})
+	}
+
+	return results, nil
+}
+
+func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
+	if cfg.TVDBAPIKey == "" {
+		return nil, fmt.Errorf("TVDB_API_KEY is not set")
+	}
+
+	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	if err != nil {
+		return nil, err
+	}
+
+	throttle()
+	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series", url.QueryEscape(query))
+
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var searchResults TVDBSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+		return nil, err
+	}
+
+	results := make([]SearchResult, 0, len(searchResults.Data))
+	for _, r := range searchResults.Data {
+		year, _ := strconv.Atoi(r.Year)
+		results = append(results, SearchResult{
+			ID:         r.TVDBID,
+			Title:      r.Name,
+			Year:       year,
+			MediaType:  "show",
+			PosterPath: r.ImageURL,
+			Overview:   r.Overview,
+			Genres:     r.Genres,
+		})
+	}
+
+	return results, nil
 }
 
 func getTVDBToken(apiKey string) (string, error) {
