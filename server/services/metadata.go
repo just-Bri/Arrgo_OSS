@@ -249,6 +249,7 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 			var id int
 			if err := movieRows.Scan(&id); err == nil {
 				MatchMovie(cfg, id)
+				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	}
@@ -262,6 +263,7 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 			var id int
 			if err := showRows.Scan(&id); err == nil {
 				MatchShow(cfg, id)
+				time.Sleep(200 * time.Millisecond)
 			}
 		}
 	}

@@ -89,10 +89,18 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 	
 	localPath := filepath.Join(localDir, fmt.Sprintf("%d%s", id, ext))
 
-	// 2. Check if file exists locally
+	// 2. Check if file exists locally in cache
 	if _, err := os.Stat(localPath); err == nil {
 		http.ServeFile(w, r, localPath)
 		return
+	}
+
+	// 2.5 Check if the poster_path itself is a local file (from scanner)
+	if strings.HasPrefix(posterPath.String, "/") {
+		if _, err := os.Stat(posterPath.String); err == nil {
+			http.ServeFile(w, r, posterPath.String)
+			return
+		}
 	}
 
 	// 3. Not found locally, download it
@@ -165,6 +173,14 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(localPath); err == nil {
 		http.ServeFile(w, r, localPath)
 		return
+	}
+
+	// Check if the poster_path itself is a local file
+	if strings.HasPrefix(posterPath.String, "/") {
+		if _, err := os.Stat(posterPath.String); err == nil {
+			http.ServeFile(w, r, posterPath.String)
+			return
+		}
 	}
 
 	var sourceURL string
