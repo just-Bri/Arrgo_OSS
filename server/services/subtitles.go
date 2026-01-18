@@ -17,6 +17,7 @@ import (
 
 var (
 	osToken       string
+	osBaseURL     string
 	osTokenExpiry time.Time
 	osMutex       sync.Mutex
 )
@@ -43,16 +44,16 @@ type OSDownloadResponse struct {
 	FileName string `json:"file_name"`
 }
 
-func getOSToken(cfg *config.Config) (string, error) {
+func getOSToken(cfg *config.Config) (string, string, error) {
 	osMutex.Lock()
 	defer osMutex.Unlock()
 
 	if osToken != "" && time.Now().Before(osTokenExpiry) {
-		return osToken, nil
+		return osToken, osBaseURL, nil
 	}
 
 	if cfg.OpenSubtitlesUser == "" || cfg.OpenSubtitlesPass == "" {
-		return "", fmt.Errorf("OpenSubtitles credentials not set")
+		return "", "", fmt.Errorf("OpenSubtitles credentials not set")
 	}
 
 	log.Printf("[SUBTITLES] Authenticating with OpenSubtitles...")
@@ -65,29 +66,35 @@ func getOSToken(cfg *config.Config) (string, error) {
 	req, _ := http.NewRequest("POST", "https://api.opensubtitles.com/api/v1/login", bytes.NewBuffer(payload))
 	req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Arrgo v1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("OpenSubtitles login failed (%d): %s", resp.StatusCode, string(body))
+		return "", "", fmt.Errorf("OpenSubtitles login failed (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
-		Token string `json:"token"`
+		Token   string `json:"token"`
+		BaseURL string `json:"base_url"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	osToken = result.Token
+	osBaseURL = result.BaseURL
+	if osBaseURL == "" {
+		osBaseURL = "api.opensubtitles.com"
+	}
 	osTokenExpiry = time.Now().Add(23 * time.Hour) // Tokens usually last 24h
-	return osToken, nil
+	return osToken, osBaseURL, nil
 }
 
 func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string, year int, destDir string) error {
@@ -112,6 +119,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Arrgo v1.0")
 
 	resp, err := client.Do(req)
@@ -167,17 +175,20 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 
 	log.Printf("[SUBTITLES] Found subtitle for %s (SDH: %v), downloading file ID %d...", title, isSDH, fileID)
 
-	token, err := getOSToken(cfg)
+	token, baseURL, err := getOSToken(cfg)
 	if err != nil {
 		log.Printf("[SUBTITLES] Warning: Failed to get auth token: %v. Download might fail.", err)
+		baseURL = "api.opensubtitles.com"
 	}
 
 	downloadPayload := map[string]int{"file_id": fileID}
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
-	downloadReq, _ := http.NewRequest("POST", "https://api.opensubtitles.com/api/v1/download", bytes.NewBuffer(payloadBytes))
+	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
+	downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
 	downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 	downloadReq.Header.Set("Content-Type", "application/json")
+	downloadReq.Header.Set("Accept", "application/json")
 	downloadReq.Header.Set("User-Agent", "Arrgo v1.0")
 	if token != "" {
 		downloadReq.Header.Set("Authorization", "Bearer "+token)
@@ -254,6 +265,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Arrgo v1.0")
 
 	resp, err := client.Do(req)
@@ -305,17 +317,20 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	fileID := bestMatch.Attributes.Files[0].FileID
 	isSDH := bestMatch.Attributes.HearingImpaired
 
-	token, err := getOSToken(cfg)
+	token, baseURL, err := getOSToken(cfg)
 	if err != nil {
 		log.Printf("[SUBTITLES] Warning: Failed to get auth token: %v. Download might fail.", err)
+		baseURL = "api.opensubtitles.com"
 	}
 
 	downloadPayload := map[string]int{"file_id": fileID}
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
-	downloadReq, _ := http.NewRequest("POST", "https://api.opensubtitles.com/api/v1/download", bytes.NewBuffer(payloadBytes))
+	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
+	downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
 	downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 	downloadReq.Header.Set("Content-Type", "application/json")
+	downloadReq.Header.Set("Accept", "application/json")
 	downloadReq.Header.Set("User-Agent", "Arrgo v1.0")
 	if token != "" {
 		downloadReq.Header.Set("Authorization", "Bearer "+token)
