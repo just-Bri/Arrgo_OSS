@@ -48,6 +48,20 @@
                     
                     <div style="color: var(--muted-text);">Size:</div>
                     <div style="color: var(--text-color);">{{if .Movie.Size}}{{formatSize .Movie.Size}}{{else}}N/A{{end}}</div>
+
+                    <div style="color: var(--muted-text);">Subtitles:</div>
+                    <div style="color: var(--text-color);">
+                        {{if .HasSubtitles}}
+                            <span style="color: var(--success-color);">English (Found)</span>
+                        {{else if .Movie.Path}}
+                            <span style="color: var(--danger-color);">Missing</span>
+                            {{if .IsAdmin}}
+                                <button onclick="downloadSubtitles('movie', {{.Movie.ID}})" style="margin-left: 10px; padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Download Now</button>
+                            {{end}}
+                        {{else}}
+                            N/A
+                        {{end}}
+                    </div>
                 </div>
             </div>
 
@@ -110,6 +124,22 @@ async function submitRequest(item) {
         }
     } catch (error) {
         console.error('Request failed:', error);
+        alert('An error occurred.');
+    }
+}
+
+async function downloadSubtitles(type, id) {
+    try {
+        const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
+            method: 'POST'
+        });
+        if (response.ok) {
+            alert('Subtitle download triggered in background!');
+        } else {
+            alert('Failed to trigger subtitle download.');
+        }
+    } catch (error) {
+        console.error('Download failed:', error);
         alert('An error occurred.');
     }
 }

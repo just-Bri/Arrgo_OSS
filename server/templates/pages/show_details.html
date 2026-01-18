@@ -89,6 +89,7 @@
                             <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">#</th>
                             <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Title</th>
                             <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Status</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Subtitles</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -101,6 +102,22 @@
                                     <span style="color: var(--success-color); font-size: 12px;">&#10004;</span>
                                 {{else}}
                                     <span style="color: var(--muted-text); font-size: 12px;">&#10006;</span>
+                                {{end}}
+                            </td>
+                            <td style="padding: 8px;">
+                                {{if .InLibrary}}
+                                    {{if .HasSubtitles}}
+                                        <span style="color: var(--success-color); font-size: 12px;">&#10004; EN</span>
+                                    {{else}}
+                                        <div style="display: flex; align-items: center; gap: 5px;">
+                                            <span style="color: var(--danger-color); font-size: 12px;">&#10006;</span>
+                                            {{if $.IsAdmin}}
+                                                <button onclick="downloadSubtitles('episode', {{.ID}})" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px;">Fix</button>
+                                            {{end}}
+                                        </div>
+                                    {{/if}}
+                                {{else}}
+                                    -
                                 {{end}}
                             </td>
                         </tr>
@@ -190,6 +207,22 @@ async function submitSeasonRequest() {
         }
     } catch (error) {
         console.error('Request failed:', error);
+        alert('An error occurred.');
+    }
+}
+
+async function downloadSubtitles(type, id) {
+    try {
+        const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
+            method: 'POST'
+        });
+        if (response.ok) {
+            alert('Subtitle download triggered in background!');
+        } else {
+            alert('Failed to trigger subtitle download.');
+        }
+    } catch (error) {
+        console.error('Download failed:', error);
         alert('An error occurred.');
     }
 }

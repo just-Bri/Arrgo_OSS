@@ -210,17 +210,19 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Username    string
-		IsAdmin     bool
-		CurrentPage string
-		SearchQuery string
-		Movie       *models.Movie
+		Username      string
+		IsAdmin       bool
+		CurrentPage   string
+		SearchQuery   string
+		Movie         *models.Movie
+		HasSubtitles  bool
 	}{
 		Username:    user.Username,
 		IsAdmin:     user.IsAdmin,
 		CurrentPage: "/movies",
 		SearchQuery: "",
 		Movie:       movie,
+		HasSubtitles: movie.Path != "" && services.HasSubtitles(filepath.Dir(movie.Path)),
 	}
 
 	if err := movieDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {

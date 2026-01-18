@@ -51,6 +51,7 @@ var (
 
 type TMDBMovieDetails struct {
 	ID          int     `json:"id"`
+	IMDBID      string  `json:"imdb_id"`
 	Title       string  `json:"title"`
 	ReleaseDate string  `json:"release_date"`
 	Overview    string  `json:"overview"`
@@ -82,6 +83,10 @@ type TVDBShowDetails struct {
 			Name string `json:"name"`
 		} `json:"type"`
 	} `json:"seasons"`
+	RemoteIDs []struct {
+		ID   string `json:"id"`
+		Type int    `json:"type"`
+	} `json:"remoteIds"`
 }
 
 type TVDBSeasonEpisodesResponse struct {
@@ -443,28 +448,48 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 3. Take the first result
-	result := searchResults.Results[0]
-	log.Printf("[METADATA] Found match for %s: %s (TMDB ID: %d)", m.Title, result.Title, result.ID)
+	searchResult := searchResults.Results[0]
+	log.Printf("[METADATA] Found search match for %s: %s (TMDB ID: %d). Fetching full details...", m.Title, searchResult.Title, searchResult.ID)
+
+	// 3.5 Fetch full details to get IMDB ID
+	details, err := GetTMDBMovieDetails(cfg, fmt.Sprintf("%d", searchResult.ID))
+	if err != nil {
+		log.Printf("[METADATA] Error fetching full details for TMDB ID %d: %v", searchResult.ID, err)
+		// Fallback to search results if details fail, though we won't have IMDB ID
+		details = &TMDBMovieDetails{
+			ID:          searchResult.ID,
+			Title:       searchResult.Title,
+			Overview:    searchResult.Overview,
+			PosterPath:  searchResult.PosterPath,
+		}
+	}
 
 	// Get genre names
 	var genres []string
-	for _, id := range result.GenreIDs {
-		if name, ok := tmdbGenres[id]; ok {
-			genres = append(genres, name)
+	if len(details.Genres) > 0 {
+		for _, g := range details.Genres {
+			genres = append(genres, g.Name)
+		}
+	} else {
+		// Fallback to genre IDs from search result
+		for _, id := range searchResult.GenreIDs {
+			if name, ok := tmdbGenres[id]; ok {
+				genres = append(genres, name)
+			}
 		}
 	}
 	genreString := strings.Join(genres, ", ")
 
 	// Let's store the raw JSON from TMDB too
-	rawMetadata, _ := json.Marshal(result)
+	rawMetadata, _ := json.Marshal(details)
 
 	// 4. Update DB
 	updateQuery := `
 		UPDATE movies 
-		SET tmdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $6
+		SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $7
 	`
-	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", result.ID), result.Overview, result.PosterPath, genreString, rawMetadata, m.ID)
+	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for movie %s: %v", m.Title, err)
 	}
@@ -536,22 +561,66 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	// 3. Take the first result
-	result := searchResults.Data[0]
-	log.Printf("[METADATA] Found match for show %s: %s (TVDB ID: %s)", s.Title, result.Name, result.TVDBID)
-	genreString := strings.Join(result.Genres, ", ")
-	rawMetadata, _ := json.Marshal(result)
+	searchResult := searchResults.Data[0]
+	log.Printf("[METADATA] Found search match for show %s: %s (TVDB ID: %s). Fetching full details...", s.Title, searchResult.Name, searchResult.TVDBID)
+
+	// 3.5 Fetch full details to get IMDB ID
+	details, err := GetTVDBShowDetails(cfg, searchResult.TVDBID)
+	imdbID := ""
+	if err == nil {
+		for _, rid := range details.RemoteIDs {
+			if rid.Type == 2 { // IMDB
+				imdbID = rid.ID
+				break
+			}
+		}
+	} else {
+		log.Printf("[METADATA] Error fetching full details for TVDB ID %s: %v", searchResult.TVDBID, err)
+		// Fallback to search result
+		details = &TVDBShowDetails{
+			ID:       interfaceToInt(searchResult.TVDBID),
+			Name:     searchResult.Name,
+			Overview: searchResult.Overview,
+			Image:    searchResult.ImageURL,
+			Genres:   []struct{ID int; Name string}{},
+		}
+		for _, g := range searchResult.Genres {
+			details.Genres = append(details.Genres, struct{ID int; Name string}{Name: g})
+		}
+	}
+
+	var genres []string
+	for _, g := range details.Genres {
+		genres = append(genres, g.Name)
+	}
+	genreString := strings.Join(genres, ", ")
+	rawMetadata, _ := json.Marshal(details)
 
 	// 4. Update DB
 	updateQuery := `
 		UPDATE shows 
-		SET tvdb_id = $1, overview = $2, poster_path = $3, genres = $4, status = 'matched', raw_metadata = $5, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $6
+		SET tvdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $7
 	`
-	_, err = database.DB.Exec(updateQuery, result.TVDBID, result.Overview, result.ImageURL, genreString, rawMetadata, s.ID)
+	_, err = database.DB.Exec(updateQuery, fmt.Sprintf("%d", details.ID), imdbID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
 	if err != nil {
 		log.Printf("[METADATA] Error updating DB for show %s: %v", s.Title, err)
 	}
 	return err
+}
+
+func interfaceToInt(v interface{}) int {
+	switch val := v.(type) {
+	case string:
+		i, _ := strconv.Atoi(val)
+		return i
+	case int:
+		return val
+	case float64:
+		return int(val)
+	default:
+		return 0
+	}
 }
 
 func FetchMetadataForAllDiscovered(cfg *config.Config) {

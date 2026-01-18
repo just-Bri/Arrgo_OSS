@@ -72,8 +72,8 @@ func sanitizePath(name string) string {
 
 func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	var m models.Movie
-	query := `SELECT id, title, year, tmdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
-	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath)
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
+	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.IMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -166,8 +166,18 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	// Update DB with new path and status
 	updateQuery := `UPDATE movies SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
 	_, err = database.DB.Exec(updateQuery, destPath, newPosterPath, m.ID)
+	if err != nil {
+		return err
+	}
 
-	return err
+	// Trigger subtitle download
+	go func() {
+		if err := DownloadSubtitlesForMovie(cfg, m.IMDBID, m.TMDBID, m.Title, m.Year, destDirPath); err != nil {
+			log.Printf("[RENAMER] Subtitle download failed for %s: %v", m.Title, err)
+		}
+	}()
+
+	return nil
 }
 
 func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
@@ -176,13 +186,13 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	var sh models.Show
 
 	query := `
-		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.poster_path
+		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tmdb_id, sh.imdb_id, sh.poster_path
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		JOIN shows sh ON s.show_id = sh.id
 		WHERE e.id = $1
 	`
-	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.PosterPath)
+	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.IMDBID, &sh.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -273,7 +283,18 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Trigger subtitle download for episode
+	go func() {
+		if err := DownloadSubtitlesForEpisode(cfg, sh.IMDBID, sh.TMDBID, sh.Title, s.SeasonNumber, e.EpisodeNumber, destDirPath); err != nil {
+			log.Printf("[RENAMER] Subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
+		}
+	}()
+
+	return nil
 }
 
 func RenameAndMoveShow(cfg *config.Config, showID int) error {

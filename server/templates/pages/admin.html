@@ -41,7 +41,25 @@
     </div>
 
     {{if or .IncomingMovies .IncomingShows}}
-    <h1 style="margin: 30px 0 20px 0; color: var(--text-color); font-size: 24px;">Incoming Media</h1>
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin: 30px 0 20px 0;">
+        <h1 style="margin: 0; color: var(--text-color); font-size: 24px;">Incoming Media</h1>
+        <div style="display: flex; gap: 10px;">
+            {{if .IncomingMovies}}
+            <form action="/import/movies/all" method="POST">
+                <button type="submit" style="padding: 8px 15px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                    🎬 Import All Movies
+                </button>
+            </form>
+            {{end}}
+            {{if .IncomingShows}}
+            <form action="/import/tv/all" method="POST">
+                <button type="submit" style="padding: 8px 15px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                    📺 Import All TV
+                </button>
+            </form>
+            {{end}}
+        </div>
+    </div>
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 15px;">
         <!-- Incoming Movies -->

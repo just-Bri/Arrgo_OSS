@@ -225,11 +225,13 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	type EnhancedSeason struct {
 		SeasonNumber int
 		Episodes     []struct {
-			Number   int
-			Title    string
-			InLibrary bool
-			Quality  string
-			Size     int64
+			ID           int
+			Number       int
+			Title        string
+			InLibrary    bool
+			Quality      string
+			Size         int64
+			HasSubtitles bool
 		}
 	}
 
@@ -248,6 +250,8 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			inLibrary := false
 			quality := ""
 			var size int64 = 0
+			hasSubtitles := false
+			localID := 0
 			
 			// Check if in local library
 			for _, ls := range seasons {
@@ -257,6 +261,10 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 							inLibrary = true
 							quality = le.Quality
 							size = le.Size
+							localID = le.ID
+							if le.FilePath != "" {
+								hasSubtitles = services.HasSubtitles(filepath.Dir(le.FilePath))
+							}
 							break
 						}
 					}
@@ -264,17 +272,21 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			
 			seasonMap[te.SeasonNumber].Episodes = append(seasonMap[te.SeasonNumber].Episodes, struct {
-				Number   int
-				Title    string
-				InLibrary bool
-				Quality  string
-				Size     int64
+				ID           int
+				Number       int
+				Title        string
+				InLibrary    bool
+				Quality      string
+				Size         int64
+				HasSubtitles bool
 			}{
-				Number:   te.Number,
-				Title:    te.Name,
-				InLibrary: inLibrary,
-				Quality:  quality,
-				Size:     size,
+				ID:           localID,
+				Number:       te.Number,
+				Title:        te.Name,
+				InLibrary:    inLibrary,
+				Quality:      quality,
+				Size:         size,
+				HasSubtitles: hasSubtitles,
 			})
 		}
 		
@@ -292,18 +304,26 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range seasons {
 			es := EnhancedSeason{SeasonNumber: s.SeasonNumber}
 			for _, e := range s.Episodes {
+				hasSubtitles := false
+				if e.FilePath != "" {
+					hasSubtitles = services.HasSubtitles(filepath.Dir(e.FilePath))
+				}
 				es.Episodes = append(es.Episodes, struct {
-					Number   int
-					Title    string
-					InLibrary bool
-					Quality  string
-					Size     int64
+					ID           int
+					Number       int
+					Title        string
+					InLibrary    bool
+					Quality      string
+					Size         int64
+					HasSubtitles bool
 				}{
-					Number:   e.EpisodeNumber,
-					Title:    e.Title,
-					InLibrary: true,
-					Quality:  e.Quality,
-					Size:     e.Size,
+					ID:           e.ID,
+					Number:       e.EpisodeNumber,
+					Title:        e.Title,
+					InLibrary:    true,
+					Quality:      e.Quality,
+					Size:         e.Size,
+					HasSubtitles: hasSubtitles,
 				})
 			}
 			enhancedSeasons = append(enhancedSeasons, es)
