@@ -8,6 +8,8 @@ type Movie struct {
 	Year       int       `json:"year"`
 	TMDBID     string    `json:"tmdb_id"`
 	Path       string    `json:"path"`
+	Quality    string    `json:"quality"`
+	Size       int64     `json:"size"`
 	Overview    string    `json:"overview"`
 	PosterPath  string    `json:"poster_path"`
 	Status      string    `json:"status"` // e.g., "discovered", "matching", "ready"

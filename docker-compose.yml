@@ -1,6 +1,9 @@
 services:
   arrgo-app:
-    build: .
+    build:
+      context: .
+      args:
+        - BUILD_VERSION=2
     container_name: arrgo-app
     ports:
       - "5003:5003"
@@ -9,6 +12,10 @@ services:
       - SESSION_SECRET=change-me-in-production
       - PORT=5003
       - ENV=development
+      - DEBUG=true
+      - PUID=99
+      - PGID=100
+      - GOLOG_LOG_LEVEL=debug
       - MOVIES_PATH=/mnt/movies
       - TV_SHOWS_PATH=/mnt/tv
       - INCOMING_PATH=/mnt/incoming
@@ -19,9 +26,10 @@ services:
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
+      - ./posters:/root/data/posters
       - /mnt/user/media/movies:/mnt/movies
-      - /mnt/user/media/tv:/mnt/tv
-      - /mnt/user/media/incoming:/mnt/incoming
+      - /mnt/user/media/shows:/mnt/tv
+      - /mnt/user/torrs/arrgo-incoming:/mnt/incoming
     restart: unless-stopped
 
   arrgo-db:
@@ -35,6 +43,11 @@ services:
       - arrgo-db-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arrgo -d arrgo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:

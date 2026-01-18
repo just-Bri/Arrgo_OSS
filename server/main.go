@@ -6,13 +6,30 @@ import (
 	"Arrgo/handlers"
 	"Arrgo/middleware"
 	"Arrgo/services"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 )
+
+func init() {
+	// Force logs to Stdout and remove timestamps for cleaner Docker logs
+	log.SetOutput(os.Stdout)
+	log.SetFlags(0)
+}
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
+
+	fmt.Println("-----------------------------------------")
+	fmt.Println("Arrgo Process STDOUT Trigger")
+	fmt.Println("-----------------------------------------")
+
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	log.Printf("Initializing Arrgo components...")
 
 	// Initialize session store
 	services.InitSessionStore(cfg)
@@ -41,22 +58,48 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	// Public routes
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("pong"))
+	})
 	mux.HandleFunc("/login", handlers.LoginHandler)
 	mux.HandleFunc("/logout", handlers.LogoutHandler)
 	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
 
 	// Protected routes
 	mux.Handle("/dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.DashboardHandler)))
+	mux.Handle("/movies", middleware.RequireAuth(http.HandlerFunc(handlers.MoviesHandler)))
+	mux.Handle("/tv", middleware.RequireAuth(http.HandlerFunc(handlers.ShowsHandler)))
+	mux.Handle("/scan", middleware.RequireAuth(http.HandlerFunc(handlers.ScanHandler)))
+	mux.Handle("/rename/movie", middleware.RequireAuth(http.HandlerFunc(handlers.RenameMovieHandler)))
+	mux.Handle("/rename/show", middleware.RequireAuth(http.HandlerFunc(handlers.RenameShowHandler)))
 
 	// Root redirect
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		if r.URL.Path == "/" {
+			log.Printf("[ROUTE] Root path hit, redirecting to /dashboard")
+			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+			return
+		}
+		// Serve 404 for other paths not matched
+		http.NotFound(w, r)
 	})
 
 	// Start server
 	addr := ":" + cfg.ServerPort
-	log.Printf("Server starting on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal("Server failed:", err)
+	log.Printf("=========================================")
+	log.Printf("Arrgo is starting on %s", addr)
+	log.Printf("Environment: %s", cfg.Environment)
+	log.Printf("Debug Mode: %v", cfg.Debug)
+	log.Printf("=========================================")
+
+	// Global logging middleware
+	loggingMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("[STDOUT-REQ] %s %s\n", r.Method, r.URL.Path)
+		log.Printf("[LOG-REQ] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		mux.ServeHTTP(w, r)
+	})
+
+	if err := http.ListenAndServe(addr, loggingMux); err != nil {
+		log.Fatalf("FATAL: Server failed to start: %v", err)
 	}
 }

@@ -14,6 +14,7 @@ type Config struct {
 	IncomingPath  string
 	TMDBAPIKey    string
 	TVDBAPIKey    string
+	Debug         bool
 }
 
 func Load() *Config {
@@ -27,6 +28,7 @@ func Load() *Config {
 		IncomingPath:  getEnv("INCOMING_PATH", "/mnt/incoming"),
 		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
 		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
+		Debug:         getEnv("DEBUG", "false") == "true",
 	}
 }
 

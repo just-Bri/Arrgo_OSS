@@ -1,0 +1,50 @@
+{{define "title"}}Movies - Arrgo{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="color: var(--text-color);">Movies</h1>
+        <a href="/dashboard" style="text-decoration: none; color: var(--accent-color);">&larr; Back to Dashboard</a>
+    </div>
+    
+    <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow);">
+        <h2 style="margin-bottom: 20px; font-size: 24px; color: var(--text-color);">Library ({{len .Movies}})</h2>
+        {{if .Movies}}
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                {{range .Movies}}
+                <li style="padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start;">
+                    {{if .PosterPath}}
+                    <img src="/images/tmdb{{if not (hasPrefix .PosterPath "http")}}/{{end}}{{.PosterPath}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    {{else}}
+                    <div style="width: 100px; height: 150px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+                    {{end}}
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <div style="font-size: 18px; font-weight: 500; color: var(--text-color);">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                                <div style="font-size: 14px; color: var(--muted-text); margin-top: 5px;">
+                                    <span style="background: var(--badge-bg); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--badge-text);">{{.Status}}</span>
+                                    {{if .Quality}}
+                                    <span style="background: var(--quality-bg); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--quality-text); margin-left: 5px;">{{.Quality}}</span>
+                                    {{end}}
+                                    <span style="margin-left: 10px;">{{.Path}}</span>
+                                </div>
+                            </div>
+                            {{if eq .Status "matched"}}
+                            <form action="/rename/movie?id={{.ID}}" method="POST">
+                                <button type="submit" style="padding: 6px 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Rename & Move</button>
+                            </form>
+                            {{end}}
+                        </div>
+                        <p style="font-size: 14px; color: var(--muted-text); margin-top: 10px; line-height: 1.4;">{{.Overview}}</p>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        {{else}}
+            <p style="color: var(--muted-text);">No movies found. Check your MOVIES_PATH configuration.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}

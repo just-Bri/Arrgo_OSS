@@ -3,9 +3,15 @@ FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
+# Install git for go mod
+RUN apk add --no-cache git
+
 # Copy go mod files
 COPY server/go.mod server/go.sum ./
 RUN go mod download
+
+# Cache breaker for Unraid/SMB environments
+ARG BUILD_VERSION=1
 
 # Copy source code
 COPY server/ .
@@ -14,9 +20,10 @@ COPY server/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o arrgo .
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.20
 
-RUN apk --no-cache add ca-certificates
+# Add ca-certificates for API calls and tzdata for correct timezones
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /root/
 
@@ -28,4 +35,3 @@ COPY --from=builder /app/static ./static
 EXPOSE 5003
 
 CMD ["./arrgo"]
-

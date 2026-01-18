@@ -31,6 +31,8 @@ type Episode struct {
 	EpisodeNumber int       `json:"episode_number"`
 	Title         string    `json:"title"`
 	FilePath      string    `json:"file_path"`
+	Quality       string    `json:"quality"`
+	Size          int64     `json:"size"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

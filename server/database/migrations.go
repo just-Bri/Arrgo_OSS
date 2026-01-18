@@ -28,6 +28,8 @@ func RunMigrations() error {
 		year INTEGER,
 		tmdb_id VARCHAR(50),
 		path TEXT UNIQUE NOT NULL,
+		quality VARCHAR(50),
+		size BIGINT DEFAULT 0,
 		overview TEXT,
 		poster_path VARCHAR(255),
 		status VARCHAR(50) DEFAULT 'discovered',
@@ -35,6 +37,17 @@ func RunMigrations() error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- Migration for existing movies table
+	DO $$ 
+	BEGIN 
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='quality') THEN
+			ALTER TABLE movies ADD COLUMN quality VARCHAR(50);
+		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='movies' AND column_name='size') THEN
+			ALTER TABLE movies ADD COLUMN size BIGINT DEFAULT 0;
+		END IF;
+	END $$;
 	`
 	_, err = DB.Exec(moviesTableSQL)
 	if err != nil {
@@ -72,10 +85,23 @@ func RunMigrations() error {
 		episode_number INTEGER NOT NULL,
 		title VARCHAR(255),
 		file_path TEXT UNIQUE NOT NULL,
+		quality VARCHAR(50),
+		size BIGINT DEFAULT 0,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(season_id, episode_number)
 	);
+
+	-- Migration for existing episodes table
+	DO $$ 
+	BEGIN 
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='episodes' AND column_name='quality') THEN
+			ALTER TABLE episodes ADD COLUMN quality VARCHAR(50);
+		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='episodes' AND column_name='size') THEN
+			ALTER TABLE episodes ADD COLUMN size BIGINT DEFAULT 0;
+		END IF;
+	END $$;
 	`
 	_, err = DB.Exec(showsTableSQL)
 	if err != nil {

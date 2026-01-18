@@ -45,7 +45,7 @@ To get started on your home server (like Unraid), clone the repository and run:
 docker-compose up -d
 ```
 
-The application will be available at `http://localhost:8080`.
+The application will be available at `http://localhost:5003`.
 
 ### Environment Variables
 
@@ -53,16 +53,42 @@ Configure the following variables in `docker-compose.yml`:
 
 - `DATABASE_URL`: Connection string for PostgreSQL.
 - `SESSION_SECRET`: Key used for secure session management.
-- `MOVIES_PATH`: Local path to your movie library.
-- `PORT`: The port the application will listen on.
+- `PORT`: The port the application will listen on (default: 5003).
+- `PUID/PGID`: User/Group ID for file permissions (e.g., 99/100 for Unraid).
+- `MOVIES_PATH`: Local path where your processed movies are stored.
+- `TV_SHOWS_PATH`: Local path where your processed TV shows are stored.
+- `INCOMING_PATH`: Path where new, unprocessed media is located.
+- `TMDB_API_KEY`: Your [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) (Required for metadata).
+- `TVDB_API_KEY`: Your [TheTVDB API Key](https://thetvdb.com/api-information) (Required for TV shows).
+- `DEBUG`: Set to `true` for verbose logging.
+
+### 💡 Tips for Unraid Users
+
+Arrgo is specifically optimized for Unraid. When deploying:
+
+1. **Volume Mappings**: Ensure your media paths in `docker-compose.yml` point to your `/mnt/user/...` shares.
+2. **Permissions**: Use `PUID=99` and `PGID=100` (default Unraid user) to ensure the application has correct access to your media files.
+3. **Database**: The database is mapped to `./db_data` by default, ensuring your metadata and settings persist in your appdata folder.
+
+### 🛠 Troubleshooting: Forcing a Rebuild
+
+If Dockge or Unraid is "stuck" using an old version of the code (common with SMB shares), you can force a fresh build without leaving the UI:
+
+1. Click **Edit** on the stack in Dockge.
+2. In the `docker-compose.yml` section, look for `BUILD_VERSION: 1`.
+3. Increment the number (e.g., change `1` to `2`).
+4. Click **Deploy**.
+
+This invalidates the Docker build cache and forces it to pick up your latest file changes.
 
 ## 🗺 Roadmap
 
 - [x] Basic Login & Authentication
-- [x] Dashboard with Movie Library Overview
-- [ ] Library Scanner & File Renaming (Plex/Jellyfin compatible)
-- [ ] TV Show Management (Sonarr functionality)
-- [ ] Metadata Scraping (Movie/Show details, cover art)
+- [x] Dashboard with Movie/TV Library Overview
+- [x] Library Scanner (Automatic detection of new media)
+- [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
+- [x] Unraid Optimization (Permissions, Docker-ready)
+- [ ] TV Show Organization (Auto-renaming episodes)
 - [ ] Subtitle Management (Bazarr functionality)
 - [ ] Integration with Download Clients (qBittorrent, etc.)
 - [ ] Advanced Library Search and Filtering

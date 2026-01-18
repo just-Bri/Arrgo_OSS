@@ -1,40 +1,32 @@
 {{define "title"}}Dashboard - Arrgo{{end}}
 
 {{define "content"}}
-{{template "header" .}}
 {{template "navigation" .}}
 <div class="container">
-    <h1 style="margin-bottom: 20px;">Dashboard</h1>
-    <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;">
-        <p style="font-size: 18px; margin-bottom: 10px;">Welcome, <strong>{{.Username}}</strong>!</p>
+    <h1 style="margin-bottom: 20px; color: var(--text-color);">Dashboard</h1>
+    <div style="background: var(--container-bg); padding: 30px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <p style="font-size: 18px; margin-bottom: 10px; color: var(--text-color);">Welcome, <strong>{{.Username}}</strong>!</p>
+        </div>
+        <form action="/scan" method="POST">
+            <button type="submit" style="padding: 10px 20px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Scan Library</button>
+        </form>
     </div>
-    
-    <div style="background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-        <h2 style="margin-bottom: 20px; font-size: 24px;">Movies ({{len .Movies}})</h2>
-        {{if .Movies}}
-            <ul style="list-style: none; padding: 0; margin: 0;">
-                {{range .Movies}}
-                <li style="padding: 15px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: flex-start;">
-                    {{if .PosterPath}}
-                    <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                    {{else}}
-                    <div style="width: 100px; height: 150px; background: #eee; border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: #999;">No Poster</div>
-                    {{end}}
-                    <div style="flex: 1;">
-                        <div style="font-size: 18px; font-weight: 500; color: #333;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
-                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
-                            <span style="background: #e0f7fa; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #00838f;">{{.Status}}</span>
-                            <span style="margin-left: 10px;">{{.Path}}</span>
-                        </div>
-                        <p style="font-size: 14px; color: #444; margin-top: 10px; line-height: 1.4;">{{.Overview}}</p>
-                    </div>
-                </li>
-                {{end}}
-            </ul>
-        {{else}}
-            <p style="color: #666;">No movies found. Check your MOVIES_PATH configuration.</p>
-        {{end}}
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+        <a href="/movies" style="text-decoration: none; color: inherit;">
+            <div style="background: var(--container-bg); padding: 40px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
+                <div style="font-size: 48px; font-weight: bold; color: var(--accent-color); margin-bottom: 10px;">{{.MovieCount}}</div>
+                <div style="font-size: 20px; color: var(--muted-text); font-weight: 500;">Movies</div>
+            </div>
+        </a>
+
+        <a href="/tv" style="text-decoration: none; color: inherit;">
+            <div style="background: var(--container-bg); padding: 40px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-5px)';" onmouseout="this.style.transform='translateY(0)';">
+                <div style="font-size: 48px; font-weight: bold; color: var(--success-color); margin-bottom: 10px;">{{.ShowCount}}</div>
+                <div style="font-size: 20px; color: var(--muted-text); font-weight: 500;">TV Shows</div>
+            </div>
+        </a>
     </div>
 </div>
 {{end}}
-

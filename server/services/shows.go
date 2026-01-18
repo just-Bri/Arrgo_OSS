@@ -4,71 +4,122 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
+	"database/sql"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func ScanShows(cfg *config.Config) error {
+	log.Printf("[SCANNER] Starting TV show scan with 4 workers...")
+
+	type showTask struct {
+		root string
+		name string
+	}
+
+	taskChan := make(chan showTask, 100)
+	var wg sync.WaitGroup
+
+	// Start workers
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskChan {
+				processShowDir(cfg, task.root, task.name)
+			}
+		}()
+	}
+
+	// Scan both media path and incoming path
 	paths := []string{cfg.TVShowsPath, cfg.IncomingPath}
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
 		if _, err := os.Stat(p); os.IsNotExist(err) {
-			continue
-		}
-		if err := scanShowPath(cfg, p); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func scanShowPath(cfg *config.Config, root string) error {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
+			log.Printf("[SCANNER] Path does not exist, skipping: %s", p)
 			continue
 		}
 
-		showPath := filepath.Join(root, entry.Name())
-		title, year := parseMovieName(entry.Name()) // Reuse parseMovieName for "Title (Year)"
-
-		showID, err := upsertShow(models.Show{
-			Title:  title,
-			Year:   year,
-			Path:   showPath,
-			Status: "discovered",
-		})
+		entries, err := os.ReadDir(p)
 		if err != nil {
 			continue
 		}
 
-		scanSeasons(showID, showPath)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				taskChan <- showTask{root: p, name: entry.Name()}
+			}
+		}
 	}
 
+	close(taskChan)
+	wg.Wait()
+
+	log.Printf("[SCANNER] TV show scan complete. Triggering metadata matching...")
+	// Trigger metadata fetching in background
+	go FetchMetadataForAllDiscovered(cfg)
+
 	return nil
+}
+
+func processShowDir(cfg *config.Config, root string, name string) {
+	showPath := filepath.Join(root, name)
+	title, year := parseMovieName(name) // Reuse parseMovieName for "Title (Year)"
+
+	// Look for local poster
+	posterPath := ""
+	posterExtensions := []string{".jpg", ".jpeg", ".png", ".webp"}
+	posterNames := []string{"poster", "folder", "cover", "show"}
+
+	for _, n := range posterNames {
+		for _, ext := range posterExtensions {
+			p := filepath.Join(showPath, n+ext)
+			if _, err := os.Stat(p); err == nil {
+				posterPath = p
+				break
+			}
+		}
+		if posterPath != "" {
+			break
+		}
+	}
+
+	log.Printf("[SCANNER] Processing show: %s (%d) at %s", title, year, showPath)
+	showID, err := upsertShow(models.Show{
+		Title:      title,
+		Year:       year,
+		Path:       showPath,
+		PosterPath: posterPath,
+		Status:     "discovered",
+	})
+	if err != nil {
+		log.Printf("[SCANNER] Error upserting show %s: %v", title, err)
+		return
+	}
+
+	scanSeasons(showID, showPath)
 }
 
 func upsertShow(show models.Show) (int, error) {
 	var id int
 	query := `
-		INSERT INTO shows (title, year, path, status, updated_at)
-		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		INSERT INTO shows (title, year, path, poster_path, status, updated_at)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT (path) DO UPDATE SET
 			title = EXCLUDED.title,
 			year = EXCLUDED.year,
+			poster_path = COALESCE(NULLIF(EXCLUDED.poster_path, ''), shows.poster_path),
 			updated_at = CURRENT_TIMESTAMP
 		RETURNING id
 	`
-	err := database.DB.QueryRow(query, show.Title, show.Year, show.Path, show.Status).Scan(&id)
+	err := database.DB.QueryRow(query, show.Title, show.Year, show.Path, show.PosterPath, show.Status).Scan(&id)
 	return id, err
 }
 
@@ -142,18 +193,54 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		episodeNum, _ := strconv.Atoi(matches[1])
 		episodePath := filepath.Join(seasonPath, entry.Name())
 
-		upsertEpisode(seasonID, episodeNum, entry.Name(), episodePath)
+		info, _ := entry.Info()
+		size := info.Size()
+		quality := DetectQuality(episodePath)
+
+		upsertEpisode(seasonID, episodeNum, entry.Name(), episodePath, quality, size)
 	}
 }
 
-func upsertEpisode(seasonID int, episodeNum int, title string, path string) {
+func upsertEpisode(seasonID int, episodeNum int, title string, path string, quality string, size int64) {
 	query := `
-		INSERT INTO episodes (season_id, episode_number, title, file_path, updated_at)
-		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+		INSERT INTO episodes (season_id, episode_number, title, file_path, quality, size, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT (file_path) DO UPDATE SET
 			episode_number = EXCLUDED.episode_number,
 			title = EXCLUDED.title,
+			quality = EXCLUDED.quality,
+			size = EXCLUDED.size,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	database.DB.Exec(query, seasonID, episodeNum, title, path)
+	database.DB.Exec(query, seasonID, episodeNum, title, path, quality, size)
+}
+
+func GetShowCount() (int, error) {
+	var count int
+	err := database.DB.QueryRow("SELECT COUNT(*) FROM shows").Scan(&count)
+	return count, err
+}
+
+func GetShows() ([]models.Show, error) {
+	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, status, created_at, updated_at FROM shows ORDER BY title ASC`
+	rows, err := database.DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	shows := []models.Show{}
+	for rows.Next() {
+		var s models.Show
+		var tvdbID, overview, posterPath sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		s.TVDBID = tvdbID.String
+		s.Overview = overview.String
+		s.PosterPath = posterPath.String
+		shows = append(shows, s)
+	}
+	return shows, nil
 }
