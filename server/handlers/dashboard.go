@@ -29,11 +29,14 @@ func init() {
 type DashboardData struct {
 	Username            string
 	IsAdmin             bool
+	CurrentPage         string
 	SearchQuery         string
 	MovieCount          int
 	IncomingMovieCount  int
+	MovieRequestCount   int
 	ShowCount           int
 	IncomingShowCount   int
+	ShowRequestCount    int
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +63,8 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	incomingMovieCount := 0
 	incomingShowCount := 0
+	movieRequestCount := 0
+	showRequestCount := 0
 
 	if user.IsAdmin {
 		// Total counts (including incoming)
@@ -68,16 +73,22 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		
 		incomingMovieCount = totalMovies - movieCount
 		incomingShowCount = totalShows - showCount
+
+		// Pending requests
+		movieRequestCount, showRequestCount, _ = services.GetPendingRequestCounts()
 	}
 
 	data := DashboardData{
 		Username:            user.Username,
 		IsAdmin:             user.IsAdmin,
+		CurrentPage:         "/dashboard",
 		SearchQuery:         "",
 		MovieCount:          movieCount,
 		IncomingMovieCount:  incomingMovieCount,
+		MovieRequestCount:   movieRequestCount,
 		ShowCount:           showCount,
 		IncomingShowCount:   incomingShowCount,
+		ShowRequestCount:    showRequestCount,
 	}
 
 	if err := dashboardTmpl.ExecuteTemplate(w, "base", data); err != nil {

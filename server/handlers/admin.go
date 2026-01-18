@@ -24,6 +24,7 @@ func init() {
 type AdminPageData struct {
 	Username    string
 	IsAdmin     bool
+	CurrentPage string
 	SearchQuery string
 }
 
@@ -42,6 +43,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	data := AdminPageData{
 		Username:    user.Username,
 		IsAdmin:     user.IsAdmin,
+		CurrentPage: "/admin",
 		SearchQuery: "",
 	}
 

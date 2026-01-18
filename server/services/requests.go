@@ -50,6 +50,22 @@ func GetRequests() ([]models.Request, error) {
 	return requests, nil
 }
 
+func GetPendingRequestCounts() (int, int, error) {
+	var movieCount, showCount int
+
+	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status = 'pending'").Scan(&movieCount)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status = 'pending'").Scan(&showCount)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return movieCount, showCount, nil
+}
+
 func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, error) {
 	status := LibraryStatus{Exists: false}
 

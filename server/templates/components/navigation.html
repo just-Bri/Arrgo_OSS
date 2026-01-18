@@ -19,13 +19,40 @@
 
         <!-- Desktop Links & User Actions -->
         <div class="desktop-nav" style="display: flex; align-items: center; gap: 20px;">
-            <ul style="list-style: none; display: flex; gap: 20px; margin: 0; padding: 0;">
-                <li><a href="/dashboard" style="color: var(--text-color); text-decoration: none; font-weight: 500;">Dashboard</a></li>
-                <li><a href="/movies" style="color: var(--text-color); text-decoration: none; font-weight: 500;">Movies</a></li>
-                <li><a href="/tv" style="color: var(--text-color); text-decoration: none; font-weight: 500;">TV Shows</a></li>
-                <li><a href="/requests" style="color: var(--text-color); text-decoration: none; font-weight: 500;">Requests</a></li>
+            <style>
+                .desktop-link {
+                    color: var(--text-color);
+                    text-decoration: none;
+                    font-weight: 500;
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    transition: all 0.2s;
+                }
+                .desktop-link:hover {
+                    background: rgba(255,255,255,0.05);
+                }
+                [data-theme="light"] .desktop-link:hover {
+                    background: rgba(0,0,0,0.05);
+                }
+                .desktop-link.active {
+                    color: var(--accent-color);
+                    background: rgba(0, 123, 255, 0.1);
+                }
+                .desktop-link.admin-link {
+                    color: var(--accent-color);
+                }
+                .desktop-link.admin-link.active {
+                    background: var(--accent-color);
+                    color: white;
+                }
+            </style>
+            <ul style="list-style: none; display: flex; gap: 10px; margin: 0; padding: 0;">
+                <li><a href="/dashboard" class="desktop-link {{if eq .CurrentPage "/dashboard"}}active{{end}}">Dashboard</a></li>
+                <li><a href="/movies" class="desktop-link {{if eq .CurrentPage "/movies"}}active{{end}}">Movies</a></li>
+                <li><a href="/tv" class="desktop-link {{if eq .CurrentPage "/tv"}}active{{end}}">TV Shows</a></li>
+                <li><a href="/requests" class="desktop-link {{if eq .CurrentPage "/requests"}}active{{end}}">Requests</a></li>
                 {{if .IsAdmin}}
-                <li><a href="/admin" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">Admin</a></li>
+                <li><a href="/admin" class="desktop-link admin-link {{if eq .CurrentPage "/admin"}}active{{end}}">Admin</a></li>
                 {{end}}
             </ul>
             <div style="display: flex; align-items: center; gap: 15px; border-left: 1px solid var(--border-color); padding-left: 20px; margin-left: 10px;">

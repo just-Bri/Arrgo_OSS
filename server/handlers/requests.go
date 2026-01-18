@@ -30,6 +30,7 @@ func init() {
 type RequestsData struct {
 	Username    string
 	IsAdmin     bool
+	CurrentPage string
 	SearchQuery string
 	Requests    []models.Request
 }
@@ -62,6 +63,7 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 	data := RequestsData{
 		Username:    user.Username,
 		IsAdmin:     user.IsAdmin,
+		CurrentPage: "/requests",
 		SearchQuery: "",
 		Requests:    requests,
 	}

@@ -14,8 +14,13 @@
                 <div style="font-size: 36px; font-weight: bold; color: var(--accent-color); margin-bottom: 5px;">{{.MovieCount}}</div>
                 <div style="font-size: 18px; color: var(--text-color); font-weight: 500;">Movies</div>
                 {{if .IsAdmin}}
-                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); color: var(--muted-text); font-size: 12px;">
-                    <strong style="color: var(--accent-color);">{{.IncomingMovieCount}}</strong> Incoming
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px;">
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--accent-color);">{{.IncomingMovieCount}}</strong> Incoming
+                    </div>
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--accent-color);">{{.MovieRequestCount}}</strong> Requests
+                    </div>
                 </div>
                 {{end}}
             </div>
@@ -26,8 +31,13 @@
                 <div style="font-size: 36px; font-weight: bold; color: var(--success-color); margin-bottom: 5px;">{{.ShowCount}}</div>
                 <div style="font-size: 18px; color: var(--text-color); font-weight: 500;">Shows</div>
                 {{if .IsAdmin}}
-                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); color: var(--muted-text); font-size: 12px;">
-                    <strong style="color: var(--success-color);">{{.IncomingShowCount}}</strong> Incoming
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px;">
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--success-color);">{{.IncomingShowCount}}</strong> Incoming
+                    </div>
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--success-color);">{{.ShowRequestCount}}</strong> Requests
+                    </div>
                 </div>
                 {{end}}
             </div>

@@ -41,6 +41,7 @@ func init() {
 type ShowsData struct {
 	Username      string
 	IsAdmin       bool
+	CurrentPage   string
 	SearchQuery   string
 	Shows         []models.Show
 	IncomingShows []models.Show
@@ -117,6 +118,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	data := ShowsData{
 		Username:      user.Username,
 		IsAdmin:       user.IsAdmin,
+		CurrentPage:   "/tv",
 		SearchQuery:   "",
 		Shows:         libraryShows,
 		IncomingShows: incomingShows,
@@ -302,12 +304,14 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Username    string
 		IsAdmin     bool
+		CurrentPage string
 		SearchQuery string
 		Show        *models.Show
 		Seasons     []EnhancedSeason
 	}{
 		Username:    user.Username,
 		IsAdmin:     user.IsAdmin,
+		CurrentPage: "/tv",
 		SearchQuery: "",
 		Show:        show,
 		Seasons:     enhancedSeasons,
