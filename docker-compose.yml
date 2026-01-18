@@ -23,6 +23,8 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TVDB_API_KEY=${TVDB_API_KEY}
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
+      - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
+      - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
     depends_on:
       - arrgo-db
     volumes:
