@@ -246,3 +246,77 @@ func GetShows() ([]models.Show, error) {
 	}
 	return shows, nil
 }
+
+func GetShowByID(id int) (*models.Show, error) {
+	query := `SELECT id, title, year, tvdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows WHERE id = $1`
+	var s models.Show
+	var tvdbID, overview, posterPath, genres sql.NullString
+	err := database.DB.QueryRow(query, id).Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	s.TVDBID = tvdbID.String
+	s.Overview = overview.String
+	s.PosterPath = posterPath.String
+	s.Genres = genres.String
+	return &s, nil
+}
+
+type SeasonWithEpisodes struct {
+	models.Season
+	Episodes []models.Episode
+}
+
+func GetShowSeasons(showID int) ([]SeasonWithEpisodes, error) {
+	query := `SELECT id, show_id, season_number, overview FROM seasons WHERE show_id = $1 ORDER BY season_number ASC`
+	rows, err := database.DB.Query(query, showID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var seasons []SeasonWithEpisodes
+	for rows.Next() {
+		var s SeasonWithEpisodes
+		var overview sql.NullString
+		err := rows.Scan(&s.ID, &s.ShowID, &s.SeasonNumber, &overview)
+		if err != nil {
+			return nil, err
+		}
+		s.Overview = overview.String
+
+		// Fetch episodes for this season
+		episodes, err := GetSeasonEpisodes(s.ID)
+		if err != nil {
+			log.Printf("Error getting episodes for season %d: %v", s.ID, err)
+		} else {
+			s.Episodes = episodes
+		}
+
+		seasons = append(seasons, s)
+	}
+	return seasons, nil
+}
+
+func GetSeasonEpisodes(seasonID int) ([]models.Episode, error) {
+	query := `SELECT id, season_id, episode_number, title, file_path, quality, size FROM episodes WHERE season_id = $1 ORDER BY episode_number ASC`
+	rows, err := database.DB.Query(query, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var episodes []models.Episode
+	for rows.Next() {
+		var e models.Episode
+		var title, quality sql.NullString
+		err := rows.Scan(&e.ID, &e.SeasonID, &e.EpisodeNumber, &title, &e.FilePath, &quality, &e.Size)
+		if err != nil {
+			return nil, err
+		}
+		e.Title = title.String
+		e.Quality = quality.String
+		episodes = append(episodes, e)
+	}
+	return episodes, nil
+}

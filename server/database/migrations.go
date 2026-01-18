@@ -127,10 +127,19 @@ func RunMigrations() error {
 		year INTEGER,
 		poster_path VARCHAR(255),
 		overview TEXT,
+		seasons TEXT, -- Comma-separated list of season numbers for shows
 		status VARCHAR(50) DEFAULT 'pending',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- Migration for existing requests table
+	DO $$ 
+	BEGIN 
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='seasons') THEN
+			ALTER TABLE requests ADD COLUMN seasons TEXT;
+		END IF;
+	END $$;
 	`
 	_, err = DB.Exec(requestsTableSQL)
 	if err != nil {

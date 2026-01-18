@@ -14,16 +14,16 @@ type LibraryStatus struct {
 
 func CreateRequest(req models.Request) error {
 	query := `
-		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
-	_, err := database.DB.Exec(query, req.UserID, req.Title, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview)
+	_, err := database.DB.Exec(query, req.UserID, req.Title, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
 	return err
 }
 
 func GetRequests() ([]models.Request, error) {
 	query := `
-		SELECT r.id, r.user_id, u.username, r.title, r.media_type, r.tmdb_id, r.tvdb_id, r.year, r.poster_path, r.overview, r.status, r.created_at, r.updated_at
+		SELECT r.id, r.user_id, u.username, r.title, r.media_type, r.tmdb_id, r.tvdb_id, r.year, r.poster_path, r.overview, r.seasons, r.status, r.created_at, r.updated_at
 		FROM requests r
 		JOIN users u ON r.user_id = u.id
 		ORDER BY r.created_at DESC
@@ -37,13 +37,14 @@ func GetRequests() ([]models.Request, error) {
 	var requests []models.Request
 	for rows.Next() {
 		var req models.Request
-		var tmdbID, tvdbID sql.NullString
-		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &req.MediaType, &tmdbID, &tvdbID, &req.Year, &req.PosterPath, &req.Overview, &req.Status, &req.CreatedAt, &req.UpdatedAt)
+		var tmdbID, tvdbID, seasons sql.NullString
+		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &req.MediaType, &tmdbID, &tvdbID, &req.Year, &req.PosterPath, &req.Overview, &seasons, &req.Status, &req.CreatedAt, &req.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		req.TMDBID = tmdbID.String
 		req.TVDBID = tvdbID.String
+		req.Seasons = seasons.String
 		requests = append(requests, req)
 	}
 	return requests, nil

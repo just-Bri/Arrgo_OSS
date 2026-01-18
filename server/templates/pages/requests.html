@@ -40,6 +40,9 @@
                                 <div style="font-size: 14px; color: var(--muted-text); margin-top: 5px;">
                                     Requested by: <span style="color: var(--text-color);">{{.Username}}</span> | 
                                     Type: <span style="color: var(--text-color);">{{.MediaType}}</span>
+                                    {{if .Seasons}}
+                                    | Seasons: <span style="color: var(--text-color);">{{.Seasons}}</span>
+                                    {{end}}
                                 </div>
                             </div>
                             <span style="background: var(--badge-bg); padding: 4px 12px; border-radius: 20px; font-size: 12px; color: var(--badge-text); height: fit-content;">{{.Status}}</span>
@@ -96,6 +99,7 @@ async function performSearch() {
             const isRequested = statusMsg.includes('Already requested');
             const isDisabled = inLibrary || isRequested;
             let buttonText = 'Request';
+            if (isShow) buttonText = 'Select Seasons';
             let tooltip = '';
 
             if (inLibrary) {
@@ -106,16 +110,27 @@ async function performSearch() {
                 tooltip = 'There is already a pending request for this media.';
             }
 
+            const detailsUrl = isShow ? `/tv/details?tvdb_id=${item.id}` : `/movies/details?tmdb_id=${item.id}`;
+
             card.innerHTML = `
-                ${posterHtml}
+                <a href="${detailsUrl}">
+                    ${posterHtml}
+                </a>
                 <div style="flex: 1; display: flex; flex-direction: column;">
-                    <div style="font-weight: 500; font-size: 16px;">${item.title} ${item.year ? `(${item.year})` : ''}</div>
+                    <a href="${detailsUrl}" style="text-decoration: none; color: inherit;">
+                        <div style="font-weight: 500; font-size: 16px;">${item.title} ${item.year ? `(${item.year})` : ''}</div>
+                    </a>
                     <div style="font-size: 12px; color: var(--muted-text); margin-top: 4px;">${item.media_type.toUpperCase()}</div>
                     <div style="font-size: 12px; color: var(--accent-color); margin-top: 4px; font-weight: 500;">${statusMsg}${seasonsMsg}</div>
                     <div style="margin-top: auto; padding-top: 10px;">
                         ${!isDisabled ? 
-                            `<button onclick='submitRequest(${JSON.stringify(item).replace(/'/g, "&apos;")})' 
-                                style="width: 100%; padding: 6px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">${buttonText}</button>` : 
+                            (isShow ? 
+                                `<a href="${detailsUrl}" style="text-decoration: none;">
+                                    <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">${buttonText}</button>
+                                </a>` :
+                                `<button onclick='submitRequest(${JSON.stringify(item).replace(/'/g, "&apos;")})' 
+                                    style="width: 100%; padding: 6px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">${buttonText}</button>`
+                            ) : 
                             `<button disabled title="${tooltip}"
                                 style="width: 100%; padding: 6px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px;">${buttonText}</button>`
                         }

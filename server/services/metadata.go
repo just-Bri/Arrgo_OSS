@@ -49,6 +49,166 @@ var (
 	}
 )
 
+type TMDBMovieDetails struct {
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	ReleaseDate string  `json:"release_date"`
+	Overview    string  `json:"overview"`
+	PosterPath  string  `json:"poster_path"`
+	VoteAverage float64 `json:"vote_average"`
+	Genres      []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"genres"`
+	Runtime int `json:"runtime"`
+}
+
+type TVDBShowDetails struct {
+	ID            int      `json:"id"`
+	Name          string   `json:"name"`
+	Overview      string   `json:"overview"`
+	Image         string   `json:"image"`
+	FirstAired    string   `json:"firstAired"`
+	LastAired     string   `json:"lastAired"`
+	Status        string   `json:"status"`
+	Genres        []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"genres"`
+	Seasons []struct {
+		ID           int    `json:"id"`
+		Number       int    `json:"number"`
+		Type         struct {
+			Name string `json:"name"`
+		} `json:"type"`
+	} `json:"seasons"`
+}
+
+type TVDBSeasonEpisodesResponse struct {
+	Data struct {
+		Episodes []struct {
+			ID            int    `json:"id"`
+			Name          string `json:"name"`
+			SeasonNumber  int    `json:"seasonNumber"`
+			Number        int    `json:"number"`
+			Overview      string `json:"overview"`
+			Aired         string `json:"aired"`
+		} `json:"episodes"`
+	} `json:"data"`
+}
+
+func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, error) {
+	if cfg.TMDBAPIKey == "" {
+		return nil, fmt.Errorf("TMDB_API_KEY is not set")
+	}
+
+	throttle()
+	url := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s", tmdbID, cfg.TMDBAPIKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("TMDB returned status %d", resp.StatusCode)
+	}
+
+	var details TMDBMovieDetails
+	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+		return nil, err
+	}
+
+	return &details, nil
+}
+
+func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, error) {
+	if cfg.TVDBAPIKey == "" {
+		return nil, fmt.Errorf("TVDB_API_KEY is not set")
+	}
+
+	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	if err != nil {
+		return nil, err
+	}
+
+	throttle()
+	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/extended", tvdbID)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data TVDBShowDetails `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &result.Data, nil
+}
+
+type TVDBEpisode struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	SeasonNumber  int    `json:"seasonNumber"`
+	Number        int    `json:"number"`
+	Overview      string `json:"overview"`
+	Aired         string `json:"aired"`
+}
+
+func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, error) {
+	if cfg.TVDBAPIKey == "" {
+		return nil, fmt.Errorf("TVDB_API_KEY is not set")
+	}
+
+	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	if err != nil {
+		return nil, err
+	}
+
+	throttle()
+	// Using default translation to get episode names
+	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/episodes/default", tvdbID)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			Episodes []TVDBEpisode `json:"episodes"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Data.Episodes, nil
+}
+
 func throttle() {
 	rateLimitMutex.Lock()
 	defer rateLimitMutex.Unlock()

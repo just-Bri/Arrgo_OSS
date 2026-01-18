@@ -27,14 +27,20 @@
                 {{range .Shows}}
                 <li style="padding: 15px; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start;">
                     {{if .PosterPath}}
-                    <img src="/images/tv/{{.ID}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    <a href="/tv/details?id={{.ID}}">
+                        <img src="/images/tv/{{.ID}}" alt="{{.Title}}" style="width: 100px; border-radius: 4px; margin-right: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    </a>
                     {{else}}
-                    <div style="width: 100px; height: 150px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+                    <a href="/tv/details?id={{.ID}}" style="text-decoration: none;">
+                        <div style="width: 100px; height: 150px; background: var(--border-color); border-radius: 4px; margin-right: 20px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+                    </a>
                     {{end}}
                     <div style="flex: 1;">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                             <div>
-                                <div style="font-size: 18px; font-weight: 500; color: var(--text-color);">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                                <a href="/tv/details?id={{.ID}}" style="text-decoration: none;">
+                                    <div style="font-size: 18px; font-weight: 500; color: var(--text-color);">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                                </a>
                                 <div style="font-size: 14px; color: var(--muted-text); margin-top: 5px;">
                                     <span style="background: var(--badge-bg); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--badge-text);">{{.Status}}</span>
                                     {{if .Genres}}

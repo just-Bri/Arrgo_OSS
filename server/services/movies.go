@@ -198,6 +198,22 @@ func GetMovies() ([]models.Movie, error) {
 	return movies, nil
 }
 
+func GetMovieByID(id int) (*models.Movie, error) {
+	query := `SELECT id, title, year, tmdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at FROM movies WHERE id = $1`
+	var m models.Movie
+	var tmdbID, overview, posterPath, quality, genres sql.NullString
+	err := database.DB.QueryRow(query, id).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	m.TMDBID = tmdbID.String
+	m.Overview = overview.String
+	m.PosterPath = posterPath.String
+	m.Quality = quality.String
+	m.Genres = genres.String
+	return &m, nil
+}
+
 func GetMovieCount() (int, error) {
 	var count int
 	err := database.DB.QueryRow("SELECT COUNT(*) FROM movies").Scan(&count)
