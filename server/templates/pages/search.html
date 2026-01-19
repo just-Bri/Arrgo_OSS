@@ -15,13 +15,13 @@
                 {{$detailsUrl := ""}}
                 {{if eq .Source "local"}}
                     {{if $isShow}}
-                        {{$detailsUrl = printf "/tv/details?id=%d" .LocalID}}
+                        {{$detailsUrl = printf "/shows/details?id=%d" .LocalID}}
                     {{else}}
                         {{$detailsUrl = printf "/movies/details?id=%d" .LocalID}}
                     {{end}}
                 {{else}}
                     {{if $isShow}}
-                        {{$detailsUrl = printf "/tv/details?tvdb_id=%s" .ID}}
+                        {{$detailsUrl = printf "/shows/details?tvdb_id=%s" .ID}}
                     {{else}}
                         {{$detailsUrl = printf "/movies/details?tmdb_id=%s" .ID}}
                     {{end}}
@@ -34,7 +34,7 @@
                                 <img src="{{.PosterPath}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                             {{else if eq .Source "local"}}
                                 {{if $isShow}}
-                                    <img src="/images/tv/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
+                                    <img src="/images/shows/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                 {{else}}
                                     <img src="/images/movie/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                 {{end}}
