@@ -25,8 +25,13 @@ services:
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
       - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
       - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
+      - QBITTORRENT_URL=http://arrgo_gluetun:8080
+      - QBITTORRENT_USER=${QBITTORRENT_USER:-admin}
+      - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
+      - INDEXER_URL=http://arrgo-indexer:5004
     depends_on:
       - arrgo-db
+      - arrgo-indexer
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
@@ -34,6 +39,8 @@ services:
       - /mnt/user/media/movies:/mnt/movies
       - /mnt/user/media/shows:/mnt/tv
       - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/data/torrents:/mnt/incoming
+    networks:
+      - arrgo-network
     restart: unless-stopped
 
   arrgo-db:
@@ -52,7 +59,92 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - arrgo-network
     restart: unless-stopped
+
+  arrgo_gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: arrgo_gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8080:8080 # qBittorrent WebUI
+      - 6881:6881 # qBittorrent TCP
+      - 6881:6881/udp # qBittorrent UDP
+    volumes:
+      - /mnt/user/appdata/gluetun:/gluetun
+    environment:
+      # ProtonVPN settings
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-United States}
+      # Port forwarding
+      - VPN_PORT_FORWARDING=on
+      - VPN_PORT_FORWARDING_PROVIDER=protonvpn
+      # Firewall - allow local network
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.10.0/24
+      # Timezone
+      - TZ=America/Los_Angeles
+      # Health check
+      - HEALTH_VPN_DURATION_INITIAL=30s
+    networks:
+      - arrgo-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - ping
+        - -c
+        - "1"
+        - 1.1.1.1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      net.unraid.docker.shell: bash
+      io.hass.type: addon
+
+  arrgo_qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: arrgo_qbittorrent
+    network_mode: service:arrgo_gluetun
+    depends_on:
+      arrgo_gluetun:
+        condition: service_healthy
+    environment:
+      - PUID=99
+      - PGID=100
+      - TZ=America/Los_Angeles
+      - WEBUI_PORT=8080
+    volumes:
+      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config:/config
+      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/data/torrents:/mnt/incoming
+    restart: unless-stopped
+    labels:
+      net.unraid.docker.managed: qbittorrent
+      net.unraid.docker.webui: http://192.168.10.11:8080
+
+  arrgo-indexer:
+    build:
+      context: ./indexer
+    container_name: arrgo-indexer
+    ports:
+      - "5004:5004"
+    environment:
+      - PORT=5004
+      - ENV=development
+    networks:
+      - arrgo-network
+    restart: unless-stopped
+
+networks:
+  arrgo-network:
+    driver: bridge
 
 volumes:
   arrgo-db-data:

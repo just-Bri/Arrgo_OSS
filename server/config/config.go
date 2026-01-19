@@ -18,6 +18,10 @@ type Config struct {
 	OpenSubtitlesAPIKey string
 	OpenSubtitlesUser string
 	OpenSubtitlesPass string
+	QBittorrentURL string
+	QBittorrentUser string
+	QBittorrentPass string
+	IndexerURL    string
 	Debug         bool
 }
 
@@ -36,6 +40,10 @@ func Load() *Config {
 		OpenSubtitlesAPIKey: getEnv("OPENSUBTITLES_API_KEY", ""),
 		OpenSubtitlesUser:   getEnv("OPENSUBTITLES_USER", ""),
 		OpenSubtitlesPass:   getEnv("OPENSUBTITLES_PASS", ""),
+		QBittorrentURL:  getEnv("QBITTORRENT_URL", "http://localhost:8080"),
+		QBittorrentUser: getEnv("QBITTORRENT_USER", "admin"),
+		QBittorrentPass: getEnv("QBITTORRENT_PASS", "adminadmin"),
+		IndexerURL:     getEnv("INDEXER_URL", "http://localhost:5004"),
 		Debug:         getEnv("DEBUG", "false") == "true",
 	}
 }

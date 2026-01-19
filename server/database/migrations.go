@@ -158,7 +158,7 @@ func RunMigrations() error {
 		poster_path VARCHAR(255),
 		overview TEXT,
 		seasons TEXT, -- Comma-separated list of season numbers for shows
-		status VARCHAR(50) DEFAULT 'pending',
+		status VARCHAR(50) DEFAULT 'approved',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
@@ -173,6 +173,18 @@ func RunMigrations() error {
 			ALTER TABLE requests ADD COLUMN imdb_id VARCHAR(50);
 		END IF;
 	END $$;
+
+	CREATE TABLE IF NOT EXISTS downloads (
+		id SERIAL PRIMARY KEY,
+		request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+		torrent_hash VARCHAR(255) UNIQUE NOT NULL,
+		title VARCHAR(255) NOT NULL,
+		size BIGINT DEFAULT 0,
+		status VARCHAR(50) DEFAULT 'downloading',
+		progress FLOAT DEFAULT 0,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	_, err = DB.Exec(requestsTableSQL)
 	if err != nil {

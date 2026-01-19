@@ -37,7 +37,24 @@
                                 </div>
                                 {{end}}
                             </div>
-                            <span style="background: var(--badge-bg); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: var(--badge-text); white-space: nowrap;">{{.Status}}</span>
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                                <span style="background: var(--badge-bg); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: var(--badge-text); white-space: nowrap;">{{.Status}}</span>
+                                
+                                {{if and $.IsAdmin (eq .Status "pending")}}
+                                <div style="display: flex; gap: 5px;">
+                                    <button hx-post="/requests/approve?id={{.ID}}" 
+                                            hx-confirm="Are you sure you want to approve this request?"
+                                            hx-swap="none"
+                                            hx-on::after-request="location.reload()"
+                                            class="btn" style="padding: 2px 8px; font-size: 10px; background: #28a745; border: none; color: white;">Approve</button>
+                                    <button hx-post="/requests/deny?id={{.ID}}" 
+                                            hx-confirm="Are you sure you want to deny this request?"
+                                            hx-swap="none"
+                                            hx-on::after-request="location.reload()"
+                                            class="btn" style="padding: 2px 8px; font-size: 10px; background: #dc3545; border: none; color: white;">Deny</button>
+                                </div>
+                                {{end}}
+                            </div>
                         </div>
                     </div>
                 </li>

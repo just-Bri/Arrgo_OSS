@@ -6,6 +6,7 @@ import (
 	"Arrgo/handlers"
 	"Arrgo/middleware"
 	"Arrgo/services"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -53,6 +54,15 @@ func main() {
 	// Start background workers
 	services.StartIncomingScanner(cfg)
 
+	// Start Automation Service
+	qb, err := services.NewQBittorrentClient(cfg)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize qBittorrent client: %v", err)
+	} else {
+		automation := services.NewAutomationService(cfg, qb)
+		go automation.Start(context.Background())
+	}
+
 	// Setup routes
 	mux := http.NewServeMux()
 
@@ -87,6 +97,8 @@ func main() {
 	mux.Handle("/search", middleware.RequireAuth(http.HandlerFunc(handlers.SearchHandler)))
 	mux.Handle("/requests", middleware.RequireAuth(http.HandlerFunc(handlers.RequestsHandler)))
 	mux.Handle("/requests/create", middleware.RequireAuth(http.HandlerFunc(handlers.CreateRequestHandler)))
+	mux.Handle("/requests/approve", middleware.RequireAuth(http.HandlerFunc(handlers.ApproveRequestHandler)))
+	mux.Handle("/requests/deny", middleware.RequireAuth(http.HandlerFunc(handlers.DenyRequestHandler)))
 	mux.Handle("/scan", middleware.RequireAuth(http.HandlerFunc(handlers.ScanHandler)))
 	mux.Handle("/scan/incoming", middleware.RequireAuth(http.HandlerFunc(handlers.ScanIncomingHandler)))
 	mux.Handle("/import/movies/all", middleware.RequireAuth(http.HandlerFunc(handlers.ImportAllMoviesHandler)))
