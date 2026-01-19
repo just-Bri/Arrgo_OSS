@@ -112,16 +112,49 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count := 0
+	var moviesToImport []models.Movie
 	for _, m := range allMovies {
 		if strings.HasPrefix(m.Path, cfg.IncomingMoviesPath) && m.Status == "matched" {
-			if err := services.RenameAndMoveMovie(cfg, m.ID); err != nil {
-				log.Printf("Error importing movie %d (%s): %v", m.ID, m.Title, err)
-			} else {
-				count++
-			}
+			moviesToImport = append(moviesToImport, m)
 		}
 	}
+
+	if len(moviesToImport) == 0 {
+		log.Printf("No movies found to import")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("[IMPORT] Starting mass movie import for %d movies with 4 workers...", len(moviesToImport))
+
+	count := 0
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	movieChan := make(chan models.Movie, len(moviesToImport))
+
+	// Start 4 workers
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for m := range movieChan {
+				if err := services.RenameAndMoveMovie(cfg, m.ID); err != nil {
+					log.Printf("Error importing movie %d (%s): %v", m.ID, m.Title, err)
+				} else {
+					mu.Lock()
+					count++
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+
+	// Dispatch movies
+	for _, m := range moviesToImport {
+		movieChan <- m
+	}
+	close(movieChan)
+	wg.Wait()
 
 	log.Printf("Mass movie import complete: %d movies moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -147,16 +180,47 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count := 0
+	var showsToImport []models.Show
 	for _, s := range allShows {
 		if strings.HasPrefix(s.Path, cfg.IncomingTVPath) && s.Status == "matched" {
-			if err := services.RenameAndMoveShow(cfg, s.ID); err != nil {
-				log.Printf("Error importing show %d (%s): %v", s.ID, s.Title, err)
-			} else {
-				count++
-			}
+			showsToImport = append(showsToImport, s)
 		}
 	}
+
+	if len(showsToImport) == 0 {
+		log.Printf("No shows found to import")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	log.Printf("[IMPORT] Starting mass show import for %d shows with 4 workers...", len(showsToImport))
+
+	count := 0
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	showChan := make(chan models.Show, len(showsToImport))
+
+	// Start 4 workers
+	for range 4 {
+		wg.Go(func() {
+			for s := range showChan {
+				if err := services.RenameAndMoveShow(cfg, s.ID); err != nil {
+					log.Printf("Error importing show %d (%s): %v", s.ID, s.Title, err)
+				} else {
+					mu.Lock()
+					count++
+					mu.Unlock()
+				}
+			}
+		})
+	}
+
+	// Dispatch shows
+	for _, s := range showsToImport {
+		showChan <- s
+	}
+	close(showChan)
+	wg.Wait()
 
 	log.Printf("Mass show import complete: %d shows moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
