@@ -196,7 +196,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 
 	// Trigger subtitle download
 	go func() {
-		if err := DownloadSubtitlesForMovie(cfg, m.IMDBID, m.TMDBID, m.Title, m.Year, destPath); err != nil {
+		if err := DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
 			log.Printf("[RENAMER] Subtitle download failed for %s: %v", m.Title, err)
 		}
 	}()
@@ -329,7 +329,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 
 	// Trigger subtitle download for episode
 	go func() {
-		if err := DownloadSubtitlesForEpisode(cfg, sh.IMDBID, "", sh.Title, s.SeasonNumber, e.EpisodeNumber, destPath); err != nil {
+		if err := DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
 			log.Printf("[RENAMER] Subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
 		}
 	}()

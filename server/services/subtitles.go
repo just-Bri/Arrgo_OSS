@@ -2,6 +2,7 @@ package services
 
 import (
 	"Arrgo/config"
+	"Arrgo/database"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,63 @@ import (
 	"sync"
 	"time"
 )
+
+type OpenSubtitlesError struct {
+	Message      string `json:"message"`
+	ResetTimeUTC string `json:"reset_time_utc"`
+	Status       int    `json:"-"`
+}
+
+func (e OpenSubtitlesError) Error() string {
+	return fmt.Sprintf("opensubtitles download request failed (%d): %s", e.Status, e.Message)
+}
+
+func parseOpenSubtitlesError(resp *http.Response) error {
+	body, _ := io.ReadAll(resp.Body)
+	var osErr OpenSubtitlesError
+	if err := json.Unmarshal(body, &osErr); err == nil {
+		osErr.Status = resp.StatusCode
+		if resp.StatusCode == 406 && osErr.ResetTimeUTC != "" {
+			// Store quota reset time
+			if t, err := time.Parse(time.RFC3339, osErr.ResetTimeUTC); err == nil {
+				// Store as ISO8601 string
+				SetSetting("opensubtitles_quota_reset", t.Format(time.RFC3339))
+			}
+		}
+		return osErr
+	}
+	return fmt.Errorf("opensubtitles request failed (%d): %s", resp.StatusCode, string(body))
+}
+
+func SetSetting(key, value string) error {
+	_, err := database.DB.Exec(`
+		INSERT INTO settings (key, value, updated_at) 
+		VALUES ($1, $2, CURRENT_TIMESTAMP)
+		ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
+		key, value)
+	return err
+}
+
+func QueueSubtitleDownload(mediaType string, mediaID int) error {
+	// If we have a reset time, use it + 5 minutes. Otherwise use now.
+	nextRetry := time.Now()
+	var resetStr string
+	err := database.DB.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
+	if err == nil {
+		if t, err := time.Parse(time.RFC3339, resetStr); err == nil {
+			if t.After(nextRetry) {
+				nextRetry = t.Add(5 * time.Minute)
+			}
+		}
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO subtitle_queue (media_type, media_id, next_retry)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (media_type, media_id) DO UPDATE SET next_retry = $3`,
+		mediaType, mediaID, nextRetry)
+	return err
+}
 
 var (
 	osToken       string
@@ -149,9 +207,16 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 	return osToken, osBaseURL, nil
 }
 
-func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string, year int, videoPath string) error {
+func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
+	}
+
+	var imdbID, tmdbID, title, videoPath string
+	var year int
+	err := database.DB.QueryRow("SELECT imdb_id, tmdb_id, title, year, path FROM movies WHERE id = $1", movieID).Scan(&imdbID, &tmdbID, &title, &year, &videoPath)
+	if err != nil {
+		return fmt.Errorf("failed to fetch movie info for subtitle download: %w", err)
 	}
 
 	// Wait for our turn
@@ -190,7 +255,11 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("opensubtitles search returned status %d", resp.StatusCode)
+		err := parseOpenSubtitlesError(resp)
+		if resp.StatusCode == 406 {
+			QueueSubtitleDownload("movie", movieID)
+		}
+		return err
 	}
 
 	var searchResult OSSearchResponse
@@ -263,8 +332,11 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	defer downloadResp.Body.Close()
 
 	if downloadResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(downloadResp.Body)
-		return fmt.Errorf("opensubtitles download request failed (%d): %s", downloadResp.StatusCode, string(body))
+		err := parseOpenSubtitlesError(downloadResp)
+		if downloadResp.StatusCode == 406 {
+			QueueSubtitleDownload("movie", movieID)
+		}
+		return err
 	}
 
 	var downloadInfo OSDownloadResponse
@@ -306,9 +378,23 @@ func DownloadSubtitlesForMovie(cfg *config.Config, imdbID, tmdbID, title string,
 	return nil
 }
 
-func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle string, season, episode int, videoPath string) error {
+func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
+	}
+
+	var imdbID, showTitle, videoPath string
+	var season, episode int
+	query := `
+		SELECT sh.imdb_id, sh.title, s.season_number, e.episode_number, e.file_path
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		JOIN shows sh ON s.show_id = sh.id
+		WHERE e.id = $1
+	`
+	err := database.DB.QueryRow(query, episodeID).Scan(&imdbID, &showTitle, &season, &episode, &videoPath)
+	if err != nil {
+		return fmt.Errorf("failed to fetch episode info for subtitle download: %w", err)
 	}
 
 	// Wait for our turn
@@ -347,7 +433,11 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("opensubtitles search returned status %d", resp.StatusCode)
+		err := parseOpenSubtitlesError(resp)
+		if resp.StatusCode == 406 {
+			QueueSubtitleDownload("episode", episodeID)
+		}
+		return err
 	}
 
 	var searchResult OSSearchResponse
@@ -416,8 +506,11 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, imdbID, tmdbID, showTitle s
 	defer downloadResp.Body.Close()
 
 	if downloadResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(downloadResp.Body)
-		return fmt.Errorf("opensubtitles download request failed (%d): %s", downloadResp.StatusCode, string(body))
+		err := parseOpenSubtitlesError(downloadResp)
+		if downloadResp.StatusCode == 406 {
+			QueueSubtitleDownload("episode", episodeID)
+		}
+		return err
 	}
 
 	var downloadInfo OSDownloadResponse

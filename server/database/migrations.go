@@ -185,6 +185,22 @@ func RunMigrations() error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS settings (
+		key VARCHAR(255) PRIMARY KEY,
+		value TEXT,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS subtitle_queue (
+		id SERIAL PRIMARY KEY,
+		media_type VARCHAR(20) NOT NULL, -- 'movie' or 'episode'
+		media_id INTEGER NOT NULL,
+		retry_count INTEGER DEFAULT 0,
+		next_retry TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(media_type, media_id)
+	);
 	`
 	_, err = DB.Exec(requestsTableSQL)
 	if err != nil {

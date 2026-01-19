@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"Arrgo/config"
@@ -41,6 +42,10 @@ func (s *AutomationService) Start(ctx context.Context) {
 	updateTicker := time.NewTicker(30 * time.Second)
 	defer updateTicker.Stop()
 
+	// Check subtitle queue every 15 minutes
+	subtitleTicker := time.NewTicker(15 * time.Minute)
+	defer subtitleTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -49,6 +54,8 @@ func (s *AutomationService) Start(ctx context.Context) {
 			s.ProcessApprovedRequests(ctx)
 		case <-updateTicker.C:
 			s.UpdateDownloadStatus(ctx)
+		case <-subtitleTicker.C:
+			s.ProcessSubtitleQueue(ctx)
 		}
 	}
 }
@@ -213,6 +220,75 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 					log.Printf("Download %s vanished from qBittorrent, resetting request %d to approved", hash, reqID)
 					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
 					database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", hash)
+				}
+			}
+		}
+	}
+}
+
+func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
+	// 1. Check if we are still in quota lockdown
+	var resetStr string
+	err := database.DB.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
+	if err == nil {
+		if t, err := time.Parse(time.RFC3339, resetStr); err == nil {
+			if time.Now().Before(t.Add(5 * time.Minute)) {
+				// Still in lockdown
+				log.Printf("[SUBTITLES] Still in OpenSubtitles quota lockdown until %v", t.Add(5*time.Minute))
+				return
+			}
+		}
+	}
+
+	// 2. Fetch pending jobs that are ready for retry
+	rows, err := database.DB.Query("SELECT id, media_type, media_id FROM subtitle_queue WHERE next_retry <= CURRENT_TIMESTAMP")
+	if err != nil {
+		log.Printf("Error querying subtitle queue: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type job struct {
+		id    int
+		mType string
+		mID   int
+	}
+	var jobs []job
+	for rows.Next() {
+		var j job
+		if err := rows.Scan(&j.id, &j.mType, &j.mID); err == nil {
+			jobs = append(jobs, j)
+		}
+	}
+
+	for _, j := range jobs {
+		log.Printf("[SUBTITLES] Retrying subtitle download for %s %d", j.mType, j.mID)
+		var err error
+		if j.mType == "movie" {
+			err = DownloadSubtitlesForMovie(s.cfg, j.mID)
+		} else {
+			err = DownloadSubtitlesForEpisode(s.cfg, j.mID)
+		}
+
+		if err == nil {
+			// Success! Remove from queue
+			database.DB.Exec("DELETE FROM subtitle_queue WHERE id = $1", j.id)
+			log.Printf("[SUBTITLES] Successfully downloaded subtitles for %s %d on retry", j.mType, j.mID)
+		} else {
+			// Check if it was a quota error again
+			if strings.Contains(err.Error(), "406") {
+				// Quota hit again, next_retry was updated by QueueSubtitleDownload called inside DownloadSubtitlesForX
+				log.Printf("[SUBTITLES] Hit quota again while retrying %s %d", j.mType, j.mID)
+				break // Stop processing queue for now
+			} else {
+				// Some other error, increment retry count and back off
+				database.DB.Exec("UPDATE subtitle_queue SET retry_count = retry_count + 1, next_retry = CURRENT_TIMESTAMP + interval '1 hour' WHERE id = $1", j.id)
+
+				var retries int
+				database.DB.QueryRow("SELECT retry_count FROM subtitle_queue WHERE id = $1", j.id).Scan(&retries)
+				if retries > 5 {
+					log.Printf("[SUBTITLES] Giving up on subtitles for %s %d after 5 retries", j.mType, j.mID)
+					database.DB.Exec("DELETE FROM subtitle_queue WHERE id = $1", j.id)
 				}
 			}
 		}

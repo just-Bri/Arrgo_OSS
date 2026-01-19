@@ -312,7 +312,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.DownloadSubtitlesForMovie(cfg, m.IMDBID, m.TMDBID, m.Title, m.Year, m.Path); err != nil {
+		if err := services.DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
 			log.Printf("[HANDLERS] Manual subtitle download failed for %s: %v", m.Title, err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
@@ -349,7 +349,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.DownloadSubtitlesForEpisode(cfg, sh.IMDBID, "", sh.Title, s.SeasonNumber, e.EpisodeNumber, e.FilePath); err != nil {
+		if err := services.DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
 			log.Printf("[HANDLERS] Manual subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
