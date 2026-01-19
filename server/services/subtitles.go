@@ -73,6 +73,18 @@ func QueueSubtitleDownload(mediaType string, mediaID int) error {
 	return err
 }
 
+func IsQuotaLocked() bool {
+	var resetStr string
+	err := database.DB.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
+	if err != nil {
+		return false
+	}
+	if t, err := time.Parse(time.RFC3339, resetStr); err == nil {
+		return time.Now().Before(t.Add(5 * time.Minute))
+	}
+	return false
+}
+
 var (
 	osToken       string
 	osBaseURL     string
@@ -210,6 +222,11 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
+	}
+
+	if IsQuotaLocked() {
+		log.Printf("[SUBTITLES] OpenSubtitles quota is currently locked, queueing movie %d", movieID)
+		return QueueSubtitleDownload("movie", movieID)
 	}
 
 	var imdbID, tmdbID, title, videoPath string
@@ -381,6 +398,11 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	if cfg.OpenSubtitlesAPIKey == "" {
 		return nil
+	}
+
+	if IsQuotaLocked() {
+		log.Printf("[SUBTITLES] OpenSubtitles quota is currently locked, queueing episode %d", episodeID)
+		return QueueSubtitleDownload("episode", episodeID)
 	}
 
 	var imdbID, showTitle, videoPath string

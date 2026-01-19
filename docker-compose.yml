@@ -16,10 +16,10 @@ services:
       - PUID=99
       - PGID=100
       - GOLOG_LOG_LEVEL=debug
-      - MOVIES_PATH=/mnt/movies
-      - TV_SHOWS_PATH=/mnt/tv
-      - INCOMING_MOVIES_PATH=/mnt/incoming/movies
-      - INCOMING_TV_PATH=/mnt/incoming/tv
+      - MOVIES_PATH=/data/movies
+      - TV_SHOWS_PATH=/data/tv
+      - INCOMING_MOVIES_PATH=/data/incoming/movies
+      - INCOMING_TV_PATH=/data/incoming/tv
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TVDB_API_KEY=${TVDB_API_KEY}
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
@@ -36,9 +36,7 @@ services:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
       - ./posters:/root/data/posters
-      - /mnt/user/media/movies:/mnt/movies
-      - /mnt/user/media/shows:/mnt/tv
-      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/data/torrents:/mnt/incoming
+      - /mnt/user/media:/data
     networks:
       - arrgo-network
     restart: unless-stopped
@@ -123,7 +121,7 @@ services:
       - WEBUI_PORT=8080
     volumes:
       - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config:/config
-      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/data/torrents:/mnt/incoming
+      - /mnt/user/media/incoming:/data/incoming
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: qbittorrent
