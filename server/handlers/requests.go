@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
 	"encoding/json"
@@ -240,6 +241,49 @@ func DenyRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if err := services.UpdateRequestStatus(id, "cancelled"); err != nil {
 		log.Printf("Error denying request: %v", err)
 		http.Error(w, "Failed to deny request", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func DeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	session, err := services.GetSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := session.Values["user_id"]
+	if userID == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := services.GetUserByID(interfaceToInt64(userID))
+	if err != nil || !user.IsAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	qb, _ := services.NewQBittorrentClient(cfg)
+
+	if err := services.DeleteRequest(id, qb); err != nil {
+		log.Printf("Error deleting request: %v", err)
+		http.Error(w, "Failed to delete request", http.StatusInternalServerError)
 		return
 	}
 

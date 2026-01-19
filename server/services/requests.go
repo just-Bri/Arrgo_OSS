@@ -108,6 +108,27 @@ func UpdateRequestStatus(id int, status string) error {
 	return err
 }
 
+func DeleteRequest(id int, qb *QBittorrentClient) error {
+	// 1. Get associated torrent hashes from downloads table
+	rows, err := database.DB.Query("SELECT torrent_hash FROM downloads WHERE request_id = $1", id)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var hash string
+			if err := rows.Scan(&hash); err == nil {
+				// 2. Delete from qBittorrent and remove files
+				if qb != nil {
+					_ = qb.DeleteTorrent(context.Background(), hash, true)
+				}
+			}
+		}
+	}
+
+	// 3. Delete from database (cascades to downloads table due to foreign key)
+	_, err = database.DB.Exec("DELETE FROM requests WHERE id = $1", id)
+	return err
+}
+
 func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, error) {
 	status := LibraryStatus{Exists: false}
 

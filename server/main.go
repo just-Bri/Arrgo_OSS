@@ -99,6 +99,7 @@ func main() {
 	mux.Handle("/requests/create", middleware.RequireAuth(http.HandlerFunc(handlers.CreateRequestHandler)))
 	mux.Handle("/requests/approve", middleware.RequireAuth(http.HandlerFunc(handlers.ApproveRequestHandler)))
 	mux.Handle("/requests/deny", middleware.RequireAuth(http.HandlerFunc(handlers.DenyRequestHandler)))
+	mux.Handle("/requests/delete", middleware.RequireAuth(http.HandlerFunc(handlers.DeleteRequestHandler)))
 	mux.Handle("/scan", middleware.RequireAuth(http.HandlerFunc(handlers.ScanHandler)))
 	mux.Handle("/scan/incoming", middleware.RequireAuth(http.HandlerFunc(handlers.ScanIncomingHandler)))
 	mux.Handle("/import/movies/all", middleware.RequireAuth(http.HandlerFunc(handlers.ImportAllMoviesHandler)))
