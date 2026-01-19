@@ -30,7 +30,7 @@ func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *Automation
 
 func (s *AutomationService) Start(ctx context.Context) {
 	log.Println("Starting Automation Service...")
-	
+
 	// Check for approved requests every 5 minutes
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -54,7 +54,7 @@ func (s *AutomationService) Start(ctx context.Context) {
 func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	var requests []models.Request
 	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons FROM requests WHERE status = 'approved'`
-	
+
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		log.Printf("Error querying approved requests: %v", err)
@@ -81,9 +81,9 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
 	// 1. Search Indexer
-	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json", 
+	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json",
 		s.cfg.IndexerURL, url.QueryEscape(r.Title), r.MediaType)
-	
+
 	resp, err := s.httpClient.Get(searchURL)
 	if err != nil {
 		return fmt.Errorf("failed to call indexer: %w", err)
@@ -118,11 +118,13 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 
 	// 3. Add to qBittorrent
 	category := "arrgo-movies"
+	savePath := s.cfg.IncomingMoviesPath
 	if r.MediaType == "show" {
 		category = "arrgo-tv"
+		savePath = s.cfg.IncomingTVPath
 	}
 
-	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category); err != nil {
+	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category, savePath); err != nil {
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
 
@@ -143,7 +145,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	_, err = tx.Exec(`
 		INSERT INTO downloads (request_id, torrent_hash, title, status, updated_at)
 		VALUES ($1, $2, $3, 'downloading', NOW())
-		ON CONFLICT (torrent_hash) DO NOTHING`, 
+		ON CONFLICT (torrent_hash) DO NOTHING`,
 		r.ID, best.InfoHash, best.Title)
 	if err != nil {
 		return err
@@ -164,7 +166,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		_, err := database.DB.Exec(`
 			UPDATE downloads 
 			SET progress = $1, status = $2, updated_at = NOW() 
-			WHERE torrent_hash = $3`, 
+			WHERE torrent_hash = $3`,
 			t.Progress, t.State, t.Hash)
 		if err != nil {
 			log.Printf("Error updating download status: %v", err)
@@ -176,7 +178,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			_, err = database.DB.Exec(`
 				UPDATE requests 
 				SET status = 'completed', updated_at = NOW() 
-				WHERE id = (SELECT request_id FROM downloads WHERE torrent_hash = $1)`, 
+				WHERE id = (SELECT request_id FROM downloads WHERE torrent_hash = $1)`,
 				t.Hash)
 			if err != nil {
 				log.Printf("Error updating request status to completed: %v", err)

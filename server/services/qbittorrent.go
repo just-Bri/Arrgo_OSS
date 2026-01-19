@@ -61,7 +61,7 @@ func (q *QBittorrentClient) Login(ctx context.Context) error {
 	return nil
 }
 
-func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, category string) error {
+func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, category string, savePath string) error {
 	// Ensure we're logged in (qBittorrent might need re-auth)
 	if err := q.Login(ctx); err != nil {
 		return fmt.Errorf("failed to login before adding torrent: %w", err)
@@ -72,6 +72,9 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 	data.Set("urls", magnetLink)
 	if category != "" {
 		data.Set("category", category)
+	}
+	if savePath != "" {
+		data.Set("savepath", savePath)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", addURL, strings.NewReader(data.Encode()))
@@ -95,13 +98,13 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 }
 
 type TorrentStatus struct {
-	Hash       string  `json:"hash"`
-	Name       string  `json:"name"`
-	Progress   float64 `json:"progress"`
-	Size       int64   `json:"size"`
-	State      string  `json:"state"`
-	Eta        int     `json:"eta"`
-	DownloadSpeed int  `json:"dlspeed"`
+	Hash          string  `json:"hash"`
+	Name          string  `json:"name"`
+	Progress      float64 `json:"progress"`
+	Size          int64   `json:"size"`
+	State         string  `json:"state"`
+	Eta           int     `json:"eta"`
+	DownloadSpeed int     `json:"dlspeed"`
 }
 
 func (q *QBittorrentClient) GetTorrents(ctx context.Context, filter string) ([]TorrentStatus, error) {
