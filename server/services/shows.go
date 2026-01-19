@@ -78,7 +78,7 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 
 func processShowDir(cfg *config.Config, root string, name string) {
 	showPath := filepath.Join(root, name)
-	title, year := parseMovieName(name) // Reuse parseMovieName for "Title (Year)"
+	title, year, tmdbID, tvdbID, imdbID := parseMovieName(name) // Reuse parseMovieName for "Title (Year)"
 
 	// Look for local poster
 	posterPath := ""
@@ -102,6 +102,9 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	showID, err := upsertShow(models.Show{
 		Title:      title,
 		Year:       year,
+		TMDBID:     tmdbID,
+		TVDBID:     tvdbID,
+		IMDBID:     imdbID,
 		Path:       showPath,
 		PosterPath: posterPath,
 		Status:     "discovered",
@@ -120,16 +123,19 @@ func processShowDir(cfg *config.Config, root string, name string) {
 func upsertShow(show models.Show) (int, error) {
 	var id int
 	query := `
-		INSERT INTO shows (title, year, path, poster_path, status, updated_at)
-		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+		INSERT INTO shows (title, year, tmdb_id, tvdb_id, imdb_id, path, poster_path, status, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
 		ON CONFLICT (path) DO UPDATE SET
 			title = EXCLUDED.title,
 			year = EXCLUDED.year,
+			tmdb_id = COALESCE(NULLIF(EXCLUDED.tmdb_id, ''), shows.tmdb_id),
+			tvdb_id = COALESCE(NULLIF(EXCLUDED.tvdb_id, ''), shows.tvdb_id),
+			imdb_id = COALESCE(NULLIF(EXCLUDED.imdb_id, ''), shows.imdb_id),
 			poster_path = COALESCE(NULLIF(EXCLUDED.poster_path, ''), shows.poster_path),
 			updated_at = CURRENT_TIMESTAMP
 		RETURNING id
 	`
-	err := database.DB.QueryRow(query, show.Title, show.Year, show.Path, show.PosterPath, show.Status).Scan(&id)
+	err := database.DB.QueryRow(query, show.Title, show.Year, show.TMDBID, show.TVDBID, show.IMDBID, show.Path, show.PosterPath, show.Status).Scan(&id)
 	return id, err
 }
 

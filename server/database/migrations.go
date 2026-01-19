@@ -100,6 +100,14 @@ func RunMigrations() error {
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
+	-- Migration for existing shows table
+	DO $$ 
+	BEGIN 
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shows' AND column_name='tmdb_id') THEN
+			ALTER TABLE shows ADD COLUMN tmdb_id VARCHAR(50);
+		END IF;
+	END $$;
+
 	CREATE TABLE IF NOT EXISTS seasons (
 		id SERIAL PRIMARY KEY,
 		show_id INTEGER REFERENCES shows(id) ON DELETE CASCADE,

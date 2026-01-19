@@ -89,15 +89,15 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 func processMovieFile(cfg *config.Config, path string) {
 	filename := filepath.Base(path)
 	nameOnly := strings.TrimSuffix(filename, filepath.Ext(filename))
-	title, year := parseMovieName(nameOnly)
+	title, year, tmdbID, tvdbID, imdbID := parseMovieName(nameOnly)
 
 	// If filename doesn't have year, try parent directory
-	if year == 0 {
+	if year == 0 && tmdbID == "" && tvdbID == "" && imdbID == "" {
 		parentDir := filepath.Base(filepath.Dir(path))
 		// Check if parentDir is not just one of the root scan paths
 		if parentDir != "." && parentDir != filepath.Base(cfg.MoviesPath) &&
 			parentDir != filepath.Base(cfg.IncomingMoviesPath) {
-			title, year = parseMovieName(parentDir)
+			title, year, tmdbID, tvdbID, imdbID = parseMovieName(parentDir)
 		}
 	}
 
@@ -130,6 +130,8 @@ func processMovieFile(cfg *config.Config, path string) {
 	movie := models.Movie{
 		Title:      title,
 		Year:       year,
+		TMDBID:     tmdbID,
+		IMDBID:     imdbID,
 		Path:       path,
 		Quality:    quality,
 		Size:       size,
@@ -145,9 +147,23 @@ func processMovieFile(cfg *config.Config, path string) {
 	}
 }
 
-func parseMovieName(name string) (string, int) {
-	// 1. Clean up ID tags like [tmdbid-343423], {tmdb-343423}, [tvdb-12345], etc.
+func parseMovieName(name string) (string, int, string, string, string) {
+	var tmdbID, tvdbID, imdbID string
+
+	// 1. Extract and clean ID tags like [tmdbid-343423], {tmdb-343423}, [tvdb-12345], etc.
 	idRegex := regexp.MustCompile(`(?i)[\[\{](tmdb|tvdb|tmdbid|imdb)[- ]?([a-z0-9]+)[\]\}]`)
+	matches := idRegex.FindAllStringSubmatch(name, -1)
+	for _, match := range matches {
+		tag := strings.ToLower(match[1])
+		id := match[2]
+		if tag == "tmdb" || tag == "tmdbid" {
+			tmdbID = id
+		} else if tag == "tvdb" {
+			tvdbID = id
+		} else if tag == "imdb" {
+			imdbID = id
+		}
+	}
 	name = idRegex.ReplaceAllString(name, "")
 
 	// 2. Remove common junk suffixes
@@ -157,23 +173,25 @@ func parseMovieName(name string) (string, int) {
 
 	// 3. Match "Title (Year)"
 	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)
-	matches := re.FindStringSubmatch(name)
-	if len(matches) == 3 {
-		title := strings.TrimSpace(matches[1])
-		year, _ := strconv.Atoi(matches[2])
-		return title, year
+	epMatches := re.FindStringSubmatch(name)
+	if len(epMatches) == 3 {
+		title := strings.TrimSpace(epMatches[1])
+		year, _ := strconv.Atoi(epMatches[2])
+		return title, year, tmdbID, tvdbID, imdbID
 	}
-	return name, 0
+	return name, 0, tmdbID, tvdbID, imdbID
 }
 
 func upsertMovie(movie models.Movie) (int, error) {
 	var id int
 	query := `
-		INSERT INTO movies (title, year, path, quality, size, poster_path, status, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+		INSERT INTO movies (title, year, tmdb_id, imdb_id, path, quality, size, poster_path, status, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
 		ON CONFLICT (path) DO UPDATE SET
 			title = EXCLUDED.title,
 			year = EXCLUDED.year,
+			tmdb_id = COALESCE(NULLIF(EXCLUDED.tmdb_id, ''), movies.tmdb_id),
+			imdb_id = COALESCE(NULLIF(EXCLUDED.imdb_id, ''), movies.imdb_id),
 			quality = EXCLUDED.quality,
 			size = EXCLUDED.size,
 			poster_path = COALESCE(NULLIF(EXCLUDED.poster_path, ''), movies.poster_path),
@@ -181,7 +199,7 @@ func upsertMovie(movie models.Movie) (int, error) {
 			updated_at = CURRENT_TIMESTAMP
 		RETURNING id
 	`
-	err := database.DB.QueryRow(query, movie.Title, movie.Year, movie.Path, movie.Quality, movie.Size, movie.PosterPath, movie.Status).Scan(&id)
+	err := database.DB.QueryRow(query, movie.Title, movie.Year, movie.TMDBID, movie.IMDBID, movie.Path, movie.Quality, movie.Size, movie.PosterPath, movie.Status).Scan(&id)
 	return id, err
 }
 
