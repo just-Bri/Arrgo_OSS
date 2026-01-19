@@ -65,23 +65,23 @@ type TMDBMovieDetails struct {
 }
 
 type TVDBShowDetails struct {
-	ID            int      `json:"id"`
-	Name          string   `json:"name"`
-	Overview      string   `json:"overview"`
-	Image         string   `json:"image"`
-	FirstAired    string   `json:"firstAired"`
-	LastAired     string   `json:"lastAired"`
-	Status        struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Overview   string `json:"overview"`
+	Image      string `json:"image"`
+	FirstAired string `json:"firstAired"`
+	LastAired  string `json:"lastAired"`
+	Status     struct {
 		Name string `json:"name"`
 	} `json:"status"`
-	Genres        []struct {
+	Genres []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"genres"`
 	Seasons []struct {
-		ID           int    `json:"id"`
-		Number       int    `json:"number"`
-		Type         struct {
+		ID     int `json:"id"`
+		Number int `json:"number"`
+		Type   struct {
 			Name string `json:"name"`
 		} `json:"type"`
 	} `json:"seasons"`
@@ -94,12 +94,12 @@ type TVDBShowDetails struct {
 type TVDBSeasonEpisodesResponse struct {
 	Data struct {
 		Episodes []struct {
-			ID            int    `json:"id"`
-			Name          string `json:"name"`
-			SeasonNumber  int    `json:"seasonNumber"`
-			Number        int    `json:"number"`
-			Overview      string `json:"overview"`
-			Aired         string `json:"aired"`
+			ID           int    `json:"id"`
+			Name         string `json:"name"`
+			SeasonNumber int    `json:"seasonNumber"`
+			Number       int    `json:"number"`
+			Overview     string `json:"overview"`
+			Aired        string `json:"aired"`
 		} `json:"episodes"`
 	} `json:"data"`
 }
@@ -110,7 +110,7 @@ func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, 
 	}
 
 	throttle()
-	url := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s", tmdbID, cfg.TMDBAPIKey)
+	url := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, cfg.TMDBAPIKey)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -141,10 +141,11 @@ func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, er
 	}
 
 	throttle()
-	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/extended", tvdbID)
+	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/extended?meta=translations&short=false", tvdbID)
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept-Language", "eng")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -168,12 +169,12 @@ func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, er
 }
 
 type TVDBEpisode struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	SeasonNumber  int    `json:"seasonNumber"`
-	Number        int    `json:"number"`
-	Overview      string `json:"overview"`
-	Aired         string `json:"aired"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	SeasonNumber int    `json:"seasonNumber"`
+	Number       int    `json:"number"`
+	Overview     string `json:"overview"`
+	Aired        string `json:"aired"`
 }
 
 func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, error) {
@@ -187,8 +188,8 @@ func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, erro
 	}
 
 	throttle()
-	// Using default translation to get episode names
-	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/episodes/default", tvdbID)
+	// Using default translation to get episode names in English
+	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/episodes/default/eng", tvdbID)
 
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -275,7 +276,7 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	}
 
 	throttle()
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s",
+	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US",
 		cfg.TMDBAPIKey, url.QueryEscape(query))
 
 	resp, err := http.Get(searchURL)
@@ -328,7 +329,7 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	}
 
 	throttle()
-	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series&lang=eng", url.QueryEscape(query))
 
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -459,10 +460,10 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 		log.Printf("[METADATA] Error fetching full details for TMDB ID %d: %v", searchResult.ID, err)
 		// Fallback to search results if details fail, though we won't have IMDB ID
 		details = &TMDBMovieDetails{
-			ID:          searchResult.ID,
-			Title:       searchResult.Title,
-			Overview:    searchResult.Overview,
-			PosterPath:  searchResult.PosterPath,
+			ID:         searchResult.ID,
+			Title:      searchResult.Title,
+			Overview:   searchResult.Overview,
+			PosterPath: searchResult.PosterPath,
 		}
 	}
 
@@ -592,10 +593,16 @@ func MatchShow(cfg *config.Config, showID int) error {
 			Name:     searchResult.Name,
 			Overview: searchResult.Overview,
 			Image:    searchResult.ImageURL,
-			Genres:   []struct{ID int `json:"id"`; Name string `json:"name"`}{},
+			Genres: []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			}{},
 		}
 		for _, g := range searchResult.Genres {
-			details.Genres = append(details.Genres, struct{ID int `json:"id"`; Name string `json:"name"`}{Name: g})
+			details.Genres = append(details.Genres, struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			}{Name: g})
 		}
 	}
 
