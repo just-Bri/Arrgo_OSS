@@ -6,7 +6,7 @@ Arrgo is a lightweight, high-performance media management tool designed to repla
 
 The primary goal of Arrgo is to provide a modern, consolidated alternative to the existing media management ecosystem, specifically optimized for home server environments like Unraid.
 
-- **Consolidated Management**: Handle both movies (Radarr) and TV shows (Sonarr) in one application.
+- **Consolidated Management**: Handle both movies and shows in one application.
 - **Media Server Compatibility**: Automatically organize and rename files to follow [Plex](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/) and [Jellyfin](https://jellyfin.org/docs/general/server/media/movies/) naming conventions.
 - **Lightweight & Fast**: Built with Go and HTMX to ensure minimal resource usage and a snappy user interface.
 - **Docker-First**: Designed to be easily deployed via Docker Compose.
@@ -22,10 +22,10 @@ The primary goal of Arrgo is to provide a modern, consolidated alternative to th
 
 ## 🌟 Current Features
 
-- **Consolidated Management**: Handle both movies and TV shows in one application.
+- **Consolidated Management**: Handle both movies and shows in one application.
 - **Unified Search**: Search across your local library and external sources (TMDB/TVDB) simultaneously from any page.
 - **Media Details**: Deep dive into your library with rich metadata, posters, and episode-level library status.
-- **Request System**: Users can request new movies or specific seasons of TV shows.
+- **Request System**: Users can request new movies or specific seasons of shows.
 - **Secure Auth**: Password-based login with bcrypt hashing and session management.
 - **Role-Based Access**: Restrict dangerous actions (like library scans) to admin users.
 - **Automatic Organization**: Automatically organize and rename files to follow standard naming conventions.
@@ -69,9 +69,9 @@ Configure the following variables in `docker-compose.yml`:
 - `PORT`: The port the application will listen on (default: 5003).
 - `PUID/PGID`: User/Group ID for file permissions (e.g., 99/100 for Unraid).
 - `MOVIES_PATH`: Local path where your processed movies are stored.
-- `TV_SHOWS_PATH`: Local path where your processed TV shows are stored.
+- `SHOWS_PATH`: Local path where your processed shows are stored.
 - `INCOMING_MOVIES_PATH`: Path where new, unprocessed movies are located.
-- `INCOMING_TV_PATH`: Path where new, unprocessed TV shows are located.
+- `INCOMING_SHOWS_PATH`: Path where new, unprocessed shows are located.
 - `TMDB_API_KEY`: Your [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) (Required for metadata).
 - `TVDB_API_KEY`: Your [TheTVDB API Key](https://thetvdb.com/api-information) (Required for TV shows).
 - `OPENSUBTITLES_API_KEY`: Your [OpenSubtitles.com API Key](https://www.opensubtitles.com/en/consumers) (Required for subtitles).
@@ -100,13 +100,13 @@ This invalidates the Docker build cache and forces it to pick up your latest fil
 
 - [x] Basic Login & Authentication (bcrypt hashing)
 - [x] User Registration & Admin Permissions
-- [x] Dashboard with Movie/TV Library Overview
+- [x] Dashboard with Movie/Show Library Overview
 - [x] Unified Search (Local Library + TMDB/TVDB)
 - [x] Media Details Pages (Extended metadata, episode lists)
 - [x] Library Scanner (Automatic detection of new media)
 - [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
 - [x] Unraid Optimization (Permissions, Docker-ready)
-- [x] TV Show Organization (Auto-renaming episodes)
+- [x] Show Organization (Auto-renaming episodes)
 - [ ] Subtitle Management (Bazarr functionality)
 - [ ] Integration with Download Clients (qBittorrent, etc.)
 - [ ] User Management UI (Promote/Demote admins)

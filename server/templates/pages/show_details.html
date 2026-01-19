@@ -13,7 +13,7 @@
                 {{if hasPrefix .Show.PosterPath "http"}}
                     <img src="{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else if gt .Show.ID 0}}
-                    <img src="/images/tv/{{.Show.ID}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <img src="/images/shows/{{.Show.ID}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{else}}
                     <img src="/images/tmdb/{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 {{end}}

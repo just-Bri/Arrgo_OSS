@@ -17,9 +17,9 @@ services:
       - PGID=100
       - GOLOG_LOG_LEVEL=debug
       - MOVIES_PATH=/data/movies
-      - TV_SHOWS_PATH=/data/tv
+      - SHOWS_PATH=/data/shows
       - INCOMING_MOVIES_PATH=/data/incoming/movies
-      - INCOMING_TV_PATH=/data/incoming/tv
+      - INCOMING_SHOWS_PATH=/data/incoming/shows
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TVDB_API_KEY=${TVDB_API_KEY}
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}

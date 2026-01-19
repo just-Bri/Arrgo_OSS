@@ -75,10 +75,21 @@ func CleanupEmptyDirs(root string) error {
 
 		if actuallyEmpty {
 			log.Printf("[CLEANUP] Removing directory (contains only junk or empty): %s", path)
-			// Use RemoveAll to be sure, though Remove should work if we only have junk files
-			err := os.RemoveAll(path)
+			
+			// Let's be safer: Only delete the files we identify as junk first, then Remove the dir.
+			// This prevents os.RemoveAll from nuking non-junk if we missed something.
+			junkFiles, _ := os.ReadDir(path)
+			for _, jf := range junkFiles {
+				if !jf.IsDir() {
+					os.Remove(filepath.Join(path, jf.Name()))
+				}
+			}
+			
+			// Remove will fail if directory is still not empty (e.g. contains subdirs)
+			err := os.Remove(path)
 			if err != nil {
-				log.Printf("[CLEANUP] Failed to remove %s: %v", path, err)
+				// If simple Remove fails, fallback to RemoveAll but only if we are REALLY sure
+				log.Printf("[CLEANUP] Simple remove failed for %s, directory might not be empty: %v", path, err)
 			}
 		}
 	}

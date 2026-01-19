@@ -15,7 +15,7 @@ import (
 )
 
 func ScanShows(cfg *config.Config, onlyIncoming bool) error {
-	log.Printf("[SCANNER] Starting TV show scan with 4 workers...")
+	log.Printf("[SCANNER] Starting show scan with 4 workers...")
 
 	// Clean up missing files first
 	PurgeMissingShows()
@@ -42,9 +42,9 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 	// Scan paths based on preference
 	var paths []string
 	if onlyIncoming {
-		paths = []string{cfg.IncomingTVPath}
+		paths = []string{cfg.IncomingShowsPath}
 	} else {
-		paths = []string{cfg.TVShowsPath}
+		paths = []string{cfg.ShowsPath}
 	}
 
 	for _, p := range paths {
@@ -71,7 +71,7 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 	close(taskChan)
 	wg.Wait()
 
-	log.Printf("[SCANNER] TV show scan complete.")
+	log.Printf("[SCANNER] Show scan complete.")
 
 	return nil
 }

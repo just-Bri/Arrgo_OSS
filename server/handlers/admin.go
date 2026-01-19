@@ -67,7 +67,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var incomingShows []models.Show
 	for _, s := range allShows {
-		if strings.HasPrefix(s.Path, cfg.IncomingTVPath) {
+		if strings.HasPrefix(s.Path, cfg.IncomingShowsPath) {
 			incomingShows = append(incomingShows, s)
 		}
 	}

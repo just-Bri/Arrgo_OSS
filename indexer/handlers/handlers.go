@@ -20,7 +20,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
-	searchType := r.URL.Query().Get("type") // "movie" or "tv"
+	searchType := r.URL.Query().Get("type") // "movie" or "show"
 	format := r.URL.Query().Get("format")   // "json" or "html" (default)
 
 	if query == "" {
@@ -33,7 +33,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	indexers := providers.GetIndexers()
 	for _, idx := range indexers {
-		if searchType == "tv" {
+		if searchType == "show" || searchType == "tv" {
 			// Skip movie-only indexers for TV searches
 			if idx.GetName() == "YTS" {
 				continue

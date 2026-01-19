@@ -97,7 +97,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	// 1. Search Indexer
 	searchType := r.MediaType
 	if r.MediaType == "show" {
-		searchType = "solid" // This will now trigger the SolidTorrents provider
+		searchType = "show" // Updated to use "show" instead of "solid"
 	}
 
 	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json",
@@ -140,8 +140,8 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	category := "arrgo-movies"
 	savePath := s.cfg.IncomingMoviesPath
 	if r.MediaType == "show" {
-		category = "arrgo-tv"
-		savePath = s.cfg.IncomingTVPath
+		category = "arrgo-shows"
+		savePath = s.cfg.IncomingShowsPath
 	}
 
 	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category, savePath); err != nil {

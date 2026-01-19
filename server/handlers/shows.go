@@ -82,7 +82,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	var incomingShows []models.Show
 
 	for _, s := range allShows {
-		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingTVPath)
+		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
 
 		if isIncoming {
 			if user.IsAdmin {
@@ -118,7 +118,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	data := ShowsData{
 		Username:      user.Username,
 		IsAdmin:       user.IsAdmin,
-		CurrentPage:   "/tv",
+		CurrentPage:   "/shows",
 		SearchQuery:   "",
 		Shows:         libraryShows,
 		IncomingShows: []models.Show{},
@@ -344,7 +344,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Username:      user.Username,
 		IsAdmin:       user.IsAdmin,
-		CurrentPage:   "/tv",
+		CurrentPage:   "/shows",
 		SearchQuery:   "",
 		Show:          show,
 		Seasons:       enhancedSeasons,

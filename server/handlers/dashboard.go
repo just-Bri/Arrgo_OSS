@@ -56,7 +56,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error getting movie count: %v", err)
 	}
 
-	showCount, err := services.GetShowCount(cfg.IncomingTVPath)
+	showCount, err := services.GetShowCount(cfg.IncomingShowsPath)
 	if err != nil {
 		log.Printf("Error getting show count: %v", err)
 	}

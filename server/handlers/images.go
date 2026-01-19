@@ -131,7 +131,7 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func ServeShowImage(w http.ResponseWriter, r *http.Request) {
-	// URL: /images/tv/{id}
+	// URL: /images/shows/{id}
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -166,8 +166,8 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 		ext = ".jpg"
 	}
 
-	// Local path: data/images/tv/{id}{ext}
-	localDir := "data/images/tv"
+	// Local path: data/images/shows/{id}{ext}
+	localDir := "data/images/shows"
 	if err := EnsureImageDir(localDir); err != nil {
 		log.Printf("Error creating image dir: %v", err)
 		http.Error(w, "Internal error", http.StatusInternalServerError)

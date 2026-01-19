@@ -10,9 +10,9 @@ type Config struct {
 	ServerPort    string
 	Environment   string
 	MoviesPath    string
-	TVShowsPath   string
+	ShowsPath     string
 	IncomingMoviesPath string
-	IncomingTVPath     string
+	IncomingShowsPath  string
 	TMDBAPIKey    string
 	TVDBAPIKey    string
 	OpenSubtitlesAPIKey string
@@ -32,9 +32,9 @@ func Load() *Config {
 		ServerPort:    getEnv("PORT", "5003"),
 		Environment:   getEnv("ENV", "development"),
 		MoviesPath:    getEnv("MOVIES_PATH", "/mnt/movies"),
-		TVShowsPath:   getEnv("TV_SHOWS_PATH", "/mnt/tv"),
+		ShowsPath:     getEnv("SHOWS_PATH", "/mnt/shows"),
 		IncomingMoviesPath: getEnv("INCOMING_MOVIES_PATH", "/mnt/incoming/movies"),
-		IncomingTVPath:     getEnv("INCOMING_TV_PATH", "/mnt/incoming/tv"),
+		IncomingShowsPath:  getEnv("INCOMING_SHOWS_PATH", "/mnt/incoming/shows"),
 		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
 		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
 		OpenSubtitlesAPIKey: getEnv("OPENSUBTITLES_API_KEY", ""),

@@ -96,7 +96,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 2. Search Local Shows
 		localShows, _ := services.SearchShowsLocal(query)
 		for _, s := range localShows {
-			isIncoming := strings.HasPrefix(s.Path, cfg.IncomingTVPath)
+			isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
 			if isIncoming && !user.IsAdmin {
 				continue
 			}

@@ -185,7 +185,7 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var showsToImport []models.Show
 	for _, s := range allShows {
-		if strings.HasPrefix(s.Path, cfg.IncomingTVPath) && s.Status == "matched" {
+		if strings.HasPrefix(s.Path, cfg.IncomingShowsPath) && s.Status == "matched" {
 			showsToImport = append(showsToImport, s)
 		}
 	}
@@ -226,7 +226,7 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	// Final cleanup pass
-	services.CleanupEmptyDirs(cfg.IncomingTVPath)
+	services.CleanupEmptyDirs(cfg.IncomingShowsPath)
 
 	log.Printf("Mass show import complete: %d shows moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
