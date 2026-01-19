@@ -29,7 +29,6 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/indexer .
 COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/static ./static
 
 EXPOSE 5004
 
