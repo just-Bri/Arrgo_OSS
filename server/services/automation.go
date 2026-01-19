@@ -88,8 +88,13 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
 	// 1. Search Indexer
+	searchType := r.MediaType
+	if r.MediaType == "show" {
+		searchType = "1337x" // Use 1337x for TV shows as it's more reliable
+	}
+
 	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json",
-		s.cfg.IndexerURL, url.QueryEscape(r.Title), r.MediaType)
+		s.cfg.IndexerURL, url.QueryEscape(r.Title), searchType)
 
 	resp, err := s.httpClient.Get(searchURL)
 	if err != nil {

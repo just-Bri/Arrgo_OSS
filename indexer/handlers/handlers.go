@@ -44,9 +44,9 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			results = append(results, res...)
-		} else {
-			// Skip TV-only indexers for movie searches
-			if idx.GetName() == "EZTV" {
+		} else if searchType == "movie" {
+			// Skip 1337x for "movie" type if you want to prefer YTS
+			if idx.GetName() == "1337x" {
 				continue
 			}
 			res, errIdx := idx.SearchMovies(ctx, query)
@@ -55,6 +55,16 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			results = append(results, res...)
+		} else if searchType == "1337x" {
+			// Specific 1337x search (shows everything)
+			if idx.GetName() == "1337x" {
+				res, errIdx := idx.SearchMovies(ctx, query)
+				if errIdx != nil {
+					errs = append(errs, errIdx)
+					continue
+				}
+				results = append(results, res...)
+			}
 		}
 	}
 
