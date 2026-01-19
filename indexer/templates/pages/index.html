@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrgo Indexer</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <nav class="bg-gray-800 p-4 shadow-lg">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-blue-400">Arrgo Indexer</h1>
+            <div class="space-x-4">
+                <a href="/" class="hover:text-blue-400">Home</a>
+                <a href="/status" class="hover:text-blue-400">Status</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto mt-10 p-4">
+        <div class="max-w-2xl mx-auto">
+            <h2 class="text-3xl font-bold mb-6 text-center">Search Torrents</h2>
+            <div class="bg-gray-800 p-6 rounded-lg shadow-xl">
+                <form hx-get="/search" hx-target="#results" hx-indicator="#spinner" class="flex flex-col gap-4">
+                    <div class="flex gap-2">
+                        <input type="text" name="q" placeholder="Enter title..." 
+                               class="flex-1 bg-gray-700 text-white p-3 rounded border border-gray-600 focus:outline-none focus:border-blue-500">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-bold transition">
+                            Search
+                        </button>
+                    </div>
+                    <div class="flex gap-4 justify-center">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="type" value="movie" checked class="w-4 h-4 text-blue-600">
+                            <span>Movies (YTS)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="type" value="tv" class="w-4 h-4 text-blue-600">
+                            <span>TV Shows (EZTV)</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <div id="spinner" class="htmx-indicator mt-8 flex justify-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+
+            <div id="results" class="mt-8 space-y-4">
+                <!-- Search results will appear here -->
+                <p class="text-gray-400 text-center">Ready to search across multiple indexers.</p>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
