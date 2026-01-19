@@ -426,7 +426,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	// 2. Search TMDB
 	log.Printf("[METADATA] Searching TMDB for movie: %s (%d)", m.Title, m.Year)
 	throttle()
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s",
+	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US",
 		cfg.TMDBAPIKey, url.QueryEscape(m.Title))
 	if m.Year > 0 {
 		searchURL += fmt.Sprintf("&year=%d", m.Year)
@@ -544,7 +544,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	log.Printf("[METADATA] Searching TVDB for show: %s (%d)", s.Title, s.Year)
 	throttle()
-	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series", url.QueryEscape(s.Title))
+	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series&lang=eng", url.QueryEscape(s.Title))
 	if s.Year > 0 {
 		searchURL += fmt.Sprintf("&year=%d", s.Year)
 	}
