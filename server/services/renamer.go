@@ -406,10 +406,50 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 		}
 	}
 
-	// Update show status and path in DB
-	_, err = database.DB.Exec("UPDATE shows SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3", destShowPath, newPosterPath, showID)
-	if err != nil {
-		log.Printf("[RENAMER] Error updating show %d in DB: %v", showID, err)
+	// Update show status and path in DB, handling potential duplicates
+	var existingID int
+	err = database.DB.QueryRow("SELECT id FROM shows WHERE path = $1", destShowPath).Scan(&existingID)
+	if err == nil && existingID != showID {
+		// Merge: another show already exists at this destination path
+		log.Printf("[RENAMER] Destination path %s already exists in DB (ID %d). Merging show %d into it.", destShowPath, existingID, showID)
+
+		// Move seasons to the existing show
+		sRows, err := database.DB.Query("SELECT id, season_number FROM seasons WHERE show_id = $1", showID)
+		if err == nil {
+			defer sRows.Close()
+			for sRows.Next() {
+				var oldSeasonID, seasonNum int
+				if err := sRows.Scan(&oldSeasonID, &seasonNum); err == nil {
+					// Check if existing show already has this season
+					var newSeasonID int
+					errS := database.DB.QueryRow("SELECT id FROM seasons WHERE show_id = $1 AND season_number = $2", existingID, seasonNum).Scan(&newSeasonID)
+					if errS == nil {
+						// Merge episodes from old season to new season
+						database.DB.Exec("UPDATE episodes SET season_id = $1 WHERE season_id = $2", newSeasonID, oldSeasonID)
+						database.DB.Exec("DELETE FROM seasons WHERE id = $1", oldSeasonID)
+					} else {
+						// Just point the old season to the new show
+						database.DB.Exec("UPDATE seasons SET show_id = $1 WHERE id = $2", existingID, oldSeasonID)
+					}
+				}
+			}
+		}
+
+		// Update metadata on the existing show and delete the duplicate
+		_, err = database.DB.Exec(`
+			UPDATE shows 
+			SET poster_path = CASE WHEN poster_path = '' OR poster_path IS NULL THEN $1 ELSE poster_path END, 
+				status = 'ready', 
+				updated_at = CURRENT_TIMESTAMP 
+			WHERE id = $2`, newPosterPath, existingID)
+		database.DB.Exec("DELETE FROM shows WHERE id = $1", showID)
+	} else {
+		// Normal case: update the current show
+		updateQuery := `UPDATE shows SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
+		_, err = database.DB.Exec(updateQuery, destShowPath, newPosterPath, showID)
+		if err != nil {
+			log.Printf("[RENAMER] Error updating show %d in DB: %v", showID, err)
+		}
 	}
 
 	CleanupEmptyDirs(cfg.IncomingShowsPath)
