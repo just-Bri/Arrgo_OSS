@@ -327,6 +327,9 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		return err
 	}
 
+	// Cleanup old directory if it was in incoming
+	CleanupEmptyDirs(cfg.IncomingTVPath)
+
 	// Trigger subtitle download for episode
 	go func() {
 		if err := DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {

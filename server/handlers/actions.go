@@ -156,6 +156,9 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	close(movieChan)
 	wg.Wait()
 
+	// Final cleanup pass
+	services.CleanupEmptyDirs(cfg.IncomingMoviesPath)
+
 	log.Printf("Mass movie import complete: %d movies moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
@@ -221,6 +224,9 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	close(showChan)
 	wg.Wait()
+
+	// Final cleanup pass
+	services.CleanupEmptyDirs(cfg.IncomingTVPath)
 
 	log.Printf("Mass show import complete: %d shows moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
