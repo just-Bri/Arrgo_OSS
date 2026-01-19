@@ -35,6 +35,7 @@ func CleanupEmptyDirs(root string) error {
 			".nfo": true, ".txt": true, ".url": true, ".exe": true,
 			".db":  true, ".md":  true, ".png": true, ".jpg": true,
 			".jpeg": true, ".gif": true, ".sfv": true, ".srr": true,
+			".xml": true, ".html": true, ".htm": true, ".info": true,
 		}
 
 		actuallyEmpty := true

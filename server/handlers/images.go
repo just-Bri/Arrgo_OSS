@@ -108,6 +108,12 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 	pp := posterPath.String
 	if strings.HasPrefix(pp, "http") {
 		sourceURL = pp
+	} else if strings.HasPrefix(pp, "/") {
+		// It's an absolute path but it doesn't exist (otherwise step 2 would have caught it)
+		// Don't try to download it from TMDB as it's not a TMDB ID
+		log.Printf("[IMAGE] Local poster path not found: %s", pp)
+		http.Error(w, "Poster not found on disk", http.StatusNotFound)
+		return
 	} else {
 		// Remove potential leading slash for consistency when joining
 		cleanPP := strings.TrimPrefix(pp, "/")
@@ -187,6 +193,11 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 	pp := posterPath.String
 	if strings.HasPrefix(pp, "http") {
 		sourceURL = pp
+	} else if strings.HasPrefix(pp, "/") {
+		// It's an absolute path but it doesn't exist locally
+		log.Printf("[IMAGE] Local show poster path not found: %s", pp)
+		http.Error(w, "Poster not found on disk", http.StatusNotFound)
+		return
 	} else {
 		cleanPP := strings.TrimPrefix(pp, "/")
 		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPP)

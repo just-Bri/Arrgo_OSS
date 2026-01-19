@@ -51,6 +51,26 @@ func safeRename(src, dst string) error {
 	return os.Remove(src)
 }
 
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	return destFile.Sync()
+}
+
 func sanitizePath(name string) string {
 	// Remove or replace characters that are problematic for filesystems
 	// Specifically :, /, \, *, ?, ", <, >, |
@@ -148,16 +168,19 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 		return err
 	}
 
-	// Move the poster if it exists and is in the same directory as the movie
+	// Copy the poster if it exists and is in the same directory as the movie
 	newPosterPath := ""
 	if m.PosterPath != "" {
 		if strings.HasPrefix(m.PosterPath, filepath.Dir(oldPath)) {
 			posterExt := filepath.Ext(m.PosterPath)
 			newPosterPath = filepath.Join(destDirPath, "poster"+posterExt)
-			if err := safeRename(m.PosterPath, newPosterPath); err != nil {
-				log.Printf("[RENAMER] Failed to move poster: %v", err)
+			if err := copyFile(m.PosterPath, newPosterPath); err != nil {
+				log.Printf("[RENAMER] Failed to copy poster: %v", err)
 				newPosterPath = "" // Reset if failed
 			}
+		} else {
+			// If it's a TMDB URL or already in library, keep it as is
+			newPosterPath = m.PosterPath
 		}
 	}
 
@@ -298,29 +321,6 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		return err
 	}
 
-	// If there's a show poster in the incoming folder, move it to the show root
-	newShowPosterPath := sh.PosterPath
-	if sh.PosterPath != "" {
-		if strings.HasPrefix(sh.PosterPath, cfg.IncomingTVPath) {
-			// Show root in library
-			showRoot := filepath.Dir(filepath.Dir(destDirPath))
-			posterExt := filepath.Ext(sh.PosterPath)
-			newShowPosterPath = filepath.Join(showRoot, "poster"+posterExt)
-			
-			// Only move if destination doesn't exist yet
-			if _, err := os.Stat(newShowPosterPath); os.IsNotExist(err) {
-				if err := safeRename(sh.PosterPath, newShowPosterPath); err == nil {
-					database.DB.Exec("UPDATE shows SET poster_path = $1 WHERE id = (SELECT show_id FROM seasons WHERE id = $2)", newShowPosterPath, e.SeasonID)
-				}
-			} else {
-				// Destination exists, just update DB path to match
-				database.DB.Exec("UPDATE shows SET poster_path = $1 WHERE id = (SELECT show_id FROM seasons WHERE id = $2)", newShowPosterPath, e.SeasonID)
-			}
-		}
-	}
-
-	CleanupEmptyDirs(cfg.IncomingTVPath)
-
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
 	if err != nil {
@@ -338,6 +338,37 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 }
 
 func RenameAndMoveShow(cfg *config.Config, showID int) error {
+	var sh models.Show
+	err := database.DB.QueryRow("SELECT id, title, year, tvdb_id, path, poster_path FROM shows WHERE id = $1", showID).Scan(&sh.ID, &sh.Title, &sh.Year, &sh.TVDBID, &sh.Path, &sh.PosterPath)
+	if err != nil {
+		return err
+	}
+
+	sanitizedShowTitle := sanitizePath(sh.Title)
+	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
+	if sh.TVDBID != "" {
+		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
+	}
+	destShowPath := filepath.Join(cfg.TVShowsPath, showDirName)
+
+	if err := os.MkdirAll(destShowPath, 0755); err != nil {
+		return err
+	}
+
+	// Move show poster if it exists and is in the incoming folder
+	newPosterPath := sh.PosterPath
+	if sh.PosterPath != "" && strings.HasPrefix(sh.PosterPath, cfg.IncomingTVPath) {
+		ext := filepath.Ext(sh.PosterPath)
+		newPosterPath = filepath.Join(destShowPath, "poster"+ext)
+		if _, err := os.Stat(newPosterPath); os.IsNotExist(err) {
+			// We'll copy the poster instead of moving it, so the original can be nuked by cleanup
+			if err := copyFile(sh.PosterPath, newPosterPath); err != nil {
+				log.Printf("[RENAMER] Failed to copy show poster: %v", err)
+				newPosterPath = sh.PosterPath 
+			}
+		}
+	}
+
 	// Fetch all episodes for this show
 	query := `
 		SELECT e.id
@@ -360,6 +391,14 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 			log.Printf("[RENAMER] Error renaming episode %d: %v", epID, err)
 		}
 	}
+
+	// Update show status and path in DB
+	_, err = database.DB.Exec("UPDATE shows SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3", destShowPath, newPosterPath, showID)
+	if err != nil {
+		log.Printf("[RENAMER] Error updating show %d in DB: %v", showID, err)
+	}
+
+	CleanupEmptyDirs(cfg.IncomingTVPath)
 
 	return nil
 }
