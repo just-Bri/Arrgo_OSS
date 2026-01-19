@@ -85,7 +85,7 @@ services:
       - VPN_PORT_FORWARDING=on
       - VPN_PORT_FORWARDING_PROVIDER=protonvpn
       # Firewall - allow local network
-      - FIREWALL_OUTBOUND_SUBNETS=192.168.10.0/24
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.10.0/24,172.16.0.0/12
       # Timezone
       - TZ=America/Los_Angeles
       # Health check
