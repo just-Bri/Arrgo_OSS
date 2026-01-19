@@ -7,7 +7,8 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Copy go mod files
-COPY server/go.mod server/go.sum ./
+COPY server/go.mod ./
+COPY server/go.sum* ./
 RUN go mod download
 
 # Cache breaker for Unraid/SMB environments
