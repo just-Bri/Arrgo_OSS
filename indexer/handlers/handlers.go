@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"text/template"
 
@@ -58,6 +59,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(results) == 0 && len(errs) > 0 {
+		log.Printf("Search error: %v", errs[0])
 		http.Error(w, errs[0].Error(), http.StatusInternalServerError)
 		return
 	}

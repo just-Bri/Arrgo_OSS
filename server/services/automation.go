@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -97,7 +98,8 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("indexer returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("indexer returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	type SearchResult struct {
