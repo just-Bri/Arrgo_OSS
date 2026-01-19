@@ -45,8 +45,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			results = append(results, res...)
 		} else if searchType == "movie" {
-			// Skip 1337x for "movie" type if you want to prefer YTS
-			if idx.GetName() == "1337x" {
+			// Skip Solid for "movie" type if you want to prefer YTS
+			if idx.GetName() == "SolidTorrents" {
 				continue
 			}
 			res, errIdx := idx.SearchMovies(ctx, query)
@@ -55,9 +55,9 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			results = append(results, res...)
-		} else if searchType == "1337x" {
-			// Specific 1337x search (shows everything)
-			if idx.GetName() == "1337x" {
+		} else if searchType == "solid" {
+			// Specific Solid search (shows everything)
+			if idx.GetName() == "SolidTorrents" {
 				res, errIdx := idx.SearchMovies(ctx, query)
 				if errIdx != nil {
 					errs = append(errs, errIdx)

@@ -90,7 +90,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	// 1. Search Indexer
 	searchType := r.MediaType
 	if r.MediaType == "show" {
-		searchType = "1337x" // Use 1337x for TV shows as it's more reliable
+		searchType = "solid" // This will now trigger the SolidTorrents provider
 	}
 
 	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json",

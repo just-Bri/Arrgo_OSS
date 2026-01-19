@@ -25,6 +25,6 @@ type Indexer interface {
 func GetIndexers() []Indexer {
 	return []Indexer{
 		&YTSIndexer{},
-		New1337xIndexer(),
+		NewSolidTorrentsIndexer(),
 	}
 }
