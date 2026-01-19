@@ -29,7 +29,7 @@ func CreateRequest(req models.Request) error {
 			newSeasons := existingSeasons
 			reqSeasons := strings.Split(req.Seasons, ",")
 			existingSeasonsList := strings.Split(existingSeasons, ",")
-			
+
 			for _, rs := range reqSeasons {
 				found := false
 				for _, es := range existingSeasonsList {
@@ -45,7 +45,7 @@ func CreateRequest(req models.Request) error {
 					newSeasons += rs
 				}
 			}
-			
+
 			_, err = database.DB.Exec("UPDATE requests SET seasons = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", newSeasons, existingID)
 			return err
 		}
@@ -61,7 +61,7 @@ func CreateRequest(req models.Request) error {
 
 func GetRequests() ([]models.Request, error) {
 	query := `
-		SELECT r.id, r.user_id, u.username, r.title, r.media_type, r.tmdb_id, r.tvdb_id, r.year, r.poster_path, r.overview, r.seasons, r.status, r.created_at, r.updated_at
+		SELECT r.id, r.user_id, u.username, r.title, r.media_type, r.tmdb_id, r.tvdb_id, r.imdb_id, r.year, r.poster_path, r.overview, r.seasons, r.status, r.created_at, r.updated_at
 		FROM requests r
 		JOIN users u ON r.user_id = u.id
 		ORDER BY r.created_at DESC
@@ -75,13 +75,14 @@ func GetRequests() ([]models.Request, error) {
 	var requests []models.Request
 	for rows.Next() {
 		var req models.Request
-		var tmdbID, tvdbID, seasons sql.NullString
-		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &req.MediaType, &tmdbID, &tvdbID, &req.Year, &req.PosterPath, &req.Overview, &seasons, &req.Status, &req.CreatedAt, &req.UpdatedAt)
+		var tmdbID, tvdbID, imdbID, seasons sql.NullString
+		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &req.MediaType, &tmdbID, &tvdbID, &imdbID, &req.Year, &req.PosterPath, &req.Overview, &seasons, &req.Status, &req.CreatedAt, &req.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		req.TMDBID = tmdbID.String
 		req.TVDBID = tvdbID.String
+		req.IMDBID = imdbID.String
 		req.Seasons = seasons.String
 		requests = append(requests, req)
 	}
@@ -91,12 +92,12 @@ func GetRequests() ([]models.Request, error) {
 func GetPendingRequestCounts() (int, int, error) {
 	var movieCount, showCount int
 
-	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status = 'pending'").Scan(&movieCount)
+	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status IN ('pending', 'approved')").Scan(&movieCount)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status = 'pending'").Scan(&showCount)
+	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status IN ('pending', 'approved')").Scan(&showCount)
 	if err != nil {
 		return 0, 0, err
 	}

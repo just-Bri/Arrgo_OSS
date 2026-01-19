@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -64,10 +65,15 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 
 	for rows.Next() {
 		var r models.Request
-		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &r.TMDBID, &r.TVDBID, &r.IMDBID, &r.Seasons); err != nil {
+		var tmdbID, tvdbID, imdbID, seasons sql.NullString
+		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &tmdbID, &tvdbID, &imdbID, &seasons); err != nil {
 			log.Printf("Error scanning request: %v", err)
 			continue
 		}
+		r.TMDBID = tmdbID.String
+		r.TVDBID = tvdbID.String
+		r.IMDBID = imdbID.String
+		r.Seasons = seasons.String
 		requests = append(requests, r)
 	}
 
@@ -161,7 +167,9 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		return
 	}
 
+	activeHashes := make(map[string]bool)
 	for _, t := range torrents {
+		activeHashes[t.Hash] = true
 		// Update our downloads table
 		_, err := database.DB.Exec(`
 			UPDATE downloads 
@@ -182,6 +190,23 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 				t.Hash)
 			if err != nil {
 				log.Printf("Error updating request status to completed: %v", err)
+			}
+		}
+	}
+
+	// SELF-HEALING: Reset requests that are "downloading" but missing from qBittorrent
+	rows, err := database.DB.Query("SELECT request_id, torrent_hash FROM downloads WHERE status = 'downloading'")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var reqID int
+			var hash string
+			if err := rows.Scan(&reqID, &hash); err == nil {
+				if !activeHashes[hash] {
+					log.Printf("Download %s vanished from qBittorrent, resetting request %d to approved", hash, reqID)
+					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
+					database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", hash)
+				}
 			}
 		}
 	}
