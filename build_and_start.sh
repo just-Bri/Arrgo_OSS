@@ -1,10 +1,19 @@
 #!/bin/bash
-cd /mnt/user/appdata/dockge/stacks/arrgo/
-git pull origin main
+# Move to the project directory
+cd "$(dirname "$0")"
 
+# Sync with git
+git pull origin main || true
+
+# Down existing services
 docker compose down
+
+# Nuke old image, build new one
 docker rmi arrgo-arrgo-app
 docker compose build --no-cache
 
+# Start the services
 docker compose up -d
-docker logs -f arrgo-app
+
+# Show logs
+docker compose logs -f arrgo-app
