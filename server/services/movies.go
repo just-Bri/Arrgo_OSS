@@ -8,8 +8,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -98,7 +96,7 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 func processMovieFile(cfg *config.Config, path string) {
 	filename := filepath.Base(path)
 	nameOnly := strings.TrimSuffix(filename, filepath.Ext(filename))
-	title, year, tmdbID, tvdbID, imdbID := parseMovieName(nameOnly)
+	title, year, tmdbID, tvdbID, imdbID := ParseMediaName(nameOnly)
 
 	// If filename doesn't have year, try parent directory
 	if year == 0 && tmdbID == "" && tvdbID == "" && imdbID == "" {
@@ -106,7 +104,7 @@ func processMovieFile(cfg *config.Config, path string) {
 		// Check if parentDir is not just one of the root scan paths
 		if parentDir != "." && parentDir != filepath.Base(cfg.MoviesPath) &&
 			parentDir != filepath.Base(cfg.IncomingMoviesPath) {
-			title, year, tmdbID, tvdbID, imdbID = parseMovieName(parentDir)
+			title, year, tmdbID, tvdbID, imdbID = ParseMediaName(parentDir)
 		}
 	}
 
@@ -154,41 +152,6 @@ func processMovieFile(cfg *config.Config, path string) {
 		// Fetch metadata immediately
 		MatchMovie(cfg, id)
 	}
-}
-
-func parseMovieName(name string) (string, int, string, string, string) {
-	var tmdbID, tvdbID, imdbID string
-
-	// 1. Extract and clean ID tags like [tmdbid-343423], {tmdb-343423}, [tvdb-12345], etc.
-	idRegex := regexp.MustCompile(`(?i)[\[\{](tmdb|tvdb|tmdbid|imdb)[- ]?([a-z0-9]+)[\]\}]`)
-	matches := idRegex.FindAllStringSubmatch(name, -1)
-	for _, match := range matches {
-		tag := strings.ToLower(match[1])
-		id := match[2]
-		if tag == "tmdb" || tag == "tmdbid" {
-			tmdbID = id
-		} else if tag == "tvdb" {
-			tvdbID = id
-		} else if tag == "imdb" {
-			imdbID = id
-		}
-	}
-	name = idRegex.ReplaceAllString(name, "")
-
-	// 2. Remove common junk suffixes
-	junkRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|\[.*\]|\{.*\}|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
-	name = junkRegex.ReplaceAllString(name, "")
-	name = strings.TrimSpace(name)
-
-	// 3. Match "Title (Year)"
-	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)
-	epMatches := re.FindStringSubmatch(name)
-	if len(epMatches) == 3 {
-		title := strings.TrimSpace(epMatches[1])
-		year, _ := strconv.Atoi(epMatches[2])
-		return title, year, tmdbID, tvdbID, imdbID
-	}
-	return name, 0, tmdbID, tvdbID, imdbID
 }
 
 func upsertMovie(movie models.Movie) (int, error) {

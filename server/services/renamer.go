@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ func safeRename(src, dst string) error {
 
 	// Fallback for "invalid cross-device link" (EXDEV)
 	log.Printf("[RENAMER] Cross-device move detected, falling back to copy+delete: %s -> %s", src, dst)
-	
+
 	// Create destination directory if it doesn't exist (should already be created by caller, but safe check)
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
@@ -96,6 +97,64 @@ func sanitizePath(name string) string {
 	return sanitized
 }
 
+func cleanTitleTags(title string) string {
+	// Remove common uploader/junk patterns and tags without nuking everything after
+	// We use a list of specific tags to remove
+	tags := []string{"- IMPORTED", "RARBG", "YTS", "YIFY", "Eztv", "1337x", "GalaxyRG", "TGX", "PSA", "VXT", "EVO", "MeGusta", "AVS", "SNEAKY", "BRRip", "WEB-DL", "BluRay", "1080p", "720p", "2160p", "x264", "x265", "HEVC", "H264", "H265"}
+
+	cleaned := title
+	for _, tag := range tags {
+		re := regexp.MustCompile(`(?i)\s*[-_.]?\s*` + regexp.QuoteMeta(tag) + `\b`)
+		cleaned = re.ReplaceAllString(cleaned, "")
+	}
+
+	// Also remove generic [brackets] or {braces} if they didn't match ID patterns
+	bracketRegex := regexp.MustCompile(`\s*[\[\{].*?[\]\}]`)
+	cleaned = bracketRegex.ReplaceAllString(cleaned, "")
+
+	return strings.Trim(cleaned, " -._")
+}
+
+func ParseMediaName(name string) (string, int, string, string, string) {
+	var tmdbID, tvdbID, imdbID string
+
+	// 1. Extract and clean ID tags like [tmdbid-343423], {tmdb-343423}, [tvdb-12345], etc.
+	idRegex := regexp.MustCompile(`(?i)[\[\{](tmdb|tvdb|tmdbid|imdb)[- ]?([a-z0-9]+)[\]\}]`)
+	matches := idRegex.FindAllStringSubmatch(name, -1)
+	for _, match := range matches {
+		tag := strings.ToLower(match[1])
+		id := match[2]
+		if tag == "tmdb" || tag == "tmdbid" {
+			tmdbID = id
+		} else if tag == "tvdb" {
+			tvdbID = id
+		} else if tag == "imdb" {
+			imdbID = id
+		}
+	}
+	name = idRegex.ReplaceAllString(name, "")
+
+	// 2. Remove SXXEXX or SXX patterns
+	seasonEpRegex := regexp.MustCompile(`(?i)\s*[-_.]?\s*(S\d+E\d+|S\d+)\b`)
+	name = seasonEpRegex.ReplaceAllString(name, "")
+
+	// 3. Match "Title (Year)" first if possible
+	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)
+	yearMatches := re.FindStringSubmatch(strings.TrimSpace(name))
+
+	title := name
+	year := 0
+	if len(yearMatches) == 3 {
+		title = strings.TrimSpace(yearMatches[1])
+		year, _ = strconv.Atoi(yearMatches[2])
+	}
+
+	// 4. Clean tags from the title
+	title = cleanTitleTags(title)
+
+	return title, year, tmdbID, tvdbID, imdbID
+}
+
 func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	var m models.Movie
 	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
@@ -109,7 +168,8 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	}
 
 	ext := filepath.Ext(m.Path)
-	sanitizedTitle := sanitizePath(m.Title)
+	cleanedTitle := cleanTitleTags(m.Title)
+	sanitizedTitle := sanitizePath(cleanedTitle)
 	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, ext)
 
 	// Create destination directory: Movies/Title (Year) {tmdb-id}/Title (Year) {tmdb-id}.ext
@@ -232,46 +292,21 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	// TV Shows: Title (Year) {tvdb-ID}/Season XX/Title - SXXEXX - Episode Title.ext
 	ext := filepath.Ext(e.FilePath)
 
-	sanitizedShowTitle := sanitizePath(sh.Title)
-	
+	cleanedShowTitle := cleanTitleTags(sh.Title)
+	sanitizedShowTitle := sanitizePath(cleanedShowTitle)
+
 	// Better episode title cleaning
 	epTitle := e.Title
-	// If title contains the extension or looks like a scene filename, deep clean it
+	// If title looks like a scene filename or raw file name, clean it
 	if strings.Contains(epTitle, ".") || strings.Contains(epTitle, "-") || strings.Contains(strings.ToLower(epTitle), "s0") {
-		// Strip extension if present in title
-		if filepath.Ext(epTitle) != "" {
-			epTitle = strings.TrimSuffix(epTitle, filepath.Ext(epTitle))
-		}
-		
-		// Remove common uploader/junk patterns
-		// 1. Try to find the title before SXXEXX
-		junkRegex := regexp.MustCompile(`(?i)(.*?)(S\d+E\d+).*`)
-		if matches := junkRegex.FindStringSubmatch(epTitle); len(matches) > 1 {
-			// If it contains SXXEXX, usually the stuff AFTER it is junk, 
-			// and if the stuff BEFORE it is just the show title, we want to be careful.
-			// However, if we already have official titles synced, this logic shouldn't even hit.
-			prefix := strings.TrimSpace(matches[1])
-			if prefix != "" && !strings.EqualFold(prefix, sh.Title) {
-				epTitle = prefix
-			} else {
-				// If prefix is empty or just the show title, try to find something AFTER SXXEXX
-				afterRegex := regexp.MustCompile(`(?i)S\d+E\d+\s*[-_.]?\s*(.*)`)
-				if afterMatches := afterRegex.FindStringSubmatch(epTitle); len(afterMatches) > 1 {
-					epTitle = afterMatches[1]
-				}
-			}
-		}
-		
-		// Final strip of common scene tags
-		cleanRegex := regexp.MustCompile(`(?i)\s*(- IMPORTED|RARBG|YTS|YIFY|Eztv|1337x|GalaxyRG|TGX|PSA|VXT|EVO|MeGusta|AVS|SNEAKY|BRRip|WEB-DL|BluRay|1080p|720p|2160p|x264|x265|HEVC|H264|H265).*$`)
-		epTitle = cleanRegex.ReplaceAllString(epTitle, "")
-		epTitle = strings.Trim(epTitle, " -._")
+		// Clean the episode title using the shared parser
+		epTitle, _, _, _, _ = ParseMediaName(epTitle)
 	}
-	
+
 	if epTitle == "" || strings.EqualFold(epTitle, sh.Title) {
 		epTitle = fmt.Sprintf("Episode %d", e.EpisodeNumber)
 	}
-	
+
 	sanitizedEpTitle := sanitizePath(epTitle)
 
 	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
@@ -356,7 +391,8 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 		return err
 	}
 
-	sanitizedShowTitle := sanitizePath(sh.Title)
+	cleanedShowTitle := cleanTitleTags(sh.Title)
+	sanitizedShowTitle := sanitizePath(cleanedShowTitle)
 	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
 	if sh.TVDBID != "" {
 		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
@@ -376,7 +412,7 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 			// We'll copy the poster instead of moving it, so the original can be nuked by cleanup
 			if err := copyFile(sh.PosterPath, newPosterPath); err != nil {
 				log.Printf("[RENAMER] Failed to copy show poster: %v", err)
-				newPosterPath = sh.PosterPath 
+				newPosterPath = sh.PosterPath
 			} else {
 				log.Printf("[RENAMER] Copied show poster: %s -> %s", sh.PosterPath, newPosterPath)
 			}

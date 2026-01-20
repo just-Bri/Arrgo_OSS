@@ -5,6 +5,7 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 
 func processShowDir(cfg *config.Config, root string, name string) {
 	showPath := filepath.Join(root, name)
-	title, year, tmdbID, tvdbID, imdbID := parseMovieName(name) // Reuse parseMovieName for "Title (Year)"
+	title, year, tmdbID, tvdbID, imdbID := ParseMediaName(name) // Use the new shared ParseMediaName
 
 	// Look for local poster
 	posterPath := ""
@@ -217,11 +218,20 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		episodeNum, _ := strconv.Atoi(matches[1])
 		episodePath := filepath.Join(seasonPath, entry.Name())
 
+		// Clean the episode title (remove SXXEXX, tags like - IMPORTED, etc.)
+		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		epTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+		
+		// If ParseMediaName left it empty or it's just the show title, use a better default
+		if epTitle == "" {
+			epTitle = fmt.Sprintf("Episode %d", episodeNum)
+		}
+
 		info, _ := entry.Info()
 		size := info.Size()
 		quality := DetectQuality(episodePath)
 
-		upsertEpisode(seasonID, episodeNum, entry.Name(), episodePath, quality, size)
+		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
 	}
 }
 
