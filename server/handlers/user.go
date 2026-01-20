@@ -3,7 +3,7 @@ package handlers
 import (
 	"Arrgo/models"
 	"Arrgo/services"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 )
@@ -37,7 +37,7 @@ func GetCurrentUser(r *http.Request) (*models.User, error) {
 
 	user, err := services.GetUserByID(userIDInt)
 	if err != nil {
-		log.Printf("Failed to get user info: %v", err)
+		slog.Error("Failed to get user info", "user_id", userIDInt, "error", err)
 		return nil, err
 	}
 

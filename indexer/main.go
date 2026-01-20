@@ -1,18 +1,24 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/justbri/arrgo/indexer/handlers"
 	"github.com/justbri/arrgo/shared/config"
+	sharedlogger "github.com/justbri/arrgo/shared/logger"
 	"github.com/justbri/arrgo/shared/middleware"
 	"github.com/justbri/arrgo/shared/server"
 )
 
 func main() {
 	port := config.GetEnv("PORT", "5004")
+	env := config.GetEnv("ENV", "development")
+	debug := config.GetEnv("DEBUG", "false") == "true"
+
+	// Initialize structured logging
+	sharedlogger.Init(env, debug)
 
 	// Setup routes
 	mux := setupRoutes()
@@ -21,9 +27,10 @@ func main() {
 	srvConfig := server.DefaultConfig(":" + port)
 	srv := server.CreateServer(srvConfig, middleware.LoggingSimple(mux))
 
-	fmt.Printf("Indexer service starting on port %s...\n", port)
+	slog.Info("Indexer service starting", "port", port)
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		slog.Error("Server failed to start", "error", err)
+		os.Exit(1)
 	}
 }
 

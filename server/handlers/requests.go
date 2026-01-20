@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 
 	requests, err := services.GetRequests()
 	if err != nil {
-		log.Printf("Error getting requests: %v", err)
+		slog.Error("Error getting requests", "error", err)
 		requests = []models.Request{}
 	}
 
@@ -93,7 +94,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	status, err := services.CheckLibraryStatus(req.MediaType, externalID)
 	if err != nil {
-		log.Printf("Error checking library status: %v", err)
+		slog.Error("Error checking library status", "error", err, "media_type", req.MediaType, "external_id", externalID)
 		http.Error(w, "Failed to verify media status", http.StatusInternalServerError)
 		return
 	}
@@ -141,7 +142,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.CreateRequest(req); err != nil {
-		log.Printf("Error creating request: %v", err)
+		slog.Error("Error creating request", "error", err, "user_id", req.UserID, "title", req.Title, "media_type", req.MediaType)
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
 	}
@@ -173,7 +174,7 @@ func ApproveRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.UpdateRequestStatus(id, "approved"); err != nil {
-		log.Printf("Error approving request: %v", err)
+		slog.Error("Error approving request", "error", err, "request_id", id, "user", user.Username)
 		http.Error(w, "Failed to approve request", http.StatusInternalServerError)
 		return
 	}
@@ -205,7 +206,7 @@ func DenyRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := services.UpdateRequestStatus(id, "cancelled"); err != nil {
-		log.Printf("Error denying request: %v", err)
+		slog.Error("Error denying request", "error", err, "request_id", id, "user", user.Username)
 		http.Error(w, "Failed to deny request", http.StatusInternalServerError)
 		return
 	}
@@ -240,7 +241,7 @@ func DeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	qb, _ := services.NewQBittorrentClient(cfg)
 
 	if err := services.DeleteRequest(id, qb); err != nil {
-		log.Printf("Error deleting request: %v", err)
+		slog.Error("Error deleting request", "error", err, "request_id", id, "user", user.Username)
 		http.Error(w, "Failed to delete request", http.StatusInternalServerError)
 		return
 	}

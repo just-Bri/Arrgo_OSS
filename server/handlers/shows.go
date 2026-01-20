@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -58,7 +59,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	allShows, err := services.GetShows()
 	if err != nil {
-		log.Printf("Error getting shows: %v", err)
+		slog.Error("Error getting shows", "error", err)
 		allShows = []models.Show{}
 	}
 
@@ -130,7 +131,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		// External search result
 		details, err := services.GetTVDBShowDetails(cfg, tvdbID)
 		if err != nil {
-			log.Printf("Error getting TVDB show details: %v", err)
+			slog.Error("Error getting TVDB show details", "error", err, "tvdb_id", tvdbID)
 			http.Error(w, "Show details not found", http.StatusNotFound)
 			return
 		}
@@ -307,7 +308,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := showDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		log.Printf("Error executing show details template: %v", err)
+		slog.Error("Error executing show details template", "error", err, "show_id", show.ID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

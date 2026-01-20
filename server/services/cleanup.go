@@ -2,7 +2,7 @@ package services
 
 import (
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -74,7 +74,7 @@ func CleanupEmptyDirs(root string) error {
 		}
 
 		if actuallyEmpty {
-			log.Printf("[CLEANUP] Removing directory (contains only junk or empty): %s", path)
+			slog.Debug("Removing directory (contains only junk or empty)", "path", path)
 			
 			// Let's be safer: Only delete the files we identify as junk first, then Remove the dir.
 			// This prevents os.RemoveAll from nuking non-junk if we missed something.
@@ -88,8 +88,10 @@ func CleanupEmptyDirs(root string) error {
 			// Remove will fail if directory is still not empty (e.g. contains subdirs)
 			err := os.Remove(path)
 			if err != nil {
-				// If simple Remove fails, fallback to RemoveAll but only if we are REALLY sure
-				log.Printf("[CLEANUP] Simple remove failed for %s, directory might not be empty: %v", path, err)
+				// Ignore "no such file or directory" errors - another goroutine may have already removed it
+				if !os.IsNotExist(err) {
+					slog.Debug("Failed to remove directory", "path", path, "error", err)
+				}
 			}
 		}
 	}

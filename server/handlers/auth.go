@@ -4,6 +4,7 @@ import (
 	"Arrgo/services"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -32,7 +33,7 @@ func init() {
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		if err := registerTmpl.ExecuteTemplate(w, "base", nil); err != nil {
-			log.Printf("Error rendering register template: %v", err)
+			slog.Error("Error rendering register template", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -54,16 +55,16 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := services.RegisterUser(username, email, password)
 	if err != nil {
-		log.Printf("Registration failed for user %s: %v", username, err)
+		slog.Error("Registration failed", "username", username, "error", err)
 		http.Error(w, "Registration failed", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("User %s registered successfully, ID: %d", username, user.ID)
+	slog.Info("User registered successfully", "username", username, "user_id", user.ID)
 
 	// Automatically log in after registration
 	if err := SetupUserSession(w, r, user); err != nil {
-		log.Printf("Failed to setup session: %v", err)
+		slog.Error("Failed to setup session", "username", username, "error", err)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -72,10 +73,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("LoginHandler: %s %s (HX-Request: %s)", r.Method, r.URL.Path, r.Header.Get("HX-Request"))
+	slog.Debug("Login handler called",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"htmx_request", r.Header.Get("HX-Request"))
 	if r.Method == http.MethodGet {
 		if err := loginTmpl.ExecuteTemplate(w, "base", nil); err != nil {
-			log.Printf("Error rendering login template: %v", err)
+			slog.Error("Error rendering login template", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -89,31 +93,31 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	log.Printf("Attempting login for user: %s", username)
+	slog.Info("Login attempt", "username", username)
 
 	if username == "" || password == "" {
-		log.Printf("Login failed: missing credentials")
+		slog.Warn("Login failed: missing credentials", "username", username)
 		http.Error(w, "Username and password are required", http.StatusBadRequest)
 		return
 	}
 
 	user, err := services.AuthenticateUser(username, password)
 	if err != nil {
-		log.Printf("Login failed for user %s: %v", username, err)
+		slog.Warn("Login failed", "username", username, "error", err)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	log.Printf("User %s authenticated successfully, ID: %d", username, user.ID)
+	slog.Info("User authenticated successfully", "username", username, "user_id", user.ID)
 
 	// Create session
 	if err := SetupUserSession(w, r, user); err != nil {
-		log.Printf("Failed to setup session: %v", err)
+		slog.Error("Failed to setup session", "username", username, "error", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Session saved for user %s, redirecting to dashboard", username)
+	slog.Info("Session saved, redirecting to dashboard", "username", username)
 
 	// Check if HTMX request
 	if r.Header.Get("HX-Request") == "true" {

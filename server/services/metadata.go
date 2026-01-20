@@ -9,7 +9,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -375,7 +375,7 @@ func getTVDBToken(apiKey string) (string, error) {
 		return tvdbToken, nil
 	}
 
-	log.Printf("[METADATA] Authenticating with TVDB...")
+	slog.Info("Authenticating with TVDB")
 	payload, _ := json.Marshal(map[string]string{"apikey": apiKey})
 	req, _ := http.NewRequest("POST", "https://api4.thetvdb.com/v4/login", bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -410,7 +410,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	query := `SELECT id, title, year, tmdb_id, imdb_id FROM movies WHERE id = $1`
 	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID)
 	if err != nil {
-		log.Printf("[METADATA] Error fetching movie %d from DB: %v", movieID, err)
+		slog.Error("Error fetching movie from DB", "movie_id", movieID, "error", err)
 		return err
 	}
 	m.TMDBID = tmdbID.String
@@ -422,7 +422,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	checkQuery := `SELECT tmdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' AND tmdb_id IS NOT NULL AND tmdb_id != '' LIMIT 1`
 	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
-		log.Printf("[METADATA] Found existing metadata for %s (%d) in DB, reusing...", m.Title, m.Year)
+		slog.Info("Found existing metadata in DB, reusing", "title", m.Title, "year", m.Year)
 		updateQuery := `
 			UPDATE movies 
 			SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
@@ -440,7 +440,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	// 2. Search TMDB if ID not provided
 	if matchedTMDBID == "" {
-		log.Printf("[METADATA] Searching TMDB for movie: %s (%d)", m.Title, m.Year)
+		slog.Info("Searching TMDB for movie", "title", m.Title, "year", m.Year)
 		throttle()
 		params := map[string]string{
 			"api_key":  cfg.TMDBAPIKey,
@@ -454,18 +454,18 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 		resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
 		if err != nil {
-			log.Printf("[METADATA] TMDB API request failed for %s: %v", m.Title, err)
+			slog.Error("TMDB API request failed", "title", m.Title, "error", err)
 			return err
 		}
 
 		var searchResults TMDBMovieSearchResponse
 		if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
-			log.Printf("[METADATA] Error decoding TMDB response for %s: %v", m.Title, err)
+			slog.Error("Error decoding TMDB response", "title", m.Title, "error", err)
 			return err
 		}
 
 		if len(searchResults.Results) == 0 {
-			log.Printf("[METADATA] No TMDB results found for movie: %s", m.Title)
+			slog.Info("No TMDB results found for movie", "title", m.Title)
 			return fmt.Errorf("no matches found on TMDB for %s", m.Title)
 		}
 
@@ -473,12 +473,12 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 		matchedTMDBID = fmt.Sprintf("%d", searchResults.Results[0].ID)
 	}
 
-	log.Printf("[METADATA] Using TMDB ID: %s. Fetching full details...", matchedTMDBID)
+	slog.Info("Using TMDB ID, fetching full details", "tmdb_id", matchedTMDBID)
 
 	// 3. Fetch full details
 	details, err := GetTMDBMovieDetails(cfg, matchedTMDBID)
 	if err != nil {
-		log.Printf("[METADATA] Error fetching full details for TMDB ID %s: %v", matchedTMDBID, err)
+		slog.Error("Error fetching full details for TMDB ID", "tmdb_id", matchedTMDBID, "error", err)
 		return err
 	}
 
@@ -510,7 +510,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
-		log.Printf("[METADATA] Error updating DB for movie %s: %v", m.Title, err)
+		slog.Error("Error updating DB for movie", "title", m.Title, "error", err)
 	}
 	return err
 }
@@ -521,7 +521,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 	query := `SELECT id, title, year, tvdb_id, tmdb_id, imdb_id FROM shows WHERE id = $1`
 	err := database.DB.QueryRow(query, showID).Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &tmdbID, &imdbID)
 	if err != nil {
-		log.Printf("[METADATA] Error fetching show %d from DB: %v", showID, err)
+		slog.Error("Error fetching show from DB", "show_id", showID, "error", err)
 		return err
 	}
 	s.TVDBID = tvdbID.String
@@ -534,7 +534,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 	checkQuery := `SELECT tvdb_id, tmdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' AND tvdb_id IS NOT NULL AND tvdb_id != '' LIMIT 1`
 	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
-		log.Printf("[METADATA] Found existing metadata for show %s (%d) in DB, reusing...", s.Title, s.Year)
+		slog.Info("Found existing metadata for show in DB, reusing", "title", s.Title, "year", s.Year)
 		updateQuery := `
 			UPDATE shows 
 			SET tvdb_id = $1, tmdb_id = $2, imdb_id = $3, overview = $4, poster_path = $5, genres = $6, status = 'matched', raw_metadata = $7, updated_at = CURRENT_TIMESTAMP
@@ -558,7 +558,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 		if idToSearch == "" {
 			idToSearch = s.IMDBID
 		}
-		log.Printf("[METADATA] Searching TVDB by remote ID: %s", idToSearch)
+		slog.Info("Searching TVDB by remote ID", "remote_id", idToSearch)
 		results, err := SearchTVDBByRemoteID(cfg, idToSearch)
 		if err == nil && len(results) > 0 {
 			matchedTVDBID = results[0].ID
@@ -567,7 +567,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	// 3. Fallback to title search if IDs didn't work
 	if matchedTVDBID == "" {
-		log.Printf("[METADATA] Searching TVDB for show: %s (%d)", s.Title, s.Year)
+		slog.Info("Searching TVDB for show", "title", s.Title, "year", s.Year)
 		results, err := SearchTVDB(cfg, s.Title)
 		if err == nil && len(results) > 0 {
 			// If year is provided, try to find a result with matching year
@@ -587,11 +587,11 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	if matchedTVDBID == "" {
-		log.Printf("[METADATA] No TVDB results found for show: %s", s.Title)
+		slog.Info("No TVDB results found for show", "title", s.Title)
 		return fmt.Errorf("no matches found on TVDB for %s", s.Title)
 	}
 
-	log.Printf("[METADATA] Found TVDB match for show %s (TVDB ID: %s). Fetching full details...", s.Title, matchedTVDBID)
+	slog.Info("Found TVDB match for show, fetching full details", "title", s.Title, "tvdb_id", matchedTVDBID)
 
 	// 4. Fetch full details
 	details, err := GetTVDBShowDetails(cfg, matchedTVDBID)
@@ -607,7 +607,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 			}
 		}
 	} else {
-		log.Printf("[METADATA] Error fetching full details for TVDB ID %s: %v", matchedTVDBID, err)
+		slog.Error("Error fetching full details for TVDB ID", "tvdb_id", matchedTVDBID, "error", err)
 		return err
 	}
 
@@ -633,7 +633,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	_, err = database.DB.Exec(updateQuery, details.Name, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
 	if err != nil {
-		log.Printf("[METADATA] Error updating DB for show %s: %v", s.Title, err)
+		slog.Error("Error updating DB for show", "title", s.Title, "error", err)
 		return err
 	}
 
@@ -714,7 +714,7 @@ func SyncShowEpisodes(cfg *config.Config, showID int) error {
 		database.DB.Exec(query, ep.Name, showID, ep.SeasonNumber, ep.Number)
 	}
 
-	log.Printf("[METADATA] Synced %d episodes for show ID %d", len(episodes), showID)
+	slog.Info("Synced episodes for show", "episode_count", len(episodes), "show_id", showID)
 	return nil
 }
 
@@ -733,7 +733,7 @@ func interfaceToInt(v interface{}) int {
 }
 
 func FetchMetadataForAllDiscovered(cfg *config.Config) {
-	log.Printf("[METADATA] Starting background metadata fetching...")
+	slog.Info("Starting background metadata fetching")
 	// Movies
 	movieQuery := `SELECT id FROM movies WHERE status = 'discovered'`
 	movieRows, err := database.DB.Query(movieQuery)
@@ -759,5 +759,5 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 			}
 		}
 	}
-	log.Printf("[METADATA] Background metadata fetching complete.")
+	slog.Info("Background metadata fetching complete")
 }

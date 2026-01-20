@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,7 +82,7 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 	// Local path: data/images/movies/{id}{ext}
 	localDir := "data/images/movies"
 	if err := EnsureImageDir(localDir); err != nil {
-		log.Printf("Error creating image dir: %v", err)
+		slog.Error("Error creating image dir", "error", err, "dir", localDir)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -91,6 +91,8 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Check if file exists locally in cache
 	if _, err := os.Stat(localPath); err == nil {
+		// Set cache headers for cached images
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeFile(w, r, localPath)
 		return
 	}
@@ -101,6 +103,7 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a real absolute path (like /mnt/movies/...)
 		if strings.Contains(posterPath.String[1:], "/") {
 			if _, err := os.Stat(posterPath.String); err == nil {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 				http.ServeFile(w, r, posterPath.String)
 				return
 			}
@@ -118,13 +121,15 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPP)
 	}
 
-	log.Printf("[IMAGE] Downloading movie poster for ID %d from %s", id, sourceURL)
+	slog.Info("Downloading movie poster", "movie_id", id, "source_url", sourceURL)
 	if err := downloadImage(sourceURL, localPath); err != nil {
-		log.Printf("[IMAGE] Failed to download: %v", err)
+		slog.Error("Failed to download movie poster", "movie_id", id, "source_url", sourceURL, "error", err)
 		http.Error(w, "Failed to fetch image", http.StatusBadGateway)
 		return
 	}
 
+	// Set cache headers for newly downloaded images
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	http.ServeFile(w, r, localPath)
 }
 
@@ -167,7 +172,7 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 	// Local path: data/images/shows/{id}{ext}
 	localDir := "data/images/shows"
 	if err := EnsureImageDir(localDir); err != nil {
-		log.Printf("Error creating image dir: %v", err)
+		slog.Error("Error creating image dir", "error", err, "dir", localDir)
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
@@ -175,6 +180,8 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 	localPath := filepath.Join(localDir, fmt.Sprintf("%d%s", id, ext))
 
 	if _, err := os.Stat(localPath); err == nil {
+		// Set cache headers for cached images
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeFile(w, r, localPath)
 		return
 	}
@@ -185,6 +192,7 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a real absolute path (like /mnt/shows/...)
 		if strings.Contains(posterPath.String[1:], "/") {
 			if _, err := os.Stat(posterPath.String); err == nil {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 				http.ServeFile(w, r, posterPath.String)
 				return
 			}
@@ -201,13 +209,15 @@ func ServeShowImage(w http.ResponseWriter, r *http.Request) {
 		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPP)
 	}
 
-	log.Printf("[IMAGE] Downloading show poster for ID %d from %s", id, sourceURL)
+	slog.Info("Downloading show poster", "show_id", id, "source_url", sourceURL)
 	if err := downloadImage(sourceURL, localPath); err != nil {
-		log.Printf("[IMAGE] Failed to download: %v", err)
+		slog.Error("Failed to download show poster", "show_id", id, "source_url", sourceURL, "error", err)
 		http.Error(w, "Failed to fetch image", http.StatusBadGateway)
 		return
 	}
 
+	// Set cache headers for newly downloaded images
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	http.ServeFile(w, r, localPath)
 }
 
@@ -221,6 +231,7 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Check if it's an absolute local path (from scanner)
 	if strings.HasPrefix(path, "/") {
 		if _, err := os.Stat(path); err == nil {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			http.ServeFile(w, r, path)
 			return
 		}
@@ -240,6 +251,7 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	cachePath := filepath.Join(cacheDir, safeName)
 
 	if _, err := os.Stat(cachePath); err == nil {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeFile(w, r, cachePath)
 		return
 	}
@@ -260,7 +272,7 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", path)
 	}
 
-	log.Printf("[IMAGE] Downloading poster from %s to %s", sourceURL, cachePath)
+	slog.Info("Downloading poster", "source_url", sourceURL, "cache_path", cachePath)
 	resp, err := http.Get(sourceURL)
 	if err != nil {
 		http.Error(w, "Failed to fetch image", http.StatusBadGateway)

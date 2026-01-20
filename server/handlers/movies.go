@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	allMovies, err := services.GetMovies()
 	if err != nil {
-		log.Printf("Error getting movies: %v", err)
+		slog.Error("Error getting movies", "error", err)
 		allMovies = []models.Movie{}
 	}
 
@@ -120,7 +121,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		cfg := config.Load()
 		details, err := services.GetTMDBMovieDetails(cfg, tmdbID)
 		if err != nil {
-			log.Printf("Error getting TMDB movie details: %v", err)
+			slog.Error("Error getting TMDB movie details", "error", err, "tmdb_id", tmdbID)
 			http.Error(w, "Movie details not found", http.StatusNotFound)
 			return
 		}
@@ -185,7 +186,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := movieDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		log.Printf("Error executing movie details template: %v", err)
+		slog.Error("Error executing movie details template", "error", err, "movie_id", movie.ID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

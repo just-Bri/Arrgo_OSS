@@ -18,9 +18,9 @@
                     <a href="{{if eq .MediaType "show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}" style="text-decoration: none; flex-shrink: 0;">
                         {{if .PosterPath}}
                             {{if hasPrefix .PosterPath "http"}}
-                                <img src="{{.PosterPath}}" alt="{{.Title}}" style="width: 60px; border-radius: 4px;">
-                            {{else}}
-                                <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" style="width: 60px; border-radius: 4px;">
+                                <img src="{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90" style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
+                                {{else}}
+                                <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90" style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
                             {{end}}
                         {{else}}
                             <div style="width: 60px; height: 90px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center;">No Poster</div>

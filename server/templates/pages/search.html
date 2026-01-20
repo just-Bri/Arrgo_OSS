@@ -29,11 +29,11 @@
                             <a href="{{$detailsUrl}}" style="flex-shrink: 0;">
                                 {{if .PosterPath}}
                                     {{if hasPrefix .PosterPath "http"}}
-                                        <img src="{{.PosterPath}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
+                                        <img src="{{.PosterPath}}" loading="lazy" width="80" height="120" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                     {{else if eq .Source "local"}}
-                                        <img src="/images/movie/{{.LocalID}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
+                                        <img src="/images/movie/{{.LocalID}}" loading="lazy" width="80" height="120" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                     {{else}}
-                                        <img src="/images/tmdb/{{.PosterPath}}" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
+                                        <img src="/images/tmdb/{{.PosterPath}}" loading="lazy" width="80" height="120" style="width: 80px; border-radius: 4px; height: 120px; object-fit: cover;">
                                     {{end}}
                                 {{else}}
                                     <div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center; padding: 5px;">No Poster</div>

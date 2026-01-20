@@ -8,22 +8,17 @@ import (
 	"Arrgo/services"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	sharedlogger "github.com/justbri/arrgo/shared/logger"
 	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 	sharedserver "github.com/justbri/arrgo/shared/server"
 )
-
-func init() {
-	// Force logs to Stdout and remove timestamps for cleaner Docker logs
-	log.SetOutput(os.Stdout)
-	log.SetFlags(0)
-}
 
 // setupRoutes configures all HTTP routes
 func setupRoutes() *http.ServeMux {
@@ -91,31 +86,37 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
+	// Initialize structured logging
+	sharedlogger.Init(cfg.Environment, cfg.Debug)
+
 	fmt.Println("-----------------------------------------")
 	fmt.Println("Arrgo Process STDOUT Trigger")
 	fmt.Println("-----------------------------------------")
 
-	// Configure logging for runtime (init() already set basic config)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Printf("Initializing Arrgo components...")
+	slog.Info("Initializing Arrgo components",
+		"environment", cfg.Environment,
+		"debug", cfg.Debug)
 
 	// Initialize session store
 	services.InitSessionStore(cfg)
 
 	// Connect to database
 	if err := database.Connect(cfg); err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		slog.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
 
 	// Run migrations
 	if err := database.RunMigrations(); err != nil {
-		log.Fatal("Failed to run migrations:", err)
+		slog.Error("Failed to run migrations", "error", err)
+		os.Exit(1)
 	}
 
 	// Seed admin user
 	if err := database.SeedAdminUser(); err != nil {
-		log.Fatal("Failed to seed admin user:", err)
+		slog.Error("Failed to seed admin user", "error", err)
+		os.Exit(1)
 	}
 
 	// Start background workers
@@ -127,7 +128,7 @@ func main() {
 
 	qb, err := services.NewQBittorrentClient(cfg)
 	if err != nil {
-		log.Printf("Warning: Failed to initialize qBittorrent client: %v", err)
+		slog.Warn("Failed to initialize qBittorrent client", "error", err)
 	} else {
 		automation := services.NewAutomationService(cfg, qb)
 		go automation.Start(ctx)
@@ -138,11 +139,10 @@ func main() {
 
 	// Start server with graceful shutdown
 	addr := ":" + cfg.ServerPort
-	log.Printf("=========================================")
-	log.Printf("Arrgo is starting on %s", addr)
-	log.Printf("Environment: %s", cfg.Environment)
-	log.Printf("Debug Mode: %v", cfg.Debug)
-	log.Printf("=========================================")
+	slog.Info("Arrgo starting",
+		"address", addr,
+		"environment", cfg.Environment,
+		"debug", cfg.Debug)
 
 	// Create HTTP server with shared configuration
 	srvConfig := sharedserver.DefaultConfig(addr)
@@ -154,13 +154,14 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("FATAL: Server failed to start: %v", err)
+			slog.Error("Server failed to start", "error", err)
+			os.Exit(1)
 		}
 	}()
 
-	log.Printf("Server started successfully. Waiting for shutdown signal...")
+	slog.Info("Server started successfully, waiting for shutdown signal")
 	<-quit
-	log.Printf("Shutting down server...")
+	slog.Info("Shutting down server")
 
 	// Cancel background context
 	cancel()
@@ -170,8 +171,8 @@ func main() {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Error during server shutdown: %v", err)
+		slog.Error("Error during server shutdown", "error", err)
 	} else {
-		log.Printf("Server shutdown complete")
+		slog.Info("Server shutdown complete")
 	}
 }

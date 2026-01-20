@@ -7,7 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,7 +25,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 	}
 
 	if !scanShowsMutex.TryLock() {
-		log.Printf("[SCANNER] Show scan already in progress, skipping...")
+		slog.Info("Show scan already in progress, skipping")
 		return nil
 	}
 	defer func() {
@@ -33,7 +33,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 		FinishScan(scanType)
 	}()
 
-	log.Printf("[SCANNER] Starting show scan (%s) with %d workers...", scanType, DefaultWorkerCount)
+	slog.Info("Starting show scan", "scan_type", scanType, "workers", DefaultWorkerCount)
 
 	// Clean up missing files first
 	PurgeMissingShows()
@@ -78,7 +78,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 			continue
 		}
 		if _, err := os.Stat(p); os.IsNotExist(err) {
-			log.Printf("[SCANNER] Path does not exist, skipping: %s", p)
+			slog.Debug("Path does not exist, skipping", "path", p)
 			continue
 		}
 
@@ -110,9 +110,9 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 	wg.Wait()
 
 	if ctx.Err() == context.Canceled {
-		log.Printf("[SCANNER] Show scan (%s) cancelled.", scanType)
+		slog.Info("Show scan cancelled", "scan_type", scanType)
 	} else {
-		log.Printf("[SCANNER] Show scan (%s) complete.", scanType)
+		slog.Info("Show scan complete", "scan_type", scanType)
 	}
 
 	return nil
@@ -125,7 +125,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	// Look for local poster
 	posterPath := findLocalPoster(showPath)
 
-	log.Printf("[SCANNER] Processing show: %s (%d) at %s", title, year, showPath)
+	slog.Debug("Processing show", "title", title, "year", year, "path", showPath)
 	showID, err := upsertShow(models.Show{
 		Title:      title,
 		Year:       year,
@@ -137,7 +137,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 		Status:     "discovered",
 	})
 	if err != nil {
-		log.Printf("[SCANNER] Error upserting show %s: %v", title, err)
+		slog.Error("Error upserting show", "title", title, "error", err)
 		return
 	}
 
@@ -279,7 +279,7 @@ func GetShowCount(excludeIncomingPath string) (int, error) {
 }
 
 func PurgeMissingShows() {
-	log.Printf("[SCANNER] Checking for missing shows...")
+	slog.Debug("Checking for missing shows")
 
 	// Check Shows
 	rows, err := database.DB.Query("SELECT id, path FROM shows")
@@ -296,7 +296,7 @@ func PurgeMissingShows() {
 		}
 
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			log.Printf("[SCANNER] Removing missing show from DB: %s", path)
+			slog.Info("Removing missing show from DB", "show_id", id, "path", path)
 			database.DB.Exec("DELETE FROM shows WHERE id = $1", id)
 		}
 	}
@@ -315,7 +315,7 @@ func PurgeMissingShows() {
 			continue
 		}
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			log.Printf("[SCANNER] Removing missing episode from DB: %s", path)
+			slog.Info("Removing missing episode from DB", "episode_id", id, "path", path)
 			database.DB.Exec("DELETE FROM episodes WHERE id = $1", id)
 		}
 	}
@@ -420,7 +420,7 @@ func GetShowSeasons(showID int) ([]SeasonWithEpisodes, error) {
 		// Fetch episodes for this season
 		episodes, err := GetSeasonEpisodes(s.ID)
 		if err != nil {
-			log.Printf("Error getting episodes for season %d: %v", s.ID, err)
+			slog.Error("Error getting episodes for season", "season_id", s.ID, "error", err)
 		} else {
 			s.Episodes = episodes
 		}

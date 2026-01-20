@@ -5,6 +5,7 @@ import (
 	"Arrgo/services"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -46,19 +47,19 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[DASHBOARD] Loading dashboard for user: %s", user.Username)
+	slog.Debug("Loading dashboard", "username", user.Username)
 
 	cfg := config.Load()
 
 	// Library counts (excluding incoming subfolders)
 	movieCount, err := services.GetMovieCount(cfg.IncomingMoviesPath)
 	if err != nil {
-		log.Printf("Error getting movie count: %v", err)
+		slog.Error("Error getting movie count", "error", err)
 	}
 
 	showCount, err := services.GetShowCount(cfg.IncomingShowsPath)
 	if err != nil {
-		log.Printf("Error getting show count: %v", err)
+		slog.Error("Error getting show count", "error", err)
 	}
 
 	incomingMovieCount := 0

@@ -6,13 +6,41 @@ import (
 	"Arrgo/models"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// pathMutex provides per-path locking to prevent concurrent operations on the same file/directory
+var (
+	pathMutexes = make(map[string]*sync.Mutex)
+	pathMu      sync.Mutex
+)
+
+// getPathMutex returns a mutex for the given path, creating one if it doesn't exist
+func getPathMutex(path string) *sync.Mutex {
+	pathMu.Lock()
+	defer pathMu.Unlock()
+	
+	if mu, exists := pathMutexes[path]; exists {
+		return mu
+	}
+	
+	mu := &sync.Mutex{}
+	pathMutexes[path] = mu
+	return mu
+}
+
+// lockPath locks the mutex for the given path and returns an unlock function
+func lockPath(path string) func() {
+	mu := getPathMutex(path)
+	mu.Lock()
+	return mu.Unlock
+}
 
 func safeRename(src, dst string) error {
 	// Try renaming first (efficient if on same device)
@@ -22,7 +50,7 @@ func safeRename(src, dst string) error {
 	}
 
 	// Fallback for "invalid cross-device link" (EXDEV)
-	log.Printf("[RENAMER] Cross-device move detected, falling back to copy+delete: %s -> %s", src, dst)
+	slog.Info("Cross-device move detected, falling back to copy+delete", "src", src, "dst", dst)
 
 	// Create destination directory if it doesn't exist (should already be created by caller, but safe check)
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
@@ -95,21 +123,21 @@ func handleExistingFile(destPath, candidatePath, candidateQuality string, candid
 	comp := CompareQuality(candidateQuality, existingQuality)
 	if comp < 0 {
 		// Candidate is LOWER quality than existing
-		log.Printf("[RENAMER] Candidate %s is lower quality (%s) than existing (%s). Deleting candidate.", candidatePath, candidateQuality, existingQuality)
+		slog.Info("Candidate is lower quality, deleting candidate", "candidate_path", candidatePath, "candidate_quality", candidateQuality, "existing_quality", existingQuality)
 		deleteCandidate()
 		return true
 	} else if comp == 0 {
 		// Qualities are equal, compare size
 		if candidateSize <= existingSize {
-			log.Printf("[RENAMER] Candidate %s has same quality (%s) but smaller/equal size. Deleting candidate.", candidatePath, candidateQuality)
+			slog.Info("Candidate has same quality but smaller/equal size, deleting candidate", "candidate_path", candidatePath, "quality", candidateQuality)
 			deleteCandidate()
 			return true
 		}
 		// Candidate is larger, proceed to replace
-		log.Printf("[RENAMER] Candidate %s has same quality (%s) but larger size. Replacing existing.", candidatePath, candidateQuality)
+		slog.Info("Candidate has same quality but larger size, replacing existing", "candidate_path", candidatePath, "quality", candidateQuality)
 	} else {
 		// Candidate is HIGHER quality
-		log.Printf("[RENAMER] Candidate %s is higher quality (%s) than existing (%s). Replacing existing.", candidatePath, candidateQuality, existingQuality)
+		slog.Info("Candidate is higher quality, replacing existing", "candidate_path", candidatePath, "candidate_quality", candidateQuality, "existing_quality", existingQuality)
 	}
 
 	// Remove existing file and its DB entry
@@ -196,6 +224,10 @@ func ParseMediaName(name string) (string, int, string, string, string) {
 }
 
 func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
+	return RenameAndMoveMovieWithCleanup(cfg, movieID, false)
+}
+
+func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bool) error {
 	var m models.Movie
 	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
 	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.IMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath)
@@ -217,6 +249,14 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	destDirPath := filepath.Join(cfg.MoviesPath, destDirName)
 	destPath := filepath.Join(destDirPath, newName)
 
+	// Lock both source and destination paths to prevent concurrent operations
+	unlockSrc := lockPath(m.Path)
+	defer unlockSrc()
+	unlockDst := lockPath(destPath)
+	defer unlockDst()
+	unlockDir := lockPath(destDirPath)
+	defer unlockDir()
+
 	if err := os.MkdirAll(destDirPath, 0755); err != nil {
 		return err
 	}
@@ -232,7 +272,9 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 		func() error {
 			os.Remove(m.Path)
 			database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-			CleanupEmptyDirs(cfg.IncomingMoviesPath)
+			if doCleanup {
+				CleanupEmptyDirs(cfg.IncomingMoviesPath)
+			}
 			return nil
 		},
 		func() error {
@@ -250,7 +292,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	if err := safeRename(oldPath, destPath); err != nil {
 		return err
 	}
-	log.Printf("[RENAMER] Successfully moved movie: %s -> %s", oldPath, destPath)
+	slog.Info("Successfully moved movie", "old_path", oldPath, "new_path", destPath)
 
 	// Copy the poster if it exists and is in the same directory as the movie
 	newPosterPath := ""
@@ -259,10 +301,10 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 			posterExt := filepath.Ext(m.PosterPath)
 			newPosterPath = filepath.Join(destDirPath, "poster"+posterExt)
 			if err := copyFile(m.PosterPath, newPosterPath); err != nil {
-				log.Printf("[RENAMER] Failed to copy poster: %v", err)
+				slog.Error("Failed to copy poster", "error", err, "old_path", m.PosterPath, "new_path", newPosterPath)
 				newPosterPath = "" // Reset if failed
 			} else {
-				log.Printf("[RENAMER] Copied movie poster: %s -> %s", m.PosterPath, newPosterPath)
+				slog.Info("Copied movie poster", "old_path", m.PosterPath, "new_path", newPosterPath)
 			}
 		} else {
 			// If it's a TMDB URL or already in library, keep it as is
@@ -270,8 +312,10 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 		}
 	}
 
-	// Cleanup old directory if it was in incoming
-	CleanupEmptyDirs(cfg.IncomingMoviesPath)
+	// Cleanup old directory if it was in incoming (only if requested)
+	if doCleanup {
+		CleanupEmptyDirs(cfg.IncomingMoviesPath)
+	}
 
 	// Update DB with new path and status
 	updateQuery := `UPDATE movies SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
@@ -283,7 +327,7 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	// Trigger subtitle download
 	go func() {
 		if err := DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
-			log.Printf("[RENAMER] Subtitle download failed for %s: %v", m.Title, err)
+			slog.Error("Subtitle download failed for movie", "movie_id", m.ID, "title", m.Title, "error", err)
 		}
 	}()
 
@@ -291,6 +335,10 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 }
 
 func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
+	return RenameAndMoveEpisodeWithCleanup(cfg, episodeID, false)
+}
+
+func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanup bool) error {
 	var e models.Episode
 	var s models.Season
 	var sh models.Show
@@ -338,6 +386,14 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	destDirPath := filepath.Join(cfg.ShowsPath, showDirName, seasonDirName)
 	destPath := filepath.Join(destDirPath, newFileName)
 
+	// Lock both source and destination paths to prevent concurrent operations
+	unlockSrc := lockPath(e.FilePath)
+	defer unlockSrc()
+	unlockDst := lockPath(destPath)
+	defer unlockDst()
+	unlockDir := lockPath(destDirPath)
+	defer unlockDir()
+
 	if err := os.MkdirAll(destDirPath, 0755); err != nil {
 		return err
 	}
@@ -353,7 +409,9 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		func() error {
 			os.Remove(e.FilePath)
 			database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-			CleanupEmptyDirs(cfg.IncomingShowsPath)
+			if doCleanup {
+				CleanupEmptyDirs(cfg.IncomingShowsPath)
+			}
 			return nil
 		},
 		func() error {
@@ -370,7 +428,7 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	if err := safeRename(oldPath, destPath); err != nil {
 		return err
 	}
-	log.Printf("[RENAMER] Successfully moved episode: %s -> %s", oldPath, destPath)
+	slog.Info("Successfully moved episode", "old_path", oldPath, "new_path", destPath)
 
 	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
@@ -378,13 +436,20 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 		return err
 	}
 
-	// Cleanup old directory if it was in incoming
-	CleanupEmptyDirs(cfg.IncomingShowsPath)
+	// Cleanup old directory if it was in incoming (only if requested)
+	if doCleanup {
+		CleanupEmptyDirs(cfg.IncomingShowsPath)
+	}
 
 	// Trigger subtitle download for episode
 	go func() {
 		if err := DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
-			log.Printf("[RENAMER] Subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
+			slog.Error("Subtitle download failed for episode",
+				"episode_id", e.ID,
+				"show_title", sh.Title,
+				"season", s.SeasonNumber,
+				"episode", e.EpisodeNumber,
+				"error", err)
 		}
 	}()
 
@@ -392,6 +457,10 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 }
 
 func RenameAndMoveShow(cfg *config.Config, showID int) error {
+	return RenameAndMoveShowWithCleanup(cfg, showID, false)
+}
+
+func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool) error {
 	var sh models.Show
 	err := database.DB.QueryRow("SELECT id, title, year, tvdb_id, path, poster_path FROM shows WHERE id = $1", showID).Scan(&sh.ID, &sh.Title, &sh.Year, &sh.TVDBID, &sh.Path, &sh.PosterPath)
 	if err != nil {
@@ -406,6 +475,10 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 	}
 	destShowPath := filepath.Join(cfg.ShowsPath, showDirName)
 
+	// Lock the destination show path to prevent concurrent operations
+	unlockShow := lockPath(destShowPath)
+	defer unlockShow()
+
 	if err := os.MkdirAll(destShowPath, 0755); err != nil {
 		return err
 	}
@@ -418,10 +491,10 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 		if _, err := os.Stat(newPosterPath); os.IsNotExist(err) {
 			// We'll copy the poster instead of moving it, so the original can be nuked by cleanup
 			if err := copyFile(sh.PosterPath, newPosterPath); err != nil {
-				log.Printf("[RENAMER] Failed to copy show poster: %v", err)
+				slog.Error("Failed to copy show poster", "error", err, "old_path", sh.PosterPath, "new_path", newPosterPath)
 				newPosterPath = sh.PosterPath
 			} else {
-				log.Printf("[RENAMER] Copied show poster: %s -> %s", sh.PosterPath, newPosterPath)
+				slog.Info("Copied show poster", "old_path", sh.PosterPath, "new_path", newPosterPath)
 			}
 		}
 	}
@@ -439,22 +512,22 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 	}
 	defer rows.Close()
 
-	for rows.Next() {
-		var epID int
-		if err := rows.Scan(&epID); err != nil {
-			continue
+		for rows.Next() {
+			var epID int
+			if err := rows.Scan(&epID); err != nil {
+				continue
+			}
+			if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, false); err != nil {
+				slog.Error("Error renaming episode", "episode_id", epID, "error", err)
+			}
 		}
-		if err := RenameAndMoveEpisode(cfg, epID); err != nil {
-			log.Printf("[RENAMER] Error renaming episode %d: %v", epID, err)
-		}
-	}
 
 	// Update show status and path in DB, handling potential duplicates
 	var existingID int
 	err = database.DB.QueryRow("SELECT id FROM shows WHERE path = $1", destShowPath).Scan(&existingID)
 	if err == nil && existingID != showID {
 		// Merge: another show already exists at this destination path
-		log.Printf("[RENAMER] Destination path %s already exists in DB (ID %d). Merging show %d into it.", destShowPath, existingID, showID)
+		slog.Info("Destination path already exists in DB, merging show", "dest_path", destShowPath, "existing_id", existingID, "show_id", showID)
 
 		// Move seasons to the existing show
 		sRows, err := database.DB.Query("SELECT id, season_number FROM seasons WHERE show_id = $1", showID)
@@ -491,11 +564,14 @@ func RenameAndMoveShow(cfg *config.Config, showID int) error {
 		updateQuery := `UPDATE shows SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
 		_, err = database.DB.Exec(updateQuery, destShowPath, newPosterPath, showID)
 		if err != nil {
-			log.Printf("[RENAMER] Error updating show %d in DB: %v", showID, err)
+			slog.Error("Error updating show in DB", "show_id", showID, "error", err)
 		}
 	}
 
-	CleanupEmptyDirs(cfg.IncomingShowsPath)
+	// Cleanup old directory if it was in incoming (only if requested)
+	if doCleanup {
+		CleanupEmptyDirs(cfg.IncomingShowsPath)
+	}
 
 	return nil
 }

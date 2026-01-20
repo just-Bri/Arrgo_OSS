@@ -6,6 +6,7 @@ import (
 	"Arrgo/services"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -55,14 +56,14 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	// Get incoming movies and shows using shared helpers
 	allMovies, err := services.GetMovies()
 	if err != nil {
-		log.Printf("Error getting movies for admin: %v", err)
+		slog.Error("Error getting movies for admin", "error", err)
 		allMovies = []models.Movie{}
 	}
 	_, incomingMovies := SeparateIncomingMovies(allMovies, cfg, true)
 
 	allShows, err := services.GetShows()
 	if err != nil {
-		log.Printf("Error getting shows for admin: %v", err)
+		slog.Error("Error getting shows for admin", "error", err)
 		allShows = []models.Show{}
 	}
 	_, incomingShows := SeparateIncomingShows(allShows, cfg, true)
@@ -82,7 +83,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := adminTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		log.Printf("Error rendering admin template: %v", err)
+		slog.Error("Error rendering admin template", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

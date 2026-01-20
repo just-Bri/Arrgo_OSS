@@ -2,14 +2,16 @@ package middleware
 
 import (
 	"Arrgo/services"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 )
 
 // redirectToLogin logs the reason and redirects to login page
 func redirectToLogin(w http.ResponseWriter, r *http.Request, reason string) {
-	log.Printf("[AUTH] %s for %s, redirecting to /login", reason, r.URL.Path)
+	slog.Warn("Authentication failed, redirecting to login",
+		"reason", reason,
+		"path", r.URL.Path)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -51,7 +53,9 @@ func RequireAuth(next http.Handler) http.Handler {
 		// Verify user still exists
 		_, err = services.GetUserByID(userIDInt)
 		if err != nil {
-			log.Printf("[AUTH] User ID %d not found in database, redirecting to /login", userIDInt)
+			slog.Warn("User not found in database, redirecting to login",
+				"user_id", userIDInt,
+				"path", r.URL.Path)
 			redirectToLogin(w, r, "User not found in database")
 			return
 		}

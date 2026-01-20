@@ -127,7 +127,7 @@
                 <li style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
                     {{if .PosterPath}}
                     <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
-                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" style="width: 50px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75" style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                     </a>
                     {{else}}
                     <div style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">No Poster</div>
@@ -167,7 +167,7 @@
                 <li style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
                     {{if .PosterPath}}
                     <a href="/shows/details?id={{.ID}}" style="flex-shrink: 0;">
-                        <img src="/images/shows/{{.ID}}" alt="{{.Title}}" style="width: 50px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                        <img src="/images/shows/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75" style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                     </a>
                     {{else}}
                     <div style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">No Poster</div>

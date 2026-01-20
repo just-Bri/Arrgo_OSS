@@ -5,6 +5,7 @@ import (
 	"Arrgo/services"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -189,7 +190,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := searchTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		log.Printf("Error rendering search template: %v", err)
+		slog.Error("Error rendering search template", "error", err, "query", query)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

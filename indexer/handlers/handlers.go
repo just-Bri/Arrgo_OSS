@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"text/template"
 
@@ -22,7 +23,7 @@ func init() {
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	if err := indexTmpl.Execute(w, nil); err != nil {
-		log.Printf("Error rendering index template: %v", err)
+		slog.Error("Error rendering index template", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -39,7 +40,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	results, errs := performSearch(r.Context(), query, searchType)
 
 	if len(results) == 0 && len(errs) > 0 {
-		log.Printf("Search error: %v", errs[0])
+		slog.Error("Search error", "error", errs[0], "query", query, "type", searchType)
 		http.Error(w, errs[0].Error(), http.StatusInternalServerError)
 		return
 	}
@@ -98,7 +99,7 @@ func performSearch(ctx context.Context, query, searchType string) ([]providers.S
 func writeJSONResponse(w http.ResponseWriter, results []providers.SearchResult) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(results); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
+		slog.Error("Error encoding JSON response", "error", err)
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -157,7 +158,7 @@ func writeHTMLResponse(w http.ResponseWriter, results []providers.SearchResult, 
 	}
 
 	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("Error executing results template: %v", err)
+		slog.Error("Error executing results template", "error", err, "query", query)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

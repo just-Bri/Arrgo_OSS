@@ -28,7 +28,7 @@
                 <li style="padding: 15px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 15px;">
                     {{if .PosterPath}}
                     <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
-                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" style="width: 70px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="70" height="105" style="width: 70px; height: 105px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                     </a>
                     {{else}}
                     <a href="/movies/details?id={{.ID}}" style="text-decoration: none; flex-shrink: 0;">

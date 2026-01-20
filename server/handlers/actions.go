@@ -5,7 +5,7 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"Arrgo/services"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -138,7 +138,7 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !importMoviesMutex.TryLock() {
-		log.Printf("[IMPORT] Mass movie import already in progress, skipping...")
+		slog.Info("Mass movie import already in progress, skipping")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -153,7 +153,7 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
 	allMovies, err := services.GetMovies()
 	if err != nil {
-		log.Printf("Error getting movies for mass import: %v", err)
+		slog.Error("Error getting movies for mass import", "error", err)
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -166,12 +166,12 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(moviesToImport) == 0 {
-		log.Printf("No movies found to import")
+		slog.Info("No movies found to import")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
 
-	log.Printf("[IMPORT] Starting mass movie import for %d movies with 4 workers...", len(moviesToImport))
+	slog.Info("Starting mass movie import", "count", len(moviesToImport), "workers", services.DefaultWorkerCount)
 
 	count := 0
 	var mu sync.Mutex
@@ -184,8 +184,9 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			defer wg.Done()
 			for m := range movieChan {
-				if err := services.RenameAndMoveMovie(cfg, m.ID); err != nil {
-					log.Printf("Error importing movie %d (%s): %v", m.ID, m.Title, err)
+				// Don't cleanup during import - we'll do it once at the end
+				if err := services.RenameAndMoveMovieWithCleanup(cfg, m.ID, false); err != nil {
+					slog.Error("Error importing movie", "movie_id", m.ID, "title", m.Title, "error", err)
 				} else {
 					mu.Lock()
 					count++
@@ -205,7 +206,7 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	// Final cleanup pass
 	services.CleanupEmptyDirs(cfg.IncomingMoviesPath)
 
-	log.Printf("Mass movie import complete: %d movies moved", count)
+	slog.Info("Mass movie import complete", "movies_moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
@@ -216,7 +217,7 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !importShowsMutex.TryLock() {
-		log.Printf("[IMPORT] Mass show import already in progress, skipping...")
+		slog.Info("Mass show import already in progress, skipping")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -231,7 +232,7 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
 	allShows, err := services.GetShows()
 	if err != nil {
-		log.Printf("Error getting shows for mass import: %v", err)
+		slog.Error("Error getting shows for mass import", "error", err)
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -244,31 +245,34 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(showsToImport) == 0 {
-		log.Printf("No shows found to import")
+		slog.Info("No shows found to import")
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
 
-	log.Printf("[IMPORT] Starting mass show import for %d shows with 4 workers...", len(showsToImport))
+	slog.Info("Starting mass show import", "count", len(showsToImport), "workers", services.DefaultWorkerCount)
 
 	count := 0
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	showChan := make(chan models.Show, len(showsToImport))
 
-	// Start 4 workers
-	for range 4 {
-		wg.Go(func() {
+	// Start workers
+	for i := 0; i < services.DefaultWorkerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			for s := range showChan {
-				if err := services.RenameAndMoveShow(cfg, s.ID); err != nil {
-					log.Printf("Error importing show %d (%s): %v", s.ID, s.Title, err)
+				// Don't cleanup during import - we'll do it once at the end
+				if err := services.RenameAndMoveShowWithCleanup(cfg, s.ID, false); err != nil {
+					slog.Error("Error importing show", "show_id", s.ID, "title", s.Title, "error", err)
 				} else {
 					mu.Lock()
 					count++
 					mu.Unlock()
 				}
 			}
-		})
+		}()
 	}
 
 	// Dispatch shows
@@ -281,7 +285,7 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	// Final cleanup pass
 	services.CleanupEmptyDirs(cfg.IncomingShowsPath)
 
-	log.Printf("Mass show import complete: %d shows moved", count)
+	slog.Info("Mass show import complete", "shows_moved", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
@@ -300,7 +304,7 @@ func RenameMovieHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.Load()
 	if err := services.RenameAndMoveMovie(cfg, id); err != nil {
-		log.Printf("Error renaming movie %d: %v", id, err)
+		slog.Error("Error renaming movie", "movie_id", id, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -324,7 +328,7 @@ func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
 
 	if err := services.RenameAndMoveShow(cfg, id); err != nil {
-		log.Printf("Error renaming show %d: %v", id, err)
+		slog.Error("Error renaming show", "show_id", id, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -359,7 +363,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 
 		// If IMDB ID is missing, try to re-match it first
 		if m.IMDBID == "" {
-			log.Printf("[HANDLERS] IMDB ID missing for movie %s, attempting re-match...", m.Title)
+			slog.Info("IMDB ID missing for movie, attempting re-match", "movie_id", m.ID, "title", m.Title)
 			if err := services.MatchMovie(cfg, m.ID); err == nil {
 				// Reload movie to get new IMDB ID
 				m, _ = services.GetMovieByID(id)
@@ -372,7 +376,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := services.DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
-			log.Printf("[HANDLERS] Manual subtitle download failed for %s: %v", m.Title, err)
+			slog.Error("Manual subtitle download failed for movie", "movie_id", m.ID, "title", m.Title, "error", err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
 		}
@@ -389,14 +393,14 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		`
 		err := database.DB.QueryRow(query, id).Scan(&e.ID, &e.EpisodeNumber, &e.FilePath, &s.SeasonNumber, &sh.ID, &sh.Title, &sh.IMDBID)
 		if err != nil {
-			log.Printf("[HANDLERS] Error fetching episode %d for subtitle download: %v", id, err)
+			slog.Error("Error fetching episode for subtitle download", "episode_id", id, "error", err)
 			http.Error(w, "Episode not found", http.StatusNotFound)
 			return
 		}
 
 		// If IMDB ID is missing, try to re-match the parent show first
 		if sh.IMDBID == "" {
-			log.Printf("[HANDLERS] IMDB ID missing for show %s, attempting re-match...", sh.Title)
+			slog.Info("IMDB ID missing for show, attempting re-match", "show_id", sh.ID, "title", sh.Title)
 			if err := services.MatchShow(cfg, sh.ID); err == nil {
 				// Reload IMDB ID
 				database.DB.QueryRow("SELECT imdb_id FROM shows WHERE id = $1", sh.ID).Scan(&sh.IMDBID)
@@ -409,7 +413,12 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := services.DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
-			log.Printf("[HANDLERS] Manual subtitle download failed for %s S%02dE%02d: %v", sh.Title, s.SeasonNumber, e.EpisodeNumber, err)
+			slog.Error("Manual subtitle download failed for episode",
+				"episode_id", e.ID,
+				"show_title", sh.Title,
+				"season", s.SeasonNumber,
+				"episode", e.EpisodeNumber,
+				"error", err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
 		}
@@ -434,12 +443,12 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[ADMIN] NUKE operation started by user: %s", user.Username)
+	slog.Warn("NUKE operation started", "user", user.Username, "user_id", user.ID)
 
 	// Start a transaction for safety
 	tx, err := database.DB.Begin()
 	if err != nil {
-		log.Printf("[ADMIN] Failed to start nuke transaction: %v", err)
+		slog.Error("Failed to start nuke transaction", "error", err, "user", user.Username)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -457,19 +466,19 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 	for _, q := range queries {
 		if _, err := tx.Exec(q); err != nil {
 			tx.Rollback()
-			log.Printf("[ADMIN] Failed to execute query '%s': %v", q, err)
+			slog.Error("Failed to execute nuke query", "query", q, "error", err, "user", user.Username)
 			http.Error(w, "Failed to clear table: "+q, http.StatusInternalServerError)
 			return
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("[ADMIN] Failed to commit nuke transaction: %v", err)
+		slog.Error("Failed to commit nuke transaction", "error", err, "user", user.Username)
 		http.Error(w, "Failed to commit changes", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[ADMIN] NUKE operation completed successfully")
+	slog.Warn("NUKE operation completed successfully", "user", user.Username)
 
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }

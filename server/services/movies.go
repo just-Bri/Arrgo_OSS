@@ -6,7 +6,7 @@ import (
 	"Arrgo/models"
 	"context"
 	"database/sql"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +24,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	}
 
 	if !scanMoviesMutex.TryLock() {
-		log.Printf("[SCANNER] Movie scan already in progress, skipping...")
+		slog.Info("Movie scan already in progress, skipping")
 		return nil
 	}
 	defer func() {
@@ -32,7 +32,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 		FinishScan(scanType)
 	}()
 
-	log.Printf("[SCANNER] Starting movie scan (%s) with %d workers...", scanType, DefaultWorkerCount)
+	slog.Info("Starting movie scan", "scan_type", scanType, "workers", DefaultWorkerCount)
 
 	// Clean up missing files first
 	PurgeMissingMovies()
@@ -72,13 +72,13 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 			continue
 		}
 		if _, err := os.Stat(p); os.IsNotExist(err) {
-			log.Printf("[SCANNER] Path does not exist, skipping: %s", p)
+			slog.Debug("Path does not exist, skipping", "path", p)
 			continue
 		}
-		log.Printf("[SCANNER] Walking path: %s", p)
+		slog.Debug("Walking path", "path", p)
 		filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				log.Printf("[SCANNER] Error walking path %s: %v", path, err)
+				slog.Error("Error walking path", "path", path, "error", err)
 				return nil
 			}
 
@@ -103,9 +103,9 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	wg.Wait()
 
 	if ctx.Err() == context.Canceled {
-		log.Printf("[SCANNER] Movie scan (%s) cancelled.", scanType)
+		slog.Info("Movie scan cancelled", "scan_type", scanType)
 	} else {
-		log.Printf("[SCANNER] Movie scan (%s) complete.", scanType)
+		slog.Info("Movie scan complete", "scan_type", scanType)
 	}
 
 	return nil
@@ -149,7 +149,7 @@ func processMovieFile(cfg *config.Config, path string) {
 	}
 
 	if id, err := upsertMovie(movie); err != nil {
-		log.Printf("[SCANNER] Error upserting %s: %v", title, err)
+		slog.Error("Error upserting movie", "title", title, "error", err)
 	} else {
 		// Fetch metadata immediately
 		MatchMovie(cfg, id)
@@ -233,7 +233,7 @@ func GetMovieCount(excludeIncomingPath string) (int, error) {
 }
 
 func PurgeMissingMovies() {
-	log.Printf("[SCANNER] Checking for missing movies...")
+	slog.Debug("Checking for missing movies")
 	rows, err := database.DB.Query("SELECT id, path FROM movies")
 	if err != nil {
 		return
@@ -248,7 +248,7 @@ func PurgeMissingMovies() {
 		}
 
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			log.Printf("[SCANNER] Removing missing movie from DB: %s", path)
+			slog.Info("Removing missing movie from DB", "movie_id", id, "path", path)
 			database.DB.Exec("DELETE FROM movies WHERE id = $1", id)
 		}
 	}

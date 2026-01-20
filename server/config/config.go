@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/justbri/arrgo/shared/config"
 )
@@ -52,7 +52,7 @@ func Load() *Config {
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
-		log.Printf("Warning: Configuration validation failed: %v", err)
+		slog.Warn("Configuration validation failed", "error", err)
 	}
 
 	return cfg

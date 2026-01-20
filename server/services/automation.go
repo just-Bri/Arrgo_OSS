@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -29,7 +29,7 @@ func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *Automation
 }
 
 func (s *AutomationService) Start(ctx context.Context) {
-	log.Println("Starting Automation Service...")
+	slog.Info("Starting Automation Service")
 
 	// Check for approved requests every 5 minutes
 	ticker := time.NewTicker(5 * time.Minute)
@@ -63,7 +63,7 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 
 	rows, err := database.DB.Query(query)
 	if err != nil {
-		log.Printf("Error querying approved requests: %v", err)
+		slog.Error("Error querying approved requests", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -72,7 +72,7 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 		var r models.Request
 		var tmdbID, tvdbID, imdbID, seasons sql.NullString
 		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &tmdbID, &tvdbID, &imdbID, &seasons); err != nil {
-			log.Printf("Error scanning request: %v", err)
+			slog.Error("Error scanning request", "error", err)
 			continue
 		}
 		r.TMDBID = tmdbID.String
@@ -83,9 +83,9 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	}
 
 	for _, r := range requests {
-		log.Printf("Processing approved request: %s (%d)", r.Title, r.ID)
+		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType)
 		if err := s.processRequest(ctx, r); err != nil {
-			log.Printf("Failed to process request %d: %v", r.ID, err)
+			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}
 	}
 }
@@ -127,7 +127,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	}
 
 	if len(results) == 0 {
-		log.Printf("No results found for %s", r.Title)
+		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title)
 		return nil
 	}
 
@@ -176,7 +176,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 	torrents, err := s.qb.GetTorrents(ctx, "all")
 	if err != nil {
-		log.Printf("Error getting torrents from qBittorrent: %v", err)
+		slog.Error("Error getting torrents from qBittorrent", "error", err)
 		return
 	}
 
@@ -190,7 +190,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			WHERE torrent_hash = $3`,
 			t.Progress, t.State, t.Hash)
 		if err != nil {
-			log.Printf("Error updating download status: %v", err)
+			slog.Error("Error updating download status", "error", err, "torrent_hash", t.Hash)
 			continue
 		}
 
@@ -202,7 +202,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 				WHERE id = (SELECT request_id FROM downloads WHERE torrent_hash = $1)`,
 				t.Hash)
 			if err != nil {
-				log.Printf("Error updating request status to completed: %v", err)
+				slog.Error("Error updating request status to completed", "error", err, "torrent_hash", t.Hash)
 			}
 		}
 	}
@@ -216,7 +216,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			var hash string
 			if err := rows.Scan(&reqID, &hash); err == nil {
 				if !activeHashes[hash] {
-					log.Printf("Download %s vanished from qBittorrent, resetting request %d to approved", hash, reqID)
+					slog.Warn("Download vanished from qBittorrent, resetting request to approved", "torrent_hash", hash, "request_id", reqID)
 					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
 					database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", hash)
 				}
@@ -233,7 +233,7 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 		if t, err := time.Parse(time.RFC3339, resetStr); err == nil {
 			if time.Now().Before(t.Add(5 * time.Minute)) {
 				// Still in lockdown
-				log.Printf("[SUBTITLES] Still in OpenSubtitles quota lockdown until %v", t.Add(5*time.Minute))
+				slog.Debug("Still in OpenSubtitles quota lockdown", "reset_time", t.Add(5*time.Minute))
 				return
 			}
 		}
@@ -242,7 +242,7 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 	// 2. Fetch pending jobs that are ready for retry
 	rows, err := database.DB.Query("SELECT id, media_type, media_id FROM subtitle_queue WHERE next_retry <= CURRENT_TIMESTAMP")
 	if err != nil {
-		log.Printf("Error querying subtitle queue: %v", err)
+		slog.Error("Error querying subtitle queue", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -261,7 +261,7 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 	}
 
 	for _, j := range jobs {
-		log.Printf("[SUBTITLES] Retrying subtitle download for %s %d", j.mType, j.mID)
+		slog.Info("Retrying subtitle download", "media_type", j.mType, "media_id", j.mID)
 		var err error
 		if j.mType == "movie" {
 			err = DownloadSubtitlesForMovie(s.cfg, j.mID)
@@ -272,12 +272,12 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 		if err == nil {
 			// Success! Remove from queue
 			database.DB.Exec("DELETE FROM subtitle_queue WHERE id = $1", j.id)
-			log.Printf("[SUBTITLES] Successfully downloaded subtitles for %s %d on retry", j.mType, j.mID)
+			slog.Info("Successfully downloaded subtitles on retry", "media_type", j.mType, "media_id", j.mID)
 		} else {
 			// Check if it was a quota error again
 			if strings.Contains(err.Error(), "406") {
 				// Quota hit again, next_retry was updated by QueueSubtitleDownload called inside DownloadSubtitlesForX
-				log.Printf("[SUBTITLES] Hit quota again while retrying %s %d", j.mType, j.mID)
+				slog.Warn("Hit quota again while retrying subtitle download", "media_type", j.mType, "media_id", j.mID)
 				break // Stop processing queue for now
 			} else {
 				// Some other error, increment retry count and back off
@@ -286,7 +286,7 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 				var retries int
 				database.DB.QueryRow("SELECT retry_count FROM subtitle_queue WHERE id = $1", j.id).Scan(&retries)
 				if retries > 5 {
-					log.Printf("[SUBTITLES] Giving up on subtitles for %s %d after 5 retries", j.mType, j.mID)
+					slog.Warn("Giving up on subtitles after 5 retries", "media_type", j.mType, "media_id", j.mID, "retries", retries)
 					database.DB.Exec("DELETE FROM subtitle_queue WHERE id = $1", j.id)
 				}
 			}

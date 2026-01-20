@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,7 +57,7 @@ func parseOpenSubtitlesError(resp *http.Response) error {
 				// Convert to UTC and store
 				utcTime := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
 				SetSetting("opensubtitles_quota_reset", utcTime.Format(time.RFC3339))
-				log.Printf("[SUBTITLES] Extracted quota reset time from text error: %s", utcTime.Format(time.RFC3339))
+				slog.Debug("Extracted quota reset time from text error", "reset_time", utcTime.Format(time.RFC3339))
 			}
 		}
 	}
@@ -146,7 +146,7 @@ func doRequestWithRetry(cfg *config.Config, client *http.Client, reqFunc func() 
 		resp, err := client.Do(req)
 		if err == nil {
 			if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable {
-				log.Printf("[SUBTITLES] Hit %d error, retrying in 10s (attempt %d/3)...", resp.StatusCode, i+1)
+				slog.Warn("Hit error, retrying", "status_code", resp.StatusCode, "attempt", i+1, "max_attempts", 3)
 				resp.Body.Close()
 				time.Sleep(10 * time.Second)
 				lastResp = resp
@@ -155,7 +155,7 @@ func doRequestWithRetry(cfg *config.Config, client *http.Client, reqFunc func() 
 			return resp, nil
 		}
 		lastErr = err
-		log.Printf("[SUBTITLES] Request failed: %v, retrying in 10s (attempt %d/3)...", err, i+1)
+		slog.Warn("Request failed, retrying", "error", err, "attempt", i+1, "max_attempts", 3)
 		time.Sleep(10 * time.Second)
 	}
 
@@ -199,7 +199,7 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 		return "", "", fmt.Errorf("OpenSubtitles credentials not set")
 	}
 
-	log.Printf("[SUBTITLES] Authenticating with OpenSubtitles...")
+	slog.Info("Authenticating with OpenSubtitles")
 	payload, _ := json.Marshal(map[string]string{
 		"username": cfg.OpenSubtitlesUser,
 		"password": cfg.OpenSubtitlesPass,
@@ -246,7 +246,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota is locked (pre-check), queueing movie %d", movieID)
+		slog.Info("OpenSubtitles quota is locked (pre-check), queueing movie", "movie_id", movieID)
 		return QueueSubtitleDownload("movie", movieID)
 	}
 
@@ -267,19 +267,19 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 
 	// Re-check quota after entering semaphore to catch race conditions
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota was locked while waiting for semaphore, queueing movie %d", movieID)
+		slog.Info("OpenSubtitles quota was locked while waiting for semaphore, queueing movie", "movie_id", movieID)
 		return QueueSubtitleDownload("movie", movieID)
 	}
 
 	if imdbID == "" {
-		log.Printf("[SUBTITLES] No IMDB ID for movie %s, skipping subtitle search", title)
+		slog.Info("No IMDB ID for movie, skipping subtitle search", "title", title, "movie_id", movieID)
 		return nil
 	}
 
 	// Remove 'tt' prefix if present
 	imdbID = strings.TrimPrefix(imdbID, "tt")
 
-	log.Printf("[SUBTITLES] Searching subtitles for %s (IMDB: %s)...", title, imdbID)
+	slog.Info("Searching subtitles for movie", "title", title, "imdb_id", imdbID)
 
 	// 1. Search for English subtitles
 	searchURL := sharedhttp.BuildQueryURL("https://api.opensubtitles.com/api/v1/subtitles", map[string]string{
@@ -315,7 +315,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	if len(searchResult.Data) == 0 {
-		log.Printf("[SUBTITLES] No English subtitles found for %s", title)
+		slog.Info("No English subtitles found for movie", "title", title)
 		return nil
 	}
 
@@ -350,11 +350,11 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	fileID := bestMatch.Attributes.Files[0].FileID
 	isSDH := bestMatch.Attributes.HearingImpaired
 
-	log.Printf("[SUBTITLES] Found subtitle for %s (SDH: %v), downloading file ID %d...", title, isSDH, fileID)
+	slog.Info("Found subtitle, downloading", "title", title, "sdh", isSDH, "file_id", fileID)
 
 	token, baseURL, err := getOSToken(cfg)
 	if err != nil {
-		log.Printf("[SUBTITLES] Warning: Failed to get auth token: %v. Download might fail.", err)
+		slog.Warn("Failed to get auth token, download might fail", "error", err)
 		baseURL = "api.opensubtitles.com"
 	}
 
@@ -421,7 +421,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 		return fmt.Errorf("failed to save subtitle file: %w", err)
 	}
 
-	log.Printf("[SUBTITLES] Successfully downloaded subtitle for %s to %s", title, destPath)
+	slog.Info("Successfully downloaded subtitle for movie", "title", title, "dest_path", destPath)
 	return nil
 }
 
@@ -431,7 +431,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota is locked (pre-check), queueing episode %d", episodeID)
+		slog.Info("OpenSubtitles quota is locked (pre-check), queueing episode", "episode_id", episodeID)
 		return QueueSubtitleDownload("episode", episodeID)
 	}
 
@@ -459,18 +459,18 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 
 	// Re-check quota after entering semaphore to catch race conditions
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota was locked while waiting for semaphore, queueing episode %d", episodeID)
+		slog.Info("OpenSubtitles quota was locked while waiting for semaphore, queueing episode", "episode_id", episodeID)
 		return QueueSubtitleDownload("episode", episodeID)
 	}
 
 	if imdbID == "" {
-		log.Printf("[SUBTITLES] No parent IMDB ID for show %s, skipping subtitle search", showTitle)
+		slog.Info("No parent IMDB ID for show, skipping subtitle search", "show_title", showTitle, "episode_id", episodeID)
 		return nil
 	}
 
 	imdbID = strings.TrimPrefix(imdbID, "tt")
 
-	log.Printf("[SUBTITLES] Searching subtitles for %s S%02dE%02d (Parent IMDB: %s)...", showTitle, season, episode, imdbID)
+	slog.Info("Searching subtitles for episode", "show_title", showTitle, "season", season, "episode", episode, "imdb_id", imdbID)
 
 	searchURL := sharedhttp.BuildQueryURL("https://api.opensubtitles.com/api/v1/subtitles", map[string]string{
 		"parent_imdb_id":   imdbID,
@@ -508,7 +508,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	if len(searchResult.Data) == 0 {
-		log.Printf("[SUBTITLES] No English subtitles found for %s S%02dE%02d", showTitle, season, episode)
+		slog.Info("No English subtitles found for episode", "show_title", showTitle, "season", season, "episode", episode)
 		return nil
 	}
 
@@ -543,7 +543,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 
 	token, baseURL, err := getOSToken(cfg)
 	if err != nil {
-		log.Printf("[SUBTITLES] Warning: Failed to get auth token: %v. Download might fail.", err)
+		slog.Warn("Failed to get auth token, download might fail", "error", err)
 		baseURL = "api.opensubtitles.com"
 	}
 
@@ -610,7 +610,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		return fmt.Errorf("failed to save subtitle file: %w", err)
 	}
 
-	log.Printf("[SUBTITLES] Successfully downloaded subtitle for %s S%02dE%02d to %s", showTitle, season, episode, destPath)
+	slog.Info("Successfully downloaded subtitle for episode", "show_title", showTitle, "season", season, "episode", episode, "dest_path", destPath)
 	return nil
 }
 
