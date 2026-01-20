@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
+	"encoding/json"
 	"html/template"
 	"log"
 	"log/slog"
@@ -86,4 +87,22 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error rendering admin template", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func ScanStatusHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	status := map[string]bool{
+		"incoming_movies": services.IsScanning(services.ScanIncomingMovies),
+		"incoming_shows":  services.IsScanning(services.ScanIncomingShows),
+		"movie_library":   services.IsScanning(services.ScanMovieLibrary),
+		"show_library":    services.IsScanning(services.ScanShowLibrary),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }

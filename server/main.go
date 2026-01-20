@@ -58,6 +58,7 @@ func setupRoutes() *http.ServeMux {
 		"/scan/incoming/movies": handlers.ScanIncomingMoviesHandler,
 		"/scan/incoming/shows":  handlers.ScanIncomingShowsHandler,
 		"/scan/stop":            handlers.StopScanHandler,
+		"/api/scan/status":      handlers.ScanStatusHandler,
 		"/import/movies/all":    handlers.ImportAllMoviesHandler,
 		"/import/shows/all":     handlers.ImportAllShowsHandler,
 		"/rename/movie":         handlers.RenameMovieHandler,

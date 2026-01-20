@@ -10,63 +10,162 @@
         <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Management</h2>
             <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Detect new files and fetch metadata from TMDB/TVDB.</p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                {{if .ScanningIncomingShows}}
-                <form action="/scan/stop?type=incoming_shows" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        ⏹️ Stop Incoming Shows
-                    </button>
-                </form>
-                {{else}}
-                <form action="/scan/incoming/shows" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        📥 Scan Incoming Shows
-                    </button>
-                </form>
-                {{end}}
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;" id="scan-buttons">
+                <div id="incoming-shows-button">
+                    {{if .ScanningIncomingShows}}
+                    <form action="/scan/stop?type=incoming_shows" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Incoming Shows
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/incoming/shows" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            📥 Scan Incoming Shows
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
 
-                {{if .ScanningIncomingMovies}}
-                <form action="/scan/stop?type=incoming_movies" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        ⏹️ Stop Incoming Movies
-                    </button>
-                </form>
-                {{else}}
-                <form action="/scan/incoming/movies" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        📥 Scan Incoming Movies
-                    </button>
-                </form>
-                {{end}}
+                <div id="incoming-movies-button">
+                    {{if .ScanningIncomingMovies}}
+                    <form action="/scan/stop?type=incoming_movies" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Incoming Movies
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/incoming/movies" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            📥 Scan Incoming Movies
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
 
-                {{if .ScanningShowLibrary}}
-                <form action="/scan/stop?type=show_library" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        ⏹️ Stop Show Library Scan
-                    </button>
-                </form>
-                {{else}}
-                <form action="/scan/shows" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        🚀 Scan Show Library
-                    </button>
-                </form>
-                {{end}}
+                <div id="show-library-button">
+                    {{if .ScanningShowLibrary}}
+                    <form action="/scan/stop?type=show_library" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Show Library Scan
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/shows" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            🚀 Scan Show Library
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
 
-                {{if .ScanningMovieLibrary}}
-                <form action="/scan/stop?type=movie_library" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        ⏹️ Stop Movie Library Scan
-                    </button>
-                </form>
-                {{else}}
-                <form action="/scan/movies" method="POST">
-                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        🚀 Scan Movie Library
-                    </button>
-                </form>
-                {{end}}
+                <div id="movie-library-button">
+                    {{if .ScanningMovieLibrary}}
+                    <form action="/scan/stop?type=movie_library" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Movie Library Scan
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/movies" method="POST">
+                        <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            🚀 Scan Movie Library
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
             </div>
+            <script>
+            function updateScanButtons() {
+                fetch('/api/scan/status')
+                    .then(response => response.json())
+                    .then(status => {
+                        // Update Incoming Shows button
+                        const incomingShowsBtn = document.getElementById('incoming-shows-button');
+                        if (status.incoming_shows) {
+                            incomingShowsBtn.innerHTML = `
+                                <form action="/scan/stop?type=incoming_shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Incoming Shows
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            incomingShowsBtn.innerHTML = `
+                                <form action="/scan/incoming/shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        📥 Scan Incoming Shows
+                                    </button>
+                                </form>
+                            `;
+                        }
+
+                        // Update Incoming Movies button
+                        const incomingMoviesBtn = document.getElementById('incoming-movies-button');
+                        if (status.incoming_movies) {
+                            incomingMoviesBtn.innerHTML = `
+                                <form action="/scan/stop?type=incoming_movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Incoming Movies
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            incomingMoviesBtn.innerHTML = `
+                                <form action="/scan/incoming/movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        📥 Scan Incoming Movies
+                                    </button>
+                                </form>
+                            `;
+                        }
+
+                        // Update Show Library button
+                        const showLibraryBtn = document.getElementById('show-library-button');
+                        if (status.show_library) {
+                            showLibraryBtn.innerHTML = `
+                                <form action="/scan/stop?type=show_library" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Show Library Scan
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            showLibraryBtn.innerHTML = `
+                                <form action="/scan/shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        🚀 Scan Show Library
+                                    </button>
+                                </form>
+                            `;
+                        }
+
+                        // Update Movie Library button
+                        const movieLibraryBtn = document.getElementById('movie-library-button');
+                        if (status.movie_library) {
+                            movieLibraryBtn.innerHTML = `
+                                <form action="/scan/stop?type=movie_library" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Movie Library Scan
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            movieLibraryBtn.innerHTML = `
+                                <form action="/scan/movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        🚀 Scan Movie Library
+                                    </button>
+                                </form>
+                            `;
+                        }
+                    })
+                    .catch(err => console.error('Error fetching scan status:', err));
+            }
+
+            // Poll every 2 seconds
+            setInterval(updateScanButtons, 2000);
+            </script>
         </div>
 
         <!-- System Info -->
