@@ -40,14 +40,18 @@ func init() {
 }
 
 type ShowsData struct {
-	Username      string
-	IsAdmin       bool
-	CurrentPage   string
-	SearchQuery   string
-	Shows         []models.Show
-	IncomingShows []models.Show
-	AllGenres     []string
-	SelectedGenre string
+	Username       string
+	IsAdmin        bool
+	CurrentPage    string
+	SearchQuery    string
+	Shows          []models.Show
+	IncomingShows  []models.Show
+	AllGenres      []string
+	SelectedGenre  string
+	AllYears       []int
+	SelectedYear   string
+	AllStatuses    []string
+	SelectedStatus string
 }
 
 func ShowsHandler(w http.ResponseWriter, r *http.Request) {
@@ -65,33 +69,54 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.Load()
 	selectedGenre := r.URL.Query().Get("genre")
+	selectedYear := r.URL.Query().Get("year")
+	selectedStatus := r.URL.Query().Get("status")
 
 	// Separate incoming and library shows
 	libraryShows, incomingShows := SeparateIncomingShows(allShows, cfg, user.IsAdmin)
 
-	// Apply genre filter to library shows
-	if selectedGenre != "" {
-		var filtered []models.Show
-		for _, s := range libraryShows {
-			if strings.Contains(s.Genres, selectedGenre) {
-				filtered = append(filtered, s)
+	// Extract unique values for filters BEFORE filtering (so all options are available)
+	allGenres := ExtractGenresFromShows(libraryShows)
+	allYears := ExtractYearsFromShows(libraryShows)
+	allStatuses := ExtractStatusesFromShows(libraryShows)
+
+	// Apply filters to library shows
+	var filtered []models.Show
+	for _, s := range libraryShows {
+		// Genre filter
+		if selectedGenre != "" && !strings.Contains(s.Genres, selectedGenre) {
+			continue
+		}
+		// Year filter
+		if selectedYear != "" {
+			year, _ := strconv.Atoi(selectedYear)
+			if s.Year != year {
+				continue
 			}
 		}
-		libraryShows = filtered
+		// Status filter
+		if selectedStatus != "" {
+			if s.Status != selectedStatus {
+				continue
+			}
+		}
+		filtered = append(filtered, s)
 	}
-
-	// Extract unique genres from library shows only
-	allGenres := ExtractGenresFromShows(libraryShows)
+	libraryShows = filtered
 
 	data := ShowsData{
-		Username:      user.Username,
-		IsAdmin:       user.IsAdmin,
-		CurrentPage:   "/shows",
-		SearchQuery:   "",
-		Shows:         libraryShows,
-		IncomingShows: incomingShows,
-		AllGenres:     allGenres,
-		SelectedGenre: selectedGenre,
+		Username:       user.Username,
+		IsAdmin:        user.IsAdmin,
+		CurrentPage:    "/shows",
+		SearchQuery:    "",
+		Shows:          libraryShows,
+		IncomingShows:  incomingShows,
+		AllGenres:      allGenres,
+		SelectedGenre:  selectedGenre,
+		AllYears:       allYears,
+		SelectedYear:   selectedYear,
+		AllStatuses:    allStatuses,
+		SelectedStatus: selectedStatus,
 	}
 
 	if err := showsTmpl.ExecuteTemplate(w, "base", data); err != nil {

@@ -39,14 +39,22 @@ func init() {
 }
 
 type MoviesData struct {
-	Username       string
-	IsAdmin        bool
-	CurrentPage    string
-	SearchQuery    string
-	Movies         []models.Movie
-	IncomingMovies []models.Movie
-	AllGenres      []string
-	SelectedGenre  string
+	Username        string
+	IsAdmin         bool
+	CurrentPage     string
+	SearchQuery     string
+	Movies          []models.Movie
+	IncomingMovies  []models.Movie
+	AllGenres       []string
+	SelectedGenre   string
+	AllYears        []int
+	SelectedYear    string
+	AllQualities    []string
+	SelectedQuality string
+	AllStatuses     []string
+	SelectedStatus  string
+	AllSizes        []string
+	SelectedSize    string
 }
 
 func MoviesHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,33 +72,83 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.Load()
 	selectedGenre := r.URL.Query().Get("genre")
+	selectedYear := r.URL.Query().Get("year")
+	selectedQuality := r.URL.Query().Get("quality")
+	selectedStatus := r.URL.Query().Get("status")
+	selectedSize := r.URL.Query().Get("size")
 
 	// Separate incoming and library movies
 	libraryMovies, incomingMovies := SeparateIncomingMovies(allMovies, cfg, user.IsAdmin)
 
-	// Apply genre filter to library movies
-	if selectedGenre != "" {
-		var filtered []models.Movie
-		for _, m := range libraryMovies {
-			if strings.Contains(m.Genres, selectedGenre) {
-				filtered = append(filtered, m)
+	// Extract unique values for filters BEFORE filtering (so all options are available)
+	allGenres := ExtractGenresFromMovies(libraryMovies)
+	allYears := ExtractYearsFromMovies(libraryMovies)
+	allQualities := ExtractQualitiesFromMovies(libraryMovies)
+	allStatuses := ExtractStatusesFromMovies(libraryMovies)
+
+	// Apply filters to library movies
+	var filtered []models.Movie
+	for _, m := range libraryMovies {
+		// Genre filter
+		if selectedGenre != "" && !strings.Contains(m.Genres, selectedGenre) {
+			continue
+		}
+		// Year filter
+		if selectedYear != "" {
+			year, _ := strconv.Atoi(selectedYear)
+			if m.Year != year {
+				continue
 			}
 		}
-		libraryMovies = filtered
+		// Quality filter
+		if selectedQuality != "" {
+			if m.Quality != selectedQuality {
+				continue
+			}
+		}
+		// Status filter
+		if selectedStatus != "" {
+			if m.Status != selectedStatus {
+				continue
+			}
+		}
+		// Size filter
+		if selectedSize != "" {
+			var minSize, maxSize int64
+			switch selectedSize {
+			case "small":
+				maxSize = 5 * 1024 * 1024 * 1024 // 5GB
+			case "medium":
+				minSize = 5 * 1024 * 1024 * 1024
+				maxSize = 10 * 1024 * 1024 * 1024 // 10GB
+			case "large":
+				minSize = 10 * 1024 * 1024 * 1024
+			}
+			if m.Size < minSize || (maxSize > 0 && m.Size > maxSize) {
+				continue
+			}
+		}
+		filtered = append(filtered, m)
 	}
-
-	// Extract unique genres from library movies only
-	allGenres := ExtractGenresFromMovies(libraryMovies)
+	libraryMovies = filtered
 
 	data := MoviesData{
-		Username:       user.Username,
-		IsAdmin:        user.IsAdmin,
-		CurrentPage:    "/movies",
-		SearchQuery:    "",
-		Movies:         libraryMovies,
-		IncomingMovies: incomingMovies,
-		AllGenres:      allGenres,
-		SelectedGenre:  selectedGenre,
+		Username:        user.Username,
+		IsAdmin:         user.IsAdmin,
+		CurrentPage:     "/movies",
+		SearchQuery:     "",
+		Movies:          libraryMovies,
+		IncomingMovies:  incomingMovies,
+		AllGenres:       allGenres,
+		SelectedGenre:   selectedGenre,
+		AllYears:        allYears,
+		SelectedYear:    selectedYear,
+		AllQualities:    allQualities,
+		SelectedQuality: selectedQuality,
+		AllStatuses:     allStatuses,
+		SelectedStatus:  selectedStatus,
+		AllSizes:        []string{"small", "medium", "large"},
+		SelectedSize:    selectedSize,
 	}
 
 	if err := moviesTmpl.ExecuteTemplate(w, "base", data); err != nil {

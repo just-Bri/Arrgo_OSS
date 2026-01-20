@@ -11,56 +11,95 @@
     <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
         <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;">
             <h2 style="margin: 0; font-size: 20px; color: var(--text-color);">Library ({{len .Movies}})</h2>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <label for="genre-filter" style="color: var(--muted-text); font-size: 14px;">Filter:</label>
-                <select id="genre-filter" onchange="window.location.href='/movies?genre=' + this.value" style="flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
-                    <option value="">All Genres</option>
-                    {{$selected := .SelectedGenre}}
-                    {{range .AllGenres}}
-                    <option value="{{.}}" {{if eq . $selected}}selected{{end}}>{{.}}</option>
-                    {{end}}
-                </select>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                <div>
+                    <label for="genre-filter" style="color: var(--muted-text); font-size: 12px; display: block; margin-bottom: 4px;">Genre</label>
+                    <select id="genre-filter" onchange="applyFilters()" style="width: 100%; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                        <option value="">All Genres</option>
+                        {{$selected := .SelectedGenre}}
+                        {{range .AllGenres}}
+                        <option value="{{.}}" {{if eq . $selected}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="year-filter" style="color: var(--muted-text); font-size: 12px; display: block; margin-bottom: 4px;">Year</label>
+                    <select id="year-filter" onchange="applyFilters()" style="width: 100%; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                        <option value="">All Years</option>
+                        {{$selected := .SelectedYear}}
+                        {{range .AllYears}}
+                        <option value="{{.}}" {{if eq (printf "%d" .) $selected}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="quality-filter" style="color: var(--muted-text); font-size: 12px; display: block; margin-bottom: 4px;">Quality</label>
+                    <select id="quality-filter" onchange="applyFilters()" style="width: 100%; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                        <option value="">All Qualities</option>
+                        {{$selected := .SelectedQuality}}
+                        {{range .AllQualities}}
+                        <option value="{{.}}" {{if eq . $selected}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="status-filter" style="color: var(--muted-text); font-size: 12px; display: block; margin-bottom: 4px;">Status</label>
+                    <select id="status-filter" onchange="applyFilters()" style="width: 100%; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                        <option value="">All Statuses</option>
+                        {{$selected := .SelectedStatus}}
+                        {{range .AllStatuses}}
+                        <option value="{{.}}" {{if eq . $selected}}selected{{end}}>{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div>
+                    <label for="size-filter" style="color: var(--muted-text); font-size: 12px; display: block; margin-bottom: 4px;">Size</label>
+                    <select id="size-filter" onchange="applyFilters()" style="width: 100%; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;">
+                        <option value="">All Sizes</option>
+                        {{$selected := .SelectedSize}}
+                        {{range .AllSizes}}
+                        <option value="{{.}}" {{if eq . $selected}}selected{{end}}>{{title .}}</option>
+                        {{end}}
+                    </select>
+                </div>
             </div>
         </div>
+        <script>
+        function applyFilters() {
+            const params = new URLSearchParams();
+            const genre = document.getElementById('genre-filter').value;
+            const year = document.getElementById('year-filter').value;
+            const quality = document.getElementById('quality-filter').value;
+            const status = document.getElementById('status-filter').value;
+            const size = document.getElementById('size-filter').value;
+            
+            if (genre) params.set('genre', genre);
+            if (year) params.set('year', year);
+            if (quality) params.set('quality', quality);
+            if (status) params.set('status', status);
+            if (size) params.set('size', size);
+            
+            const queryString = params.toString();
+            window.location.href = '/movies' + (queryString ? '?' + queryString : '');
+        }
+        </script>
         {{if .Movies}}
-            <ul style="list-style: none; padding: 0; margin: 0;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px;">
                 {{range .Movies}}
-                <li style="padding: 15px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 15px;">
+                <a href="/movies/details?id={{.ID}}" style="text-decoration: none; color: inherit; display: flex; flex-direction: column; transition: transform 0.2s ease; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--container-bg);" onmouseover="this.style.transform='scale(1.05)'; this.style.borderColor='var(--accent-color)'" onmouseout="this.style.transform='scale(1)'; this.style.borderColor='var(--border-color)'">
                     {{if .PosterPath}}
-                    <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
-                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="70" height="105" style="width: 70px; height: 105px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                    </a>
+                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="150" height="225" style="width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 12px;">
                     {{else}}
-                    <a href="/movies/details?id={{.ID}}" style="text-decoration: none; flex-shrink: 0;">
-                        <div style="width: 70px; height: 105px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center;">No Poster</div>
-                    </a>
+                        <div style="width: 100%; aspect-ratio: 2/3; background: var(--border-color); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px; text-align: center; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">No Poster</div>
                     {{end}}
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
-                            <div style="min-width: 0;">
-                                <a href="/movies/details?id={{.ID}}" style="text-decoration: none;">
-                                    <div style="font-size: 16px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
-                                </a>
-                                <div style="font-size: 12px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
-                                    <span style="background: var(--badge-bg); padding: 1px 6px; border-radius: 4px; font-size: 11px; color: var(--badge-text);">{{.Status}}</span>
-                                    {{if .Quality}}
-                                    <span style="background: var(--quality-bg); padding: 1px 6px; border-radius: 4px; font-size: 11px; color: var(--quality-text);">{{.Quality}}</span>
-                                    {{end}}
-                                </div>
-                            </div>
-                            {{if and $.IsAdmin (eq .Status "matched")}}
-                            <form action="/rename/movie?id={{.ID}}" method="POST">
-                                <button type="submit" style="padding: 4px 10px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
-                            </form>
-                            {{end}}
-                        </div>
-                        <p style="font-size: 12px; color: var(--muted-text); margin-top: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{{.Overview}}</p>
+                    <div style="font-size: 14px; font-weight: 500; color: var(--text-color); text-align: center; line-height: 1.4; padding: 0 4px; margin-top: auto;">
+                        {{.Title}}{{if .Year}} ({{.Year}}){{end}}
                     </div>
-                </li>
+                </a>
                 {{end}}
-            </ul>
+            </div>
         {{else}}
-            <p style="color: var(--muted-text); font-size: 14px;">No movies found.</p>
+            <p style="color: var(--muted-text); font-size: 14px; text-align: center; padding: 40px 0;">No movies found.</p>
         {{end}}
     </div>
 </div>

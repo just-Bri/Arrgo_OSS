@@ -39,6 +39,12 @@ func GetFuncMap() template.FuncMap {
 			return false
 		},
 		"formatSize": format.Bytes,
+		"title": func(s string) string {
+			if len(s) == 0 {
+				return s
+			}
+			return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
+		},
 	}
 }
 
@@ -82,6 +88,86 @@ func ExtractGenresFromShows(shows []models.Show) []string {
 	}
 	sort.Strings(allGenres)
 	return allGenres
+}
+
+// ExtractYearsFromMovies extracts unique years from a slice of movies, sorted descending
+func ExtractYearsFromMovies(movies []models.Movie) []int {
+	yearMap := make(map[int]bool)
+	for _, m := range movies {
+		if m.Year > 0 {
+			yearMap[m.Year] = true
+		}
+	}
+	var years []int
+	for y := range yearMap {
+		years = append(years, y)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(years)))
+	return years
+}
+
+// ExtractYearsFromShows extracts unique years from a slice of shows, sorted descending
+func ExtractYearsFromShows(shows []models.Show) []int {
+	yearMap := make(map[int]bool)
+	for _, s := range shows {
+		if s.Year > 0 {
+			yearMap[s.Year] = true
+		}
+	}
+	var years []int
+	for y := range yearMap {
+		years = append(years, y)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(years)))
+	return years
+}
+
+// ExtractQualitiesFromMovies extracts unique qualities from a slice of movies
+func ExtractQualitiesFromMovies(movies []models.Movie) []string {
+	qualityMap := make(map[string]bool)
+	for _, m := range movies {
+		if m.Quality != "" {
+			qualityMap[m.Quality] = true
+		}
+	}
+	var qualities []string
+	for q := range qualityMap {
+		qualities = append(qualities, q)
+	}
+	sort.Strings(qualities)
+	return qualities
+}
+
+// ExtractStatusesFromMovies extracts unique statuses from a slice of movies
+func ExtractStatusesFromMovies(movies []models.Movie) []string {
+	statusMap := make(map[string]bool)
+	for _, m := range movies {
+		if m.Status != "" {
+			statusMap[m.Status] = true
+		}
+	}
+	var statuses []string
+	for s := range statusMap {
+		statuses = append(statuses, s)
+	}
+	sort.Strings(statuses)
+	return statuses
+}
+
+// ExtractStatusesFromShows extracts unique statuses from a slice of shows
+func ExtractStatusesFromShows(shows []models.Show) []string {
+	statusMap := make(map[string]bool)
+	for _, s := range shows {
+		if s.Status != "" {
+			statusMap[s.Status] = true
+		}
+	}
+	var statuses []string
+	for s := range statusMap {
+		statuses = append(statuses, s)
+	}
+	sort.Strings(statuses)
+	return statuses
 }
 
 // SeparateIncomingMovies separates incoming and library movies based on path prefixes
