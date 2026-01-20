@@ -41,7 +41,8 @@ type SearchPageData struct {
 	IsAdmin     bool
 	CurrentPage string
 	SearchQuery string
-	Results     []UnifiedSearchResult
+	Movies      []UnifiedSearchResult
+	Shows       []UnifiedSearchResult
 }
 
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +53,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query().Get("q")
-	var results []UnifiedSearchResult
+	var movies []UnifiedSearchResult
+	var shows []UnifiedSearchResult
 
 	if query != "" {
 		cfg := config.Load()
@@ -65,7 +67,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			results = append(results, UnifiedSearchResult{
+			movies = append(movies, UnifiedSearchResult{
 				ID:         m.TMDBID,
 				Title:      m.Title,
 				Year:       m.Year,
@@ -89,7 +91,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			results = append(results, UnifiedSearchResult{
+			shows = append(shows, UnifiedSearchResult{
 				ID:         s.TVDBID,
 				Title:      s.Title,
 				Year:       s.Year,
@@ -108,10 +110,10 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		// 3. Search External (TMDB/TVDB)
 		movieResults, _ := services.SearchTMDB(cfg, query)
 		for _, res := range movieResults {
-			// Skip if already in results from local search
+			// Skip if already in movies from local search
 			existsLocally := false
-			for _, lr := range results {
-				if lr.MediaType == "movie" && lr.ID == res.ID {
+			for _, lr := range movies {
+				if lr.ID == res.ID {
 					existsLocally = true
 					break
 				}
@@ -128,7 +130,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				localID = status.LocalID
 			}
 
-			results = append(results, UnifiedSearchResult{
+			movies = append(movies, UnifiedSearchResult{
 				ID:            res.ID,
 				Title:         res.Title,
 				Year:          res.Year,
@@ -143,10 +145,10 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 		showResults, _ := services.SearchTVDB(cfg, query)
 		for _, res := range showResults {
-			// Skip if already in results from local search
+			// Skip if already in shows from local search
 			existsLocally := false
-			for _, lr := range results {
-				if lr.MediaType == "show" && lr.ID == res.ID {
+			for _, lr := range shows {
+				if lr.ID == res.ID {
 					existsLocally = true
 					break
 				}
@@ -163,7 +165,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 				localID = status.LocalID
 			}
 
-			results = append(results, UnifiedSearchResult{
+			shows = append(shows, UnifiedSearchResult{
 				ID:            res.ID,
 				Title:         res.Title,
 				Year:          res.Year,
@@ -182,7 +184,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		IsAdmin:     user.IsAdmin,
 		CurrentPage: "/search",
 		SearchQuery: query,
-		Results:     results,
+		Movies:      movies,
+		Shows:       shows,
 	}
 
 	if err := searchTmpl.ExecuteTemplate(w, "base", data); err != nil {
