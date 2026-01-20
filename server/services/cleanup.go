@@ -38,12 +38,12 @@ func CleanupEmptyDirs(root string) error {
 	junkExtensions := map[string]bool{
 		".nfo": true, ".txt": true, ".url": true, ".exe": true,
 		".db":  true, ".md":  true, ".png": true, ".jpg": true,
-		".jpeg": true, ".gif": true, ".sfv": true, ".srr": true,
-		".xml": true, ".html": true, ".htm": true, ".info": true,
-		".srt": true, ".sub": true, ".idx": true, ".m3u": true,
-		".m3u8": true, ".parts": true, ".sample": true,
-		".tbn": true, ".ico": true, ".desktop": true, ".ini": true,
-		".ds_store": true, "thumbs.db": true, ".torrent": true,
+		".jpeg": true, ".gif": true, ".svg": true, ".webp": true,
+		".sfv": true, ".srr": true, ".xml": true, ".html": true,
+		".htm": true, ".info": true, ".srt": true, ".sub": true,
+		".idx": true, ".m3u": true, ".m3u8": true, ".parts": true,
+		".sample": true, ".tbn": true, ".ico": true, ".desktop": true,
+		".ini": true, ".ds_store": true, "thumbs.db": true, ".torrent": true,
 	}
 
 	for _, path := range dirs {
@@ -74,24 +74,34 @@ func CleanupEmptyDirs(root string) error {
 		}
 
 		if actuallyEmpty {
-			slog.Debug("Removing directory (contains only junk or empty)", "path", path)
+			slog.Info("Removing directory (contains only junk or empty)", "path", path)
 			
 			// Let's be safer: Only delete the files we identify as junk first, then Remove the dir.
 			// This prevents os.RemoveAll from nuking non-junk if we missed something.
-			junkFiles, _ := os.ReadDir(path)
+			junkFiles, err := os.ReadDir(path)
+			if err != nil {
+				slog.Debug("Error reading directory for cleanup", "path", path, "error", err)
+				continue
+			}
+			
 			for _, jf := range junkFiles {
 				if !jf.IsDir() {
-					os.Remove(filepath.Join(path, jf.Name()))
+					filePath := filepath.Join(path, jf.Name())
+					if err := os.Remove(filePath); err != nil {
+						slog.Debug("Failed to remove junk file", "path", filePath, "error", err)
+					}
 				}
 			}
 			
 			// Remove will fail if directory is still not empty (e.g. contains subdirs)
-			err := os.Remove(path)
+			err = os.Remove(path)
 			if err != nil {
 				// Ignore "no such file or directory" errors - another goroutine may have already removed it
 				if !os.IsNotExist(err) {
-					slog.Debug("Failed to remove directory", "path", path, "error", err)
+					slog.Warn("Failed to remove directory after cleaning junk files", "path", path, "error", err)
 				}
+			} else {
+				slog.Debug("Successfully removed directory", "path", path)
 			}
 		}
 	}
