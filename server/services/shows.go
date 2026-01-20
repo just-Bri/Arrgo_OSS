@@ -14,7 +14,15 @@ import (
 	"sync"
 )
 
+var scanShowsMutex sync.Mutex
+
 func ScanShows(cfg *config.Config, onlyIncoming bool) error {
+	if !scanShowsMutex.TryLock() {
+		log.Printf("[SCANNER] Show scan already in progress, skipping...")
+		return nil
+	}
+	defer scanShowsMutex.Unlock()
+
 	log.Printf("[SCANNER] Starting show scan with 4 workers...")
 
 	// Clean up missing files first

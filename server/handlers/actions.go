@@ -12,6 +12,11 @@ import (
 	"sync"
 )
 
+var (
+	importMoviesMutex sync.Mutex
+	importShowsMutex  sync.Mutex
+)
+
 func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -98,6 +103,13 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !importMoviesMutex.TryLock() {
+		log.Printf("[IMPORT] Mass movie import already in progress, skipping...")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	defer importMoviesMutex.Unlock()
+
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
@@ -168,6 +180,13 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	if !importShowsMutex.TryLock() {
+		log.Printf("[IMPORT] Mass show import already in progress, skipping...")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	defer importShowsMutex.Unlock()
 
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {

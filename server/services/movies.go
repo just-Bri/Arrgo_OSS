@@ -14,18 +14,27 @@ import (
 	"sync"
 )
 
-var movieExtensions = map[string]bool{
-	".mp4":  true,
-	".mkv":  true,
-	".avi":  true,
-	".mov":  true,
-	".wmv":  true,
-	".m4v":  true,
-	".flv":  true,
-	".webm": true,
-}
+var (
+	movieExtensions = map[string]bool{
+		".mp4":  true,
+		".mkv":  true,
+		".avi":  true,
+		".mov":  true,
+		".wmv":  true,
+		".m4v":  true,
+		".flv":  true,
+		".webm": true,
+	}
+	scanMoviesMutex sync.Mutex
+)
 
 func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
+	if !scanMoviesMutex.TryLock() {
+		log.Printf("[SCANNER] Movie scan already in progress, skipping...")
+		return nil
+	}
+	defer scanMoviesMutex.Unlock()
+
 	log.Printf("[SCANNER] Starting movie scan with 4 workers...")
 
 	// Clean up missing files first
