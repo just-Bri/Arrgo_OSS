@@ -8,7 +8,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -50,20 +49,8 @@ type MoviesData struct {
 }
 
 func MoviesHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -78,42 +65,21 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	selectedGenre := r.URL.Query().Get("genre")
 
 	// Separate incoming and library movies
-	var libraryMovies []models.Movie
-	var incomingMovies []models.Movie
+	libraryMovies, incomingMovies := SeparateIncomingMovies(allMovies, cfg, user.IsAdmin)
 
-	for _, m := range allMovies {
-		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
-
-		if isIncoming {
-			if user.IsAdmin {
-				incomingMovies = append(incomingMovies, m)
-			}
-			// Normal users don't see incoming movies at all
-		} else {
-			// Apply genre filter only to library movies
-			if selectedGenre == "" || strings.Contains(m.Genres, selectedGenre) {
-				libraryMovies = append(libraryMovies, m)
+	// Apply genre filter to library movies
+	if selectedGenre != "" {
+		var filtered []models.Movie
+		for _, m := range libraryMovies {
+			if strings.Contains(m.Genres, selectedGenre) {
+				filtered = append(filtered, m)
 			}
 		}
+		libraryMovies = filtered
 	}
 
 	// Extract unique genres from library movies only
-	genreMap := make(map[string]bool)
-	for _, m := range libraryMovies {
-		if m.Genres != "" {
-			gs := strings.Split(m.Genres, ", ")
-			for _, g := range gs {
-				if g != "" {
-					genreMap[g] = true
-				}
-			}
-		}
-	}
-	var allGenres []string
-	for g := range genreMap {
-		allGenres = append(allGenres, g)
-	}
-	sort.Strings(allGenres)
+	allGenres := ExtractGenresFromMovies(libraryMovies)
 
 	data := MoviesData{
 		Username:       user.Username,
@@ -121,7 +87,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentPage:    "/movies",
 		SearchQuery:    "",
 		Movies:         libraryMovies,
-		IncomingMovies: []models.Movie{},
+		IncomingMovies: incomingMovies,
 		AllGenres:      allGenres,
 		SelectedGenre:  selectedGenre,
 	}
@@ -132,20 +98,8 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}

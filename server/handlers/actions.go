@@ -23,8 +23,8 @@ func ScanMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -47,8 +47,8 @@ func ScanShowsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -71,8 +71,8 @@ func ScanIncomingMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -95,8 +95,8 @@ func ScanIncomingShowsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -119,8 +119,8 @@ func StopScanHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -144,8 +144,8 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer importMoviesMutex.Unlock()
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -178,8 +178,8 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	movieChan := make(chan models.Movie, len(moviesToImport))
 
-	// Start 4 workers
-	for i := 0; i < 4; i++ {
+	// Start workers
+	for i := 0; i < services.DefaultWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -222,8 +222,8 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer importShowsMutex.Unlock()
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	_, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}
@@ -428,8 +428,8 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := GetCurrentUser(r)
-	if err != nil || user == nil || !user.IsAdmin {
+	user, err := RequireAdmin(r)
+	if err != nil {
 		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
 		return
 	}

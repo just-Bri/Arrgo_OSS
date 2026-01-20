@@ -45,20 +45,8 @@ type SearchPageData struct {
 }
 
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}

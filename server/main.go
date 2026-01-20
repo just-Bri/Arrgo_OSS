@@ -11,12 +11,77 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func init() {
 	// Force logs to Stdout and remove timestamps for cleaner Docker logs
 	log.SetOutput(os.Stdout)
 	log.SetFlags(0)
+}
+
+// setupRoutes configures all HTTP routes
+func setupRoutes() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Static files
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	// Public routes
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("pong"))
+	})
+	mux.HandleFunc("/login", handlers.LoginHandler)
+	mux.HandleFunc("/register", handlers.RegisterHandler)
+	mux.HandleFunc("/logout", handlers.LogoutHandler)
+	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
+	mux.HandleFunc("/images/movie/", handlers.ServeMovieImage)
+	mux.HandleFunc("/images/shows/", handlers.ServeShowImage)
+
+	// Protected routes - using helper to reduce repetition
+	protectedRoutes := map[string]http.HandlerFunc{
+		"/dashboard":            handlers.DashboardHandler,
+		"/admin":                handlers.AdminHandler,
+		"/movies":               handlers.MoviesHandler,
+		"/movies/details":       handlers.MovieDetailsHandler,
+		"/shows":                handlers.ShowsHandler,
+		"/shows/details":        handlers.ShowDetailsHandler,
+		"/search":               handlers.SearchHandler,
+		"/requests":             handlers.RequestsHandler,
+		"/requests/create":      handlers.CreateRequestHandler,
+		"/requests/approve":     handlers.ApproveRequestHandler,
+		"/requests/deny":        handlers.DenyRequestHandler,
+		"/requests/delete":      handlers.DeleteRequestHandler,
+		"/scan/movies":          handlers.ScanMoviesHandler,
+		"/scan/shows":           handlers.ScanShowsHandler,
+		"/scan/incoming/movies": handlers.ScanIncomingMoviesHandler,
+		"/scan/incoming/shows":  handlers.ScanIncomingShowsHandler,
+		"/scan/stop":            handlers.StopScanHandler,
+		"/import/movies/all":    handlers.ImportAllMoviesHandler,
+		"/import/shows/all":     handlers.ImportAllShowsHandler,
+		"/rename/movie":         handlers.RenameMovieHandler,
+		"/rename/show":          handlers.RenameShowHandler,
+		"/subtitles/download":   handlers.DownloadSubtitlesHandler,
+		"/admin/nuke":           handlers.NukeLibraryHandler,
+	}
+
+	for path, handler := range protectedRoutes {
+		mux.Handle(path, middleware.RequireAuth(http.HandlerFunc(handler)))
+	}
+
+	// Root redirect
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	return mux
 }
 
 func main() {
@@ -27,9 +92,8 @@ func main() {
 	fmt.Println("Arrgo Process STDOUT Trigger")
 	fmt.Println("-----------------------------------------")
 
-	log.SetOutput(os.Stdout)
+	// Configure logging for runtime (init() already set basic config)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-
 	log.Printf("Initializing Arrgo components...")
 
 	// Initialize session store
@@ -55,75 +119,21 @@ func main() {
 	services.StartIncomingScanner(cfg)
 
 	// Start Automation Service
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	qb, err := services.NewQBittorrentClient(cfg)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize qBittorrent client: %v", err)
 	} else {
 		automation := services.NewAutomationService(cfg, qb)
-		go automation.Start(context.Background())
+		go automation.Start(ctx)
 	}
 
 	// Setup routes
-	mux := http.NewServeMux()
+	mux := setupRoutes()
 
-	// Static files
-	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-
-	// Public routes
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("pong"))
-	})
-	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/favicon.ico")
-	})
-	mux.HandleFunc("/site.webmanifest", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "static/site.webmanifest")
-	})
-	mux.HandleFunc("/login", handlers.LoginHandler)
-	mux.HandleFunc("/register", handlers.RegisterHandler)
-	mux.HandleFunc("/logout", handlers.LogoutHandler)
-	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
-	mux.HandleFunc("/images/movie/", handlers.ServeMovieImage)
-	mux.HandleFunc("/images/shows/", handlers.ServeShowImage)
-
-	// Protected routes
-	mux.Handle("/dashboard", middleware.RequireAuth(http.HandlerFunc(handlers.DashboardHandler)))
-	mux.Handle("/admin", middleware.RequireAuth(http.HandlerFunc(handlers.AdminHandler)))
-	mux.Handle("/movies", middleware.RequireAuth(http.HandlerFunc(handlers.MoviesHandler)))
-	mux.Handle("/movies/details", middleware.RequireAuth(http.HandlerFunc(handlers.MovieDetailsHandler)))
-	mux.Handle("/shows", middleware.RequireAuth(http.HandlerFunc(handlers.ShowsHandler)))
-	mux.Handle("/shows/details", middleware.RequireAuth(http.HandlerFunc(handlers.ShowDetailsHandler)))
-	mux.Handle("/search", middleware.RequireAuth(http.HandlerFunc(handlers.SearchHandler)))
-	mux.Handle("/requests", middleware.RequireAuth(http.HandlerFunc(handlers.RequestsHandler)))
-	mux.Handle("/requests/create", middleware.RequireAuth(http.HandlerFunc(handlers.CreateRequestHandler)))
-	mux.Handle("/requests/approve", middleware.RequireAuth(http.HandlerFunc(handlers.ApproveRequestHandler)))
-	mux.Handle("/requests/deny", middleware.RequireAuth(http.HandlerFunc(handlers.DenyRequestHandler)))
-	mux.Handle("/requests/delete", middleware.RequireAuth(http.HandlerFunc(handlers.DeleteRequestHandler)))
-	mux.Handle("/scan/movies", middleware.RequireAuth(http.HandlerFunc(handlers.ScanMoviesHandler)))
-	mux.Handle("/scan/shows", middleware.RequireAuth(http.HandlerFunc(handlers.ScanShowsHandler)))
-	mux.Handle("/scan/incoming/movies", middleware.RequireAuth(http.HandlerFunc(handlers.ScanIncomingMoviesHandler)))
-	mux.Handle("/scan/incoming/shows", middleware.RequireAuth(http.HandlerFunc(handlers.ScanIncomingShowsHandler)))
-	mux.Handle("/scan/stop", middleware.RequireAuth(http.HandlerFunc(handlers.StopScanHandler)))
-	mux.Handle("/import/movies/all", middleware.RequireAuth(http.HandlerFunc(handlers.ImportAllMoviesHandler)))
-	mux.Handle("/import/shows/all", middleware.RequireAuth(http.HandlerFunc(handlers.ImportAllShowsHandler)))
-	mux.Handle("/rename/movie", middleware.RequireAuth(http.HandlerFunc(handlers.RenameMovieHandler)))
-	mux.Handle("/rename/show", middleware.RequireAuth(http.HandlerFunc(handlers.RenameShowHandler)))
-	mux.Handle("/subtitles/download", middleware.RequireAuth(http.HandlerFunc(handlers.DownloadSubtitlesHandler)))
-	mux.Handle("/admin/nuke", middleware.RequireAuth(http.HandlerFunc(handlers.NukeLibraryHandler)))
-
-	// Root redirect
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			log.Printf("[ROUTE] Root path hit, redirecting to /dashboard")
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-			return
-		}
-		// Serve 404 for other paths not matched
-		http.NotFound(w, r)
-	})
-
-	// Start server
+	// Start server with graceful shutdown
 	addr := ":" + cfg.ServerPort
 	log.Printf("=========================================")
 	log.Printf("Arrgo is starting on %s", addr)
@@ -131,14 +141,47 @@ func main() {
 	log.Printf("Debug Mode: %v", cfg.Debug)
 	log.Printf("=========================================")
 
-	// Global logging middleware
-	loggingMux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("[STDOUT-REQ] %s %s\n", r.Method, r.URL.Path)
-		log.Printf("[LOG-REQ] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		mux.ServeHTTP(w, r)
-	})
-
-	if err := http.ListenAndServe(addr, loggingMux); err != nil {
-		log.Fatalf("FATAL: Server failed to start: %v", err)
+	// Create HTTP server with timeout settings
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      loggingMiddleware(mux),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Setup graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("FATAL: Server failed to start: %v", err)
+		}
+	}()
+
+	log.Printf("Server started successfully. Waiting for shutdown signal...")
+	<-quit
+	log.Printf("Shutting down server...")
+
+	// Cancel background context
+	cancel()
+
+	// Graceful shutdown with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Error during server shutdown: %v", err)
+	} else {
+		log.Printf("Server shutdown complete")
+	}
+}
+
+// loggingMiddleware provides request logging
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[REQ] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		next.ServeHTTP(w, r)
+	})
 }

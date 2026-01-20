@@ -14,16 +14,6 @@ import (
 )
 
 var (
-	movieExtensions = map[string]bool{
-		".mp4":  true,
-		".mkv":  true,
-		".avi":  true,
-		".mov":  true,
-		".wmv":  true,
-		".m4v":  true,
-		".flv":  true,
-		".webm": true,
-	}
 	scanMoviesMutex sync.Mutex
 )
 
@@ -42,16 +32,16 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 		FinishScan(scanType)
 	}()
 
-	log.Printf("[SCANNER] Starting movie scan (%s) with 4 workers...", scanType)
+	log.Printf("[SCANNER] Starting movie scan (%s) with %d workers...", scanType, DefaultWorkerCount)
 
 	// Clean up missing files first
 	PurgeMissingMovies()
 
-	taskChan := make(chan string, 100)
+	taskChan := make(chan string, TaskChannelBufferSize)
 	var wg sync.WaitGroup
 
 	// Start workers
-	for i := 0; i < 4; i++ {
+	for i := 0; i < DefaultWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -102,7 +92,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
-			if movieExtensions[ext] {
+			if MovieExtensions[ext] {
 				taskChan <- path
 			}
 			return nil
@@ -144,23 +134,7 @@ func processMovieFile(cfg *config.Config, path string) {
 	quality := DetectQuality(path)
 
 	// Look for local poster
-	posterPath := ""
-	parentDir := filepath.Dir(path)
-	posterExtensions := []string{".jpg", ".jpeg", ".png", ".webp"}
-	posterNames := []string{"poster", "folder", "cover", "movie"}
-
-	for _, name := range posterNames {
-		for _, ext := range posterExtensions {
-			p := filepath.Join(parentDir, name+ext)
-			if _, err := os.Stat(p); err == nil {
-				posterPath = p
-				break
-			}
-		}
-		if posterPath != "" {
-			break
-		}
-	}
+	posterPath := findLocalPoster(filepath.Dir(path))
 
 	movie := models.Movie{
 		Title:      title,

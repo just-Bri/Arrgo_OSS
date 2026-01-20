@@ -38,20 +38,8 @@ type RequestsData struct {
 }
 
 func RequestsHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -81,14 +69,8 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -99,7 +81,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.UserID = int(interfaceToInt64(userID))
+	req.UserID = int(user.ID)
 
 	// Final server-side check to prevent duplicate requests or requesting library items
 	var externalID string
@@ -173,28 +155,20 @@ func ApproveRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := services.GetSession(r)
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil || !user.IsAdmin {
+	if !user.IsAdmin {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+	id, err := ParseIDFromQuery(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -213,28 +187,20 @@ func DenyRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := services.GetSession(r)
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil || !user.IsAdmin {
+	if !user.IsAdmin {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+	id, err := ParseIDFromQuery(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -253,28 +219,20 @@ func DeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := services.GetSession(r)
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil || !user.IsAdmin {
+	if !user.IsAdmin {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.Atoi(idStr)
+	id, err := ParseIDFromQuery(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

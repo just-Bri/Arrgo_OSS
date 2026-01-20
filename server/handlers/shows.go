@@ -50,20 +50,8 @@ type ShowsData struct {
 }
 
 func ShowsHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -78,42 +66,21 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	selectedGenre := r.URL.Query().Get("genre")
 
 	// Separate incoming and library shows
-	var libraryShows []models.Show
-	var incomingShows []models.Show
+	libraryShows, incomingShows := SeparateIncomingShows(allShows, cfg, user.IsAdmin)
 
-	for _, s := range allShows {
-		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
-
-		if isIncoming {
-			if user.IsAdmin {
-				incomingShows = append(incomingShows, s)
-			}
-			// Normal users don't see incoming shows at all
-		} else {
-			// Apply genre filter only to library shows
-			if selectedGenre == "" || strings.Contains(s.Genres, selectedGenre) {
-				libraryShows = append(libraryShows, s)
+	// Apply genre filter to library shows
+	if selectedGenre != "" {
+		var filtered []models.Show
+		for _, s := range libraryShows {
+			if strings.Contains(s.Genres, selectedGenre) {
+				filtered = append(filtered, s)
 			}
 		}
+		libraryShows = filtered
 	}
 
 	// Extract unique genres from library shows only
-	genreMap := make(map[string]bool)
-	for _, s := range libraryShows {
-		if s.Genres != "" {
-			gs := strings.Split(s.Genres, ", ")
-			for _, g := range gs {
-				if g != "" {
-					genreMap[g] = true
-				}
-			}
-		}
-	}
-	var allGenres []string
-	for g := range genreMap {
-		allGenres = append(allGenres, g)
-	}
-	sort.Strings(allGenres)
+	allGenres := ExtractGenresFromShows(libraryShows)
 
 	data := ShowsData{
 		Username:      user.Username,
@@ -121,7 +88,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 		CurrentPage:   "/shows",
 		SearchQuery:   "",
 		Shows:         libraryShows,
-		IncomingShows: []models.Show{},
+		IncomingShows: incomingShows,
 		AllGenres:     allGenres,
 		SelectedGenre: selectedGenre,
 	}
@@ -132,20 +99,8 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := services.GetSession(r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	userID := session.Values["user_id"]
-	if userID == nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	user, err := services.GetUserByID(interfaceToInt64(userID))
-	if err != nil {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}

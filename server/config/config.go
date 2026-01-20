@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"log"
 	"os"
 )
 
@@ -26,7 +28,7 @@ type Config struct {
 }
 
 func Load() *Config {
-	return &Config{
+	cfg := &Config{
 		DatabaseURL:   getEnv("DATABASE_URL", "postgres://arrgo:arrgo@localhost:5432/arrgo?sslmode=disable"),
 		SessionSecret: getEnv("SESSION_SECRET", "change-me-in-production"),
 		ServerPort:    getEnv("PORT", "5003"),
@@ -46,6 +48,24 @@ func Load() *Config {
 		IndexerURL:     getEnv("INDEXER_URL", "http://localhost:5004"),
 		Debug:         getEnv("DEBUG", "false") == "true",
 	}
+
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		log.Printf("Warning: Configuration validation failed: %v", err)
+	}
+
+	return cfg
+}
+
+// Validate checks critical configuration values
+func (c *Config) Validate() error {
+	if c.SessionSecret == "change-me-in-production" && c.Environment == "production" {
+		return fmt.Errorf("SESSION_SECRET must be changed in production")
+	}
+	if c.DatabaseURL == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {

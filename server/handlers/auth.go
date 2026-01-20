@@ -62,18 +62,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("User %s registered successfully, ID: %d", username, user.ID)
 
 	// Automatically log in after registration
-	session, err := services.GetSession(r)
-	if err != nil {
-		log.Printf("Failed to get session: %v", err)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
-
-	if err := services.SaveSession(w, r, session); err != nil {
-		log.Printf("Failed to save session: %v", err)
+	if err := SetupUserSession(w, r, user); err != nil {
+		log.Printf("Failed to setup session: %v", err)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -117,19 +107,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("User %s authenticated successfully, ID: %d", username, user.ID)
 
 	// Create session
-	session, err := services.GetSession(r)
-	if err != nil {
-		log.Printf("Failed to get session: %v", err)
+	if err := SetupUserSession(w, r, user); err != nil {
+		log.Printf("Failed to setup session: %v", err)
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
-		return
-	}
-
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
-
-	if err := services.SaveSession(w, r, session); err != nil {
-		log.Printf("Failed to save session: %v", err)
-		http.Error(w, "Failed to save session", http.StatusInternalServerError)
 		return
 	}
 

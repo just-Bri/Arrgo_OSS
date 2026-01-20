@@ -33,7 +33,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 		FinishScan(scanType)
 	}()
 
-	log.Printf("[SCANNER] Starting show scan (%s) with 4 workers...", scanType)
+	log.Printf("[SCANNER] Starting show scan (%s) with %d workers...", scanType, DefaultWorkerCount)
 
 	// Clean up missing files first
 	PurgeMissingShows()
@@ -43,11 +43,11 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 		name string
 	}
 
-	taskChan := make(chan showTask, 100)
+	taskChan := make(chan showTask, TaskChannelBufferSize)
 	var wg sync.WaitGroup
 
 	// Start workers
-	for i := 0; i < 4; i++ {
+	for i := 0; i < DefaultWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -123,22 +123,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	title, year, tmdbID, tvdbID, imdbID := ParseMediaName(name) // Use the new shared ParseMediaName
 
 	// Look for local poster
-	posterPath := ""
-	posterExtensions := []string{".jpg", ".jpeg", ".png", ".webp"}
-	posterNames := []string{"poster", "folder", "cover", "show"}
-
-	for _, n := range posterNames {
-		for _, ext := range posterExtensions {
-			p := filepath.Join(showPath, n+ext)
-			if _, err := os.Stat(p); err == nil {
-				posterPath = p
-				break
-			}
-		}
-		if posterPath != "" {
-			break
-		}
-	}
+	posterPath := findLocalPoster(showPath)
 
 	log.Printf("[SCANNER] Processing show: %s (%d) at %s", title, year, showPath)
 	showID, err := upsertShow(models.Show{
@@ -239,7 +224,7 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		}
 
 		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if !movieExtensions[ext] {
+		if !MovieExtensions[ext] {
 			continue
 		}
 
@@ -254,7 +239,7 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		// Clean the episode title (remove SXXEXX, tags like - IMPORTED, etc.)
 		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 		epTitle, _, _, _, _ := ParseMediaName(epNameOnly)
-		
+
 		// If ParseMediaName left it empty or it's just the show title, use a better default
 		if epTitle == "" {
 			epTitle = fmt.Sprintf("Episode %d", episodeNum)

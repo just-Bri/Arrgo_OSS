@@ -77,6 +77,46 @@ func copyFile(src, dst string) error {
 	return destFile.Sync()
 }
 
+// handleExistingFile checks if a file exists at the destination and handles quality comparison.
+// Returns true if the candidate should be deleted (lower quality/size), false if it should proceed.
+// If the existing file should be replaced, it will be deleted by deleteExisting callback.
+func handleExistingFile(destPath, candidatePath, candidateQuality string, candidateSize int64, query string, deleteCandidate func() error, deleteExisting func() error) bool {
+	if _, err := os.Stat(destPath); err != nil {
+		return false // File doesn't exist, proceed
+	}
+
+	var existingQuality string
+	var existingSize int64
+	err := database.DB.QueryRow(query, destPath).Scan(&existingQuality, &existingSize)
+	if err != nil {
+		return false // Can't compare, proceed
+	}
+
+	comp := CompareQuality(candidateQuality, existingQuality)
+	if comp < 0 {
+		// Candidate is LOWER quality than existing
+		log.Printf("[RENAMER] Candidate %s is lower quality (%s) than existing (%s). Deleting candidate.", candidatePath, candidateQuality, existingQuality)
+		deleteCandidate()
+		return true
+	} else if comp == 0 {
+		// Qualities are equal, compare size
+		if candidateSize <= existingSize {
+			log.Printf("[RENAMER] Candidate %s has same quality (%s) but smaller/equal size. Deleting candidate.", candidatePath, candidateQuality)
+			deleteCandidate()
+			return true
+		}
+		// Candidate is larger, proceed to replace
+		log.Printf("[RENAMER] Candidate %s has same quality (%s) but larger size. Replacing existing.", candidatePath, candidateQuality)
+	} else {
+		// Candidate is HIGHER quality
+		log.Printf("[RENAMER] Candidate %s is higher quality (%s) than existing (%s). Replacing existing.", candidatePath, candidateQuality, existingQuality)
+	}
+
+	// Remove existing file and its DB entry
+	deleteExisting()
+	return false
+}
+
 func sanitizePath(name string) string {
 	// Remove or replace characters that are problematic for filesystems
 	// Specifically :, /, \, *, ?, ", <, >, |
@@ -186,45 +226,23 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// SMART RENAMING LOGIC: Quality Check
-	if _, err := os.Stat(destPath); err == nil {
-		// File already exists at destination. Let's compare quality.
-		var existingQuality string
-		var existingSize int64
-		err = database.DB.QueryRow("SELECT quality, size FROM movies WHERE path = $1", destPath).Scan(&existingQuality, &existingSize)
-		if err == nil {
-			// Compare quality
-			comp := CompareQuality(m.Quality, existingQuality)
-			if comp < 0 {
-				// Candidate is LOWER quality than existing.
-				// Keep the existing file, delete the candidate.
-				log.Printf("[RENAMER] Candidate %s is lower quality (%s) than existing (%s). Deleting candidate.", m.Path, m.Quality, existingQuality)
-				oldPath := m.Path
-				os.Remove(oldPath)
-				database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-				CleanupEmptyDirs(cfg.IncomingMoviesPath)
-				return nil
-			} else if comp == 0 {
-				// Qualities are equal, compare size.
-				if m.Size <= existingSize {
-					// Candidate is smaller or equal size. Delete candidate.
-					log.Printf("[RENAMER] Candidate %s has same quality (%s) but smaller/equal size than existing. Deleting candidate.", m.Path, m.Quality)
-					oldPath := m.Path
-					os.Remove(oldPath)
-					database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
-					CleanupEmptyDirs(cfg.IncomingMoviesPath)
-					return nil
-				}
-				// Candidate is larger, proceed to replace.
-				log.Printf("[RENAMER] Candidate %s has same quality (%s) but larger size. Replacing existing.", m.Path, m.Quality)
-			} else {
-				// Candidate is HIGHER quality. Proceed to replace.
-				log.Printf("[RENAMER] Candidate %s is higher quality (%s) than existing (%s). Replacing existing.", m.Path, m.Quality, existingQuality)
-			}
-
-			// If we are replacing, remove the existing file and its DB entry
+	shouldDelete := handleExistingFile(
+		destPath, m.Path, m.Quality, m.Size,
+		"SELECT quality, size FROM movies WHERE path = $1",
+		func() error {
+			os.Remove(m.Path)
+			database.DB.Exec("DELETE FROM movies WHERE id = $1", m.ID)
+			CleanupEmptyDirs(cfg.IncomingMoviesPath)
+			return nil
+		},
+		func() error {
 			os.Remove(destPath)
 			database.DB.Exec("DELETE FROM movies WHERE path = $1", destPath)
-		}
+			return nil
+		},
+	)
+	if shouldDelete {
+		return nil
 	}
 
 	// Move the file
@@ -329,34 +347,23 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	// SMART RENAMING LOGIC: Quality Check for Episodes
-	if _, err := os.Stat(destPath); err == nil {
-		var existingQuality string
-		var existingSize int64
-		err = database.DB.QueryRow("SELECT quality, size FROM episodes WHERE file_path = $1", destPath).Scan(&existingQuality, &existingSize)
-		if err == nil {
-			comp := CompareQuality(e.Quality, existingQuality)
-			if comp < 0 {
-				log.Printf("[RENAMER] Candidate episode %s is lower quality (%s) than existing (%s). Deleting candidate.", e.FilePath, e.Quality, existingQuality)
-				oldPath := e.FilePath
-				os.Remove(oldPath)
-				database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-				CleanupEmptyDirs(cfg.IncomingShowsPath)
-				return nil
-			} else if comp == 0 {
-				if e.Size <= existingSize {
-					log.Printf("[RENAMER] Candidate episode %s has same quality but smaller/equal size. Deleting candidate.", e.FilePath)
-					oldPath := e.FilePath
-					os.Remove(oldPath)
-					database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
-					CleanupEmptyDirs(cfg.IncomingShowsPath)
-					return nil
-				}
-			}
-
-			log.Printf("[RENAMER] Candidate episode %s is better. Replacing existing.", e.FilePath)
+	shouldDelete := handleExistingFile(
+		destPath, e.FilePath, e.Quality, e.Size,
+		"SELECT quality, size FROM episodes WHERE file_path = $1",
+		func() error {
+			os.Remove(e.FilePath)
+			database.DB.Exec("DELETE FROM episodes WHERE id = $1", e.ID)
+			CleanupEmptyDirs(cfg.IncomingShowsPath)
+			return nil
+		},
+		func() error {
 			os.Remove(destPath)
 			database.DB.Exec("DELETE FROM episodes WHERE file_path = $1", destPath)
-		}
+			return nil
+		},
+	)
+	if shouldDelete {
+		return nil
 	}
 
 	oldPath := e.FilePath

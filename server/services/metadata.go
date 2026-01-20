@@ -26,6 +26,11 @@ var (
 	lastRequestTime time.Time
 	rateLimitMutex  sync.Mutex
 
+	// Shared HTTP client for API requests
+	httpClient = &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
 	tmdbGenres = map[int]string{
 		28:    "Action",
 		12:    "Adventure",
@@ -112,7 +117,7 @@ func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, 
 	throttle()
 	url := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, cfg.TMDBAPIKey)
 
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +152,7 @@ func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, er
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept-Language", "eng")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +198,7 @@ func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, erro
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +282,7 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US",
 		cfg.TMDBAPIKey, url.QueryEscape(query))
 
-	resp, err := http.Get(searchURL)
+	resp, err := httpClient.Get(searchURL)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +441,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 			searchURL += fmt.Sprintf("&year=%d", m.Year)
 		}
 
-		resp, err := http.Get(searchURL)
+		resp, err := httpClient.Get(searchURL)
 		if err != nil {
 			log.Printf("[METADATA] TMDB API request failed for %s: %v", m.Title, err)
 			return err

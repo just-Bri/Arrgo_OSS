@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"strings"
 )
 
 var adminTmpl *template.Template
@@ -47,35 +46,26 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !user.IsAdmin {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
 	cfg := config.Load()
 
-	// Get incoming movies
+	// Get incoming movies and shows using shared helpers
 	allMovies, err := services.GetMovies()
 	if err != nil {
 		log.Printf("Error getting movies for admin: %v", err)
+		allMovies = []models.Movie{}
 	}
-	var incomingMovies []models.Movie
-	for _, m := range allMovies {
-		if strings.HasPrefix(m.Path, cfg.IncomingMoviesPath) {
-			incomingMovies = append(incomingMovies, m)
-		}
-	}
+	_, incomingMovies := SeparateIncomingMovies(allMovies, cfg, true)
 
-	// Get incoming shows
 	allShows, err := services.GetShows()
 	if err != nil {
 		log.Printf("Error getting shows for admin: %v", err)
+		allShows = []models.Show{}
 	}
-	var incomingShows []models.Show
-	for _, s := range allShows {
-		if strings.HasPrefix(s.Path, cfg.IncomingShowsPath) {
-			incomingShows = append(incomingShows, s)
-		}
-	}
+	_, incomingShows := SeparateIncomingShows(allShows, cfg, true)
 
 	data := AdminPageData{
 		Username:       user.Username,
