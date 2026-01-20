@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,19 +29,38 @@ func (e OpenSubtitlesError) Error() string {
 
 func parseOpenSubtitlesError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
 	var osErr OpenSubtitlesError
+	
+	// Try parsing as JSON first
 	if err := json.Unmarshal(body, &osErr); err == nil {
 		osErr.Status = resp.StatusCode
 		if resp.StatusCode == 406 && osErr.ResetTimeUTC != "" {
 			// Store quota reset time
 			if t, err := time.Parse(time.RFC3339, osErr.ResetTimeUTC); err == nil {
-				// Store as ISO8601 string
 				SetSetting("opensubtitles_quota_reset", t.Format(time.RFC3339))
 			}
 		}
 		return osErr
 	}
-	return fmt.Errorf("opensubtitles request failed (%d): %s", resp.StatusCode, string(body))
+
+	// Fallback: Try to extract reset time from plain text error message
+	// Example: "... Your quota will be renewed in 04 hours and 57 minutes (2026-01-20 23:59:59 UTC) ts=1768935729"
+	if resp.StatusCode == 406 {
+		re := regexp.MustCompile(`\((\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})\sUTC\)`)
+		if matches := re.FindStringSubmatch(bodyStr); len(matches) > 1 {
+			// Parse "2026-01-20 23:59:59"
+			layout := "2006-01-02 15:04:05"
+			if t, err := time.Parse(layout, matches[1]); err == nil {
+				// Convert to UTC and store
+				utcTime := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
+				SetSetting("opensubtitles_quota_reset", utcTime.Format(time.RFC3339))
+				log.Printf("[SUBTITLES] Extracted quota reset time from text error: %s", utcTime.Format(time.RFC3339))
+			}
+		}
+	}
+
+	return fmt.Errorf("opensubtitles request failed (%d): %s", resp.StatusCode, bodyStr)
 }
 
 func SetSetting(key, value string) error {
@@ -225,7 +245,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota is currently locked, queueing movie %d", movieID)
+		log.Printf("[SUBTITLES] OpenSubtitles quota is locked (pre-check), queueing movie %d", movieID)
 		return QueueSubtitleDownload("movie", movieID)
 	}
 
@@ -243,6 +263,12 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 		time.Sleep(1 * time.Second)
 		<-osSemaphore
 	}()
+
+	// Re-check quota after entering semaphore to catch race conditions
+	if IsQuotaLocked() {
+		log.Printf("[SUBTITLES] OpenSubtitles quota was locked while waiting for semaphore, queueing movie %d", movieID)
+		return QueueSubtitleDownload("movie", movieID)
+	}
 
 	if imdbID == "" {
 		log.Printf("[SUBTITLES] No IMDB ID for movie %s, skipping subtitle search", title)
@@ -401,7 +427,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	if IsQuotaLocked() {
-		log.Printf("[SUBTITLES] OpenSubtitles quota is currently locked, queueing episode %d", episodeID)
+		log.Printf("[SUBTITLES] OpenSubtitles quota is locked (pre-check), queueing episode %d", episodeID)
 		return QueueSubtitleDownload("episode", episodeID)
 	}
 
@@ -426,6 +452,12 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		time.Sleep(1 * time.Second)
 		<-osSemaphore
 	}()
+
+	// Re-check quota after entering semaphore to catch race conditions
+	if IsQuotaLocked() {
+		log.Printf("[SUBTITLES] OpenSubtitles quota was locked while waiting for semaphore, queueing episode %d", episodeID)
+		return QueueSubtitleDownload("episode", episodeID)
+	}
 
 	if imdbID == "" {
 		log.Printf("[SUBTITLES] No parent IMDB ID for show %s, skipping subtitle search", showTitle)
