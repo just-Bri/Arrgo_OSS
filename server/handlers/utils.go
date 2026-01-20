@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/justbri/arrgo/shared/format"
 )
 
 func interfaceToInt64(v interface{}) int64 {
@@ -36,19 +38,7 @@ func GetFuncMap() template.FuncMap {
 			}
 			return false
 		},
-		"formatSize": func(size int64) string {
-			if size == 0 {
-				return "0 B"
-			}
-			units := []string{"B", "KB", "MB", "GB", "TB"}
-			i := 0
-			fSize := float64(size)
-			for fSize >= 1024 && i < len(units)-1 {
-				fSize /= 1024
-				i++
-			}
-			return fmt.Sprintf("%.2f %s", fSize, units[i])
-		},
+		"formatSize": format.Bytes,
 	}
 }
 

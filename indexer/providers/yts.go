@@ -2,9 +2,7 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 )
 
@@ -67,19 +65,13 @@ func (y *YTSIndexer) GetName() string {
 func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchResult, error) {
 	apiURL := fmt.Sprintf("https://yts.mx/api/v2/list_movies.json?query_term=%s&sort_by=seeds", url.QueryEscape(query))
 	
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
 
 	var ytsResp YTSResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ytsResp); err != nil {
+	if err := DecodeJSONResponse(resp, &ytsResp); err != nil {
 		return nil, err
 	}
 

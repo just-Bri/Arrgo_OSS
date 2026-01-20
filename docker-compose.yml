@@ -129,7 +129,8 @@ services:
 
   arrgo-indexer:
     build:
-      context: ./indexer
+      context: .
+      dockerfile: ./indexer/Dockerfile
     container_name: arrgo-indexer
     ports:
       - "5004:5004"

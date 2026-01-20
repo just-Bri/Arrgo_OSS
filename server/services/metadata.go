@@ -5,16 +5,18 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 var (
@@ -25,11 +27,6 @@ var (
 	// Rate limiting for TMDB/TVDB
 	lastRequestTime time.Time
 	rateLimitMutex  sync.Mutex
-
-	// Shared HTTP client for API requests
-	httpClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
 
 	tmdbGenres = map[int]string{
 		28:    "Action",
@@ -115,20 +112,15 @@ func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, 
 	}
 
 	throttle()
-	url := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, cfg.TMDBAPIKey)
+	apiURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, cfg.TMDBAPIKey)
 
-	resp, err := httpClient.Get(url)
+	resp, err := sharedhttp.MakeRequest(context.Background(), apiURL, sharedhttp.LongTimeoutClient)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TMDB returned status %d", resp.StatusCode)
-	}
 
 	var details TMDBMovieDetails
-	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &details); err != nil {
 		return nil, err
 	}
 
@@ -152,20 +144,20 @@ func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, er
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept-Language", "eng")
 
-	resp, err := httpClient.Do(req)
+	resp, err := sharedhttp.LongTimeoutClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
 	}
 
 	var result struct {
 		Data TVDBShowDetails `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &result); err != nil {
 		return nil, err
 	}
 
@@ -198,13 +190,13 @@ func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, erro
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := httpClient.Do(req)
+	resp, err := sharedhttp.LongTimeoutClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
 	}
 
@@ -213,7 +205,7 @@ func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, erro
 			Episodes []TVDBEpisode `json:"episodes"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &result); err != nil {
 		return nil, err
 	}
 
@@ -279,17 +271,19 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	}
 
 	throttle()
-	searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US",
-		cfg.TMDBAPIKey, url.QueryEscape(query))
+	searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", map[string]string{
+		"api_key":  cfg.TMDBAPIKey,
+		"query":    query,
+		"language": "en-US",
+	})
 
-	resp, err := httpClient.Get(searchURL)
+	resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	var searchResults TMDBMovieSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
 		return nil, err
 	}
 
@@ -332,20 +326,27 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	}
 
 	throttle()
-	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search?query=%s&type=series&lang=eng", url.QueryEscape(query))
+	searchURL := sharedhttp.BuildQueryURL("https://api4.thetvdb.com/v4/search", map[string]string{
+		"query": query,
+		"type":  "series",
+		"lang":  "eng",
+	})
 
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedhttp.LongTimeoutClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
+	}
 
 	var searchResults TVDBSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
 		return nil, err
 	}
 
@@ -376,14 +377,20 @@ func getTVDBToken(apiKey string) (string, error) {
 
 	log.Printf("[METADATA] Authenticating with TVDB...")
 	payload, _ := json.Marshal(map[string]string{"apikey": apiKey})
-	resp, err := http.Post("https://api4.thetvdb.com/v4/login", "application/json", bytes.NewBuffer(payload))
+	req, _ := http.NewRequest("POST", "https://api4.thetvdb.com/v4/login", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := sharedhttp.LongTimeoutClient.Do(req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return "", fmt.Errorf("TVDB authentication returned status %d", resp.StatusCode)
+	}
 
 	var auth TVDBAuthResponse
-	if err := json.NewDecoder(resp.Body).Decode(&auth); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &auth); err != nil {
 		return "", err
 	}
 
@@ -435,21 +442,24 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	if matchedTMDBID == "" {
 		log.Printf("[METADATA] Searching TMDB for movie: %s (%d)", m.Title, m.Year)
 		throttle()
-		searchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s&language=en-US",
-			cfg.TMDBAPIKey, url.QueryEscape(m.Title))
-		if m.Year > 0 {
-			searchURL += fmt.Sprintf("&year=%d", m.Year)
+		params := map[string]string{
+			"api_key":  cfg.TMDBAPIKey,
+			"query":    m.Title,
+			"language": "en-US",
 		}
+		if m.Year > 0 {
+			params["year"] = fmt.Sprintf("%d", m.Year)
+		}
+		searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", params)
 
-		resp, err := httpClient.Get(searchURL)
+		resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
 		if err != nil {
 			log.Printf("[METADATA] TMDB API request failed for %s: %v", m.Title, err)
 			return err
 		}
-		defer resp.Body.Close()
 
 		var searchResults TMDBMovieSearchResponse
-		if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+		if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
 			log.Printf("[METADATA] Error decoding TMDB response for %s: %v", m.Title, err)
 			return err
 		}
@@ -649,19 +659,18 @@ func SearchTVDBByRemoteID(cfg *config.Config, remoteID string) ([]SearchResult, 
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := sharedhttp.LongTimeoutClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
 	}
 
 	var searchResults TVDBSearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&searchResults); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
 		return nil, err
 	}
 

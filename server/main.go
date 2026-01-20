@@ -14,6 +14,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
+	sharedserver "github.com/justbri/arrgo/shared/server"
 )
 
 func init() {
@@ -141,14 +144,9 @@ func main() {
 	log.Printf("Debug Mode: %v", cfg.Debug)
 	log.Printf("=========================================")
 
-	// Create HTTP server with timeout settings
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      loggingMiddleware(mux),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	// Create HTTP server with shared configuration
+	srvConfig := sharedserver.DefaultConfig(addr)
+	srv := sharedserver.CreateServer(srvConfig, sharedmiddleware.Logging(mux))
 
 	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
@@ -176,12 +174,4 @@ func main() {
 	} else {
 		log.Printf("Server shutdown complete")
 	}
-}
-
-// loggingMiddleware provides request logging
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[REQ] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-		next.ServeHTTP(w, r)
-	})
 }

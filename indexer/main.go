@@ -4,35 +4,41 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/justbri/arrgo/indexer/handlers"
+	"github.com/justbri/arrgo/shared/config"
+	"github.com/justbri/arrgo/shared/middleware"
+	"github.com/justbri/arrgo/shared/server"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "5004"
-	}
+	port := config.GetEnv("PORT", "5004")
 
-	// Routes
-	http.HandleFunc("/", handlers.IndexHandler)
-	http.HandleFunc("/search", handlers.SearchHandler)
+	// Setup routes
+	mux := setupRoutes()
 
-	// Logging middleware
-	logger := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("%s %s %s", r.Method, r.URL.Path, r.RemoteAddr)
-			next.ServeHTTP(w, r)
-		})
-	}
-
-	// Static files
-	fs := http.FileServer(http.Dir("static"))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
+	// Create server with shared configuration
+	srvConfig := server.DefaultConfig(":" + port)
+	srv := server.CreateServer(srvConfig, middleware.LoggingSimple(mux))
 
 	fmt.Printf("Indexer service starting on port %s...\n", port)
-	if err := http.ListenAndServe(":"+port, logger(http.DefaultServeMux)); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
+
+// setupRoutes configures all HTTP routes
+func setupRoutes() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	// Routes
+	mux.HandleFunc("/", handlers.IndexHandler)
+	mux.HandleFunc("/search", handlers.SearchHandler)
+
+	// Static files
+	fs := http.FileServer(http.Dir("static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	return mux
+}
+

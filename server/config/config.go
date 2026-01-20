@@ -3,7 +3,8 @@ package config
 import (
 	"fmt"
 	"log"
-	"os"
+
+	"github.com/justbri/arrgo/shared/config"
 )
 
 type Config struct {
@@ -29,24 +30,24 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{
-		DatabaseURL:   getEnv("DATABASE_URL", "postgres://arrgo:arrgo@localhost:5432/arrgo?sslmode=disable"),
-		SessionSecret: getEnv("SESSION_SECRET", "change-me-in-production"),
-		ServerPort:    getEnv("PORT", "5003"),
-		Environment:   getEnv("ENV", "development"),
-		MoviesPath:    getEnv("MOVIES_PATH", "/mnt/movies"),
-		ShowsPath:     getEnv("SHOWS_PATH", "/mnt/shows"),
-		IncomingMoviesPath: getEnv("INCOMING_MOVIES_PATH", "/mnt/incoming/movies"),
-		IncomingShowsPath:  getEnv("INCOMING_SHOWS_PATH", "/mnt/incoming/shows"),
-		TMDBAPIKey:    getEnv("TMDB_API_KEY", ""),
-		TVDBAPIKey:    getEnv("TVDB_API_KEY", ""),
-		OpenSubtitlesAPIKey: getEnv("OPENSUBTITLES_API_KEY", ""),
-		OpenSubtitlesUser:   getEnv("OPENSUBTITLES_USER", ""),
-		OpenSubtitlesPass:   getEnv("OPENSUBTITLES_PASS", ""),
-		QBittorrentURL:  getEnv("QBITTORRENT_URL", "http://localhost:8080"),
-		QBittorrentUser: getEnv("QBITTORRENT_USER", "admin"),
-		QBittorrentPass: getEnv("QBITTORRENT_PASS", "adminadmin"),
-		IndexerURL:     getEnv("INDEXER_URL", "http://localhost:5004"),
-		Debug:         getEnv("DEBUG", "false") == "true",
+		DatabaseURL:   config.GetEnv("DATABASE_URL", "postgres://arrgo:arrgo@localhost:5432/arrgo?sslmode=disable"),
+		SessionSecret: config.GetEnv("SESSION_SECRET", "change-me-in-production"),
+		ServerPort:    config.GetEnv("PORT", "5003"),
+		Environment:   config.GetEnv("ENV", "development"),
+		MoviesPath:    config.GetEnv("MOVIES_PATH", "/mnt/movies"),
+		ShowsPath:     config.GetEnv("SHOWS_PATH", "/mnt/shows"),
+		IncomingMoviesPath: config.GetEnv("INCOMING_MOVIES_PATH", "/mnt/incoming/movies"),
+		IncomingShowsPath:  config.GetEnv("INCOMING_SHOWS_PATH", "/mnt/incoming/shows"),
+		TMDBAPIKey:    config.GetEnv("TMDB_API_KEY", ""),
+		TVDBAPIKey:    config.GetEnv("TVDB_API_KEY", ""),
+		OpenSubtitlesAPIKey: config.GetEnv("OPENSUBTITLES_API_KEY", ""),
+		OpenSubtitlesUser:   config.GetEnv("OPENSUBTITLES_USER", ""),
+		OpenSubtitlesPass:   config.GetEnv("OPENSUBTITLES_PASS", ""),
+		QBittorrentURL:  config.GetEnv("QBITTORRENT_URL", "http://localhost:8080"),
+		QBittorrentUser: config.GetEnv("QBITTORRENT_USER", "admin"),
+		QBittorrentPass: config.GetEnv("QBITTORRENT_PASS", "adminadmin"),
+		IndexerURL:     config.GetEnv("INDEXER_URL", "http://localhost:5004"),
+		Debug:         config.GetEnv("DEBUG", "false") == "true",
 	}
 
 	// Validate configuration
@@ -68,10 +69,4 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
 

@@ -3,31 +3,28 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
+
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 type AutomationService struct {
-	cfg        *config.Config
-	qb         *QBittorrentClient
-	httpClient *http.Client
+	cfg *config.Config
+	qb  *QBittorrentClient
 }
 
 func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *AutomationService {
 	return &AutomationService{
-		cfg:        cfg,
-		qb:         qb,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		cfg: cfg,
+		qb:  qb,
 	}
 }
 
@@ -100,17 +97,19 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		searchType = "show" // Updated to use "show" instead of "solid"
 	}
 
-	searchURL := fmt.Sprintf("%s/search?q=%s&type=%s&format=json",
-		s.cfg.IndexerURL, url.QueryEscape(r.Title), searchType)
+	searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
+		"q":      r.Title,
+		"type":   searchType,
+		"format": "json",
+	})
 
-	resp, err := s.httpClient.Get(searchURL)
+	resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
 	if err != nil {
 		return fmt.Errorf("failed to call indexer: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := sharedhttp.ReadResponseBody(resp)
 		return fmt.Errorf("indexer returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -123,7 +122,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	}
 
 	var results []SearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &results); err != nil {
 		return fmt.Errorf("failed to decode indexer response: %w", err)
 	}
 

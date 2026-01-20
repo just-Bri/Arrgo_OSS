@@ -2,11 +2,8 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
-	"time"
+
+	"github.com/justbri/arrgo/shared/format"
 )
 
 type SolidTorrentsResponse struct {
@@ -20,16 +17,10 @@ type SolidTorrentsResponse struct {
 	} `json:"results"`
 }
 
-type SolidTorrentsIndexer struct {
-	httpClient *http.Client
-}
+type SolidTorrentsIndexer struct{}
 
 func NewSolidTorrentsIndexer() *SolidTorrentsIndexer {
-	return &SolidTorrentsIndexer{
-		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
-		},
-	}
+	return &SolidTorrentsIndexer{}
 }
 
 func (s *SolidTorrentsIndexer) GetName() string {
@@ -46,34 +37,27 @@ func (s *SolidTorrentsIndexer) SearchShows(ctx context.Context, query string, se
 
 func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
 	// API: https://solidtorrents.to/api/v1/search?q=...&category=Video&sort=seeders
-	apiURL := fmt.Sprintf("https://solidtorrents.to/api/v1/search?q=%s&category=%s&sort=seeders", 
-		url.QueryEscape(query), url.QueryEscape(category))
+	apiURL := BuildQueryURL("https://solidtorrents.to/api/v1/search", map[string]string{
+		"q":        query,
+		"category": category,
+		"sort":     "seeders",
+	})
 
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch results: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provider returned status %d", resp.StatusCode)
-	}
-
 	var apiResp SolidTorrentsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
+		return nil, err
 	}
 
 	var results []SearchResult
 	for _, r := range apiResp.Results {
 		results = append(results, SearchResult{
 			Title:      r.Title,
-			Size:       formatBytes(r.Size),
+			Size:       format.Bytes(r.Size),
 			Seeds:      r.Seeds,
 			Peers:      r.Leechers,
 			MagnetLink: r.Magnet,
@@ -83,17 +67,4 @@ func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, categor
 	}
 
 	return results, nil
-}
-
-func formatBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("% d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

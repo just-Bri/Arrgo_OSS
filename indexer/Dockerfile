@@ -6,14 +6,24 @@ WORKDIR /app
 # Install git for go mod
 RUN apk add --no-cache git
 
+# Copy shared library first (needed for indexer)
+COPY shared/ ./shared/
+
 # Copy go mod files
-COPY go.mod ./
+COPY indexer/go.mod ./
 # Only copy go.sum if it exists
-COPY go.sum* ./
+COPY indexer/go.sum* ./
+
+# Update replace directive for Docker build context
+RUN sed -i 's|=> ../shared|=> ./shared|g' go.mod
+
 RUN go mod download
 
 # Copy source code
-COPY . .
+COPY indexer/ .
+
+# Update replace directive again (after copying source which overwrites go.mod)
+RUN sed -i 's|=> ../shared|=> ./shared|g' go.mod
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o indexer .
