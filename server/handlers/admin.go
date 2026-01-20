@@ -32,6 +32,11 @@ type AdminPageData struct {
 	SearchQuery    string
 	IncomingMovies []models.Movie
 	IncomingShows  []models.Show
+
+	ScanningIncomingMovies bool
+	ScanningIncomingShows  bool
+	ScanningMovieLibrary   bool
+	ScanningShowLibrary    bool
 }
 
 func AdminHandler(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +84,11 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    "",
 		IncomingMovies: incomingMovies,
 		IncomingShows:  incomingShows,
+
+		ScanningIncomingMovies: services.IsScanning(services.ScanIncomingMovies),
+		ScanningIncomingShows:  services.IsScanning(services.ScanIncomingShows),
+		ScanningMovieLibrary:   services.IsScanning(services.ScanMovieLibrary),
+		ScanningShowLibrary:    services.IsScanning(services.ScanShowLibrary),
 	}
 
 	if err := adminTmpl.ExecuteTemplate(w, "base", data); err != nil {

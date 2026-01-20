@@ -2,6 +2,7 @@ package services
 
 import (
 	"Arrgo/config"
+	"context"
 	"log"
 	"time"
 )
@@ -26,12 +27,12 @@ func StartIncomingScanner(cfg *config.Config) {
 			log.Printf("[WORKER] Running scheduled incoming media scan...")
 			
 			// Scan movies
-			if err := ScanMovies(cfg, true); err != nil {
+			if err := ScanMovies(context.Background(), cfg, true); err != nil {
 				log.Printf("[WORKER] Error scanning movies: %v", err)
 			}
 			
 			// Scan shows
-			if err := ScanShows(cfg, true); err != nil {
+			if err := ScanShows(context.Background(), cfg, true); err != nil {
 				log.Printf("[WORKER] Error scanning shows: %v", err)
 			}
 

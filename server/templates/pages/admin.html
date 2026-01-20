@@ -10,17 +10,62 @@
         <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Management</h2>
             <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Detect new files and fetch metadata from TMDB/TVDB.</p>
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-                <form action="/scan/incoming" method="POST">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                {{if .ScanningIncomingShows}}
+                <form action="/scan/stop?type=incoming_shows" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        ⏹️ Stop Incoming Shows
+                    </button>
+                </form>
+                {{else}}
+                <form action="/scan/incoming/shows" method="POST">
                     <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        📥 Scan Incoming Folder
+                        📥 Scan Incoming Shows
                     </button>
                 </form>
-                <form action="/scan" method="POST">
+                {{end}}
+
+                {{if .ScanningIncomingMovies}}
+                <form action="/scan/stop?type=incoming_movies" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        ⏹️ Stop Incoming Movies
+                    </button>
+                </form>
+                {{else}}
+                <form action="/scan/incoming/movies" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        📥 Scan Incoming Movies
+                    </button>
+                </form>
+                {{end}}
+
+                {{if .ScanningShowLibrary}}
+                <form action="/scan/stop?type=show_library" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        ⏹️ Stop Show Library Scan
+                    </button>
+                </form>
+                {{else}}
+                <form action="/scan/shows" method="POST">
                     <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                        🚀 Full Library Scan
+                        🚀 Scan Show Library
                     </button>
                 </form>
+                {{end}}
+
+                {{if .ScanningMovieLibrary}}
+                <form action="/scan/stop?type=movie_library" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        ⏹️ Stop Movie Library Scan
+                    </button>
+                </form>
+                {{else}}
+                <form action="/scan/movies" method="POST">
+                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        🚀 Scan Movie Library
+                    </button>
+                </form>
+                {{end}}
             </div>
         </div>
 

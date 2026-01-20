@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -26,14 +27,22 @@ var (
 	scanMoviesMutex sync.Mutex
 )
 
-func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
+func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) error {
+	scanType := ScanMovieLibrary
+	if onlyIncoming {
+		scanType = ScanIncomingMovies
+	}
+
 	if !scanMoviesMutex.TryLock() {
 		log.Printf("[SCANNER] Movie scan already in progress, skipping...")
 		return nil
 	}
-	defer scanMoviesMutex.Unlock()
+	defer func() {
+		scanMoviesMutex.Unlock()
+		FinishScan(scanType)
+	}()
 
-	log.Printf("[SCANNER] Starting movie scan with 4 workers...")
+	log.Printf("[SCANNER] Starting movie scan (%s) with 4 workers...", scanType)
 
 	// Clean up missing files first
 	PurgeMissingMovies()
@@ -46,8 +55,16 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for path := range taskChan {
-				processMovieFile(cfg, path)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case path, ok := <-taskChan:
+					if !ok {
+						return
+					}
+					processMovieFile(cfg, path)
+				}
 			}
 		}()
 	}
@@ -74,6 +91,13 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 				log.Printf("[SCANNER] Error walking path %s: %v", path, err)
 				return nil
 			}
+
+			select {
+			case <-ctx.Done():
+				return context.Canceled
+			default:
+			}
+
 			if d.IsDir() {
 				return nil
 			}
@@ -88,7 +112,11 @@ func ScanMovies(cfg *config.Config, onlyIncoming bool) error {
 	close(taskChan)
 	wg.Wait()
 
-	log.Printf("[SCANNER] Movie scan complete.")
+	if ctx.Err() == context.Canceled {
+		log.Printf("[SCANNER] Movie scan (%s) cancelled.", scanType)
+	} else {
+		log.Printf("[SCANNER] Movie scan (%s) complete.", scanType)
+	}
 
 	return nil
 }

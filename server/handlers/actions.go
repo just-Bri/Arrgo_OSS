@@ -17,7 +17,7 @@ var (
 	importShowsMutex  sync.Mutex
 )
 
-func ScanHandler(w http.ResponseWriter, r *http.Request) {
+func ScanMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -30,34 +30,18 @@ func ScanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.Load()
-	log.Printf("Manual full scan triggered")
+	ctx, _ := services.StartScan(services.ScanMovieLibrary)
+	if ctx == nil {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Scan Movies in parallel
-	go func() {
-		defer wg.Done()
-		if err := services.ScanMovies(cfg, false); err != nil {
-			log.Printf("Error scanning movies: %v", err)
-		}
-	}()
-
-	// Scan Shows in parallel
-	go func() {
-		defer wg.Done()
-		if err := services.ScanShows(cfg, false); err != nil {
-			log.Printf("Error scanning shows: %v", err)
-		}
-	}()
-
-	wg.Wait()
-	log.Printf("Manual full scan complete")
+	go services.ScanMovies(ctx, cfg, false)
 
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
-func ScanIncomingHandler(w http.ResponseWriter, r *http.Request) {
+func ScanShowsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -70,29 +54,79 @@ func ScanIncomingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.Load()
-	log.Printf("Manual incoming scan triggered")
+	ctx, _ := services.StartScan(services.ScanShowLibrary)
+	if ctx == nil {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	go services.ScanShows(ctx, cfg, false)
 
-	// Scan Movies in parallel
-	go func() {
-		defer wg.Done()
-		if err := services.ScanMovies(cfg, true); err != nil {
-			log.Printf("Error scanning movies: %v", err)
-		}
-	}()
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
 
-	// Scan Shows in parallel
-	go func() {
-		defer wg.Done()
-		if err := services.ScanShows(cfg, true); err != nil {
-			log.Printf("Error scanning shows: %v", err)
-		}
-	}()
+func ScanIncomingMoviesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-	wg.Wait()
-	log.Printf("Manual incoming scan complete")
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	cfg := config.Load()
+	ctx, _ := services.StartScan(services.ScanIncomingMovies)
+	if ctx == nil {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	go services.ScanMovies(ctx, cfg, true)
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func ScanIncomingShowsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	cfg := config.Load()
+	ctx, _ := services.StartScan(services.ScanIncomingShows)
+	if ctx == nil {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	go services.ScanShows(ctx, cfg, true)
+
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func StopScanHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	scanType := services.ScanType(r.URL.Query().Get("type"))
+	services.StopScan(scanType)
 
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }

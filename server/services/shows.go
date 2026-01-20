@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -17,14 +18,22 @@ import (
 
 var scanShowsMutex sync.Mutex
 
-func ScanShows(cfg *config.Config, onlyIncoming bool) error {
+func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error {
+	scanType := ScanShowLibrary
+	if onlyIncoming {
+		scanType = ScanIncomingShows
+	}
+
 	if !scanShowsMutex.TryLock() {
 		log.Printf("[SCANNER] Show scan already in progress, skipping...")
 		return nil
 	}
-	defer scanShowsMutex.Unlock()
+	defer func() {
+		scanShowsMutex.Unlock()
+		FinishScan(scanType)
+	}()
 
-	log.Printf("[SCANNER] Starting show scan with 4 workers...")
+	log.Printf("[SCANNER] Starting show scan (%s) with 4 workers...", scanType)
 
 	// Clean up missing files first
 	PurgeMissingShows()
@@ -42,8 +51,16 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for task := range taskChan {
-				processShowDir(cfg, task.root, task.name)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case task, ok := <-taskChan:
+					if !ok {
+						return
+					}
+					processShowDir(cfg, task.root, task.name)
+				}
 			}
 		}()
 	}
@@ -70,17 +87,33 @@ func ScanShows(cfg *config.Config, onlyIncoming bool) error {
 			continue
 		}
 
+		stopped := false
 		for _, entry := range entries {
-			if entry.IsDir() {
-				taskChan <- showTask{root: p, name: entry.Name()}
+			select {
+			case <-ctx.Done():
+				stopped = true
+			default:
+				if entry.IsDir() {
+					taskChan <- showTask{root: p, name: entry.Name()}
+				}
 			}
+			if stopped {
+				break
+			}
+		}
+		if stopped {
+			break
 		}
 	}
 
 	close(taskChan)
 	wg.Wait()
 
-	log.Printf("[SCANNER] Show scan complete.")
+	if ctx.Err() == context.Canceled {
+		log.Printf("[SCANNER] Show scan (%s) cancelled.", scanType)
+	} else {
+		log.Printf("[SCANNER] Show scan (%s) complete.", scanType)
+	}
 
 	return nil
 }
