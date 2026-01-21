@@ -96,6 +96,9 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 	if savePath != "" {
 		data.Set("savepath", savePath)
 	}
+	// Don't pause - let qBittorrent start downloading metadata immediately
+	// Skip hash checking for faster start (qBittorrent will check during download)
+	data.Set("skip_checking", "false")
 
 	req, err := http.NewRequestWithContext(ctx, "POST", addURL, strings.NewReader(data.Encode()))
 	if err != nil {

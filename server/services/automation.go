@@ -571,6 +571,10 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 	// Add public trackers to magnet link to help qBittorrent fetch metadata faster
 	magnetLink = addTrackersToMagnet(magnetLink, infoHash)
+	slog.Debug("Enhanced magnet link with trackers",
+		"request_id", r.ID,
+		"has_trackers", strings.Contains(magnetLink, "&tr="),
+		"tracker_count", strings.Count(magnetLink, "&tr="))
 	if err := s.qb.AddTorrent(ctx, magnetLink, category, savePath); err != nil {
 		// If qBittorrent add fails, check if it's because torrent already exists
 		// (qBittorrent might return an error even if torrent exists)
@@ -879,8 +883,26 @@ func extractInfoHashFromMagnet(magnetLink string) string {
 
 // addTrackersToMagnet adds public trackers to a magnet link to help qBittorrent fetch metadata faster
 func addTrackersToMagnet(magnetLink string, infoHash string) string {
-	// Common public trackers that help with metadata fetching
+	// Mix of UDP and HTTP trackers - HTTP trackers work better through VPNs
+	// Some VPNs block UDP, so HTTP trackers are essential
 	publicTrackers := []string{
+		// HTTP trackers (work better through VPNs)
+		"http://tracker.opentrackr.org:1337/announce",
+		"http://tracker.openbittorrent.com:80/announce",
+		"http://tracker.coppersurfer.tk:6969/announce",
+		"http://tracker.leechers-paradise.org:6969/announce",
+		"http://tracker.internetwarriors.net:1337/announce",
+		"http://exodus.desync.com:6969/announce",
+		"http://open.stealth.si:80/announce",
+		"http://tracker.torrent.eu.org:451/announce",
+		"http://tracker.tiny-vps.com:6969/announce",
+		"http://tracker.cyberia.is:6969/announce",
+		"http://tracker.dler.org:6969/announce",
+		"http://tracker1.itzmx.com:8080/announce",
+		"http://tracker2.itzmx.com:6961/announce",
+		"http://tracker3.itzmx.com:6961/announce",
+		"http://tracker4.itzmx.com:2710/announce",
+		// UDP trackers (backup)
 		"udp://tracker.opentrackr.org:1337/announce",
 		"udp://tracker.openbittorrent.com:80/announce",
 		"udp://tracker.coppersurfer.tk:6969/announce",
