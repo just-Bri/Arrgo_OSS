@@ -5,15 +5,15 @@ import (
 )
 
 type SearchResult struct {
-	Title       string `json:"title"`
-	Size        string `json:"size"`
-	Seeds       int    `json:"seeds"`
-	Peers       int    `json:"peers"`
-	MagnetLink  string `json:"magnet_link"`
-	InfoHash    string `json:"info_hash"`
-	Source      string `json:"source"`
-	Resolution  string `json:"resolution"`
-	Quality     string `json:"quality"`
+	Title      string `json:"title"`
+	Size       string `json:"size"`
+	Seeds      int    `json:"seeds"`
+	Peers      int    `json:"peers"`
+	MagnetLink string `json:"magnet_link"`
+	InfoHash   string `json:"info_hash"`
+	Source     string `json:"source"`
+	Resolution string `json:"resolution"`
+	Quality    string `json:"quality"`
 }
 
 type Indexer interface {

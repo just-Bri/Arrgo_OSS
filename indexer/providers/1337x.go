@@ -1,31 +1,35 @@
 package providers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/justbri/arrgo/shared/config"
 	"github.com/justbri/arrgo/shared/format"
+	sharedhttp "github.com/justbri/arrgo/shared/http"
+	"golang.org/x/net/html"
 )
 
-type X1337Response struct {
-	Status  string `json:"status"`
-	Results []struct {
-		Name     string `json:"name"`
-		Size     string `json:"size"`
-		Seeders  int    `json:"seeders"`
-		Leechers int    `json:"leechers"`
-		Magnet   string `json:"magnet"`
-		Hash     string `json:"hash"`
-	} `json:"results"`
+type X1337Indexer struct {
+	bypassURL string
 }
 
-type X1337Indexer struct{}
-
 func NewX1337Indexer() *X1337Indexer {
-	return &X1337Indexer{}
+	// Get Cloudflare bypass service URL from environment
+	bypassURL := config.GetEnv("CLOUDFLARE_BYPASS_URL", "http://192.168.10.11:8191")
+	// Ensure no trailing slash
+	bypassURL = strings.TrimSuffix(bypassURL, "/")
+	return &X1337Indexer{
+		bypassURL: bypassURL,
+	}
 }
 
 func (x *X1337Indexer) GetName() string {
@@ -47,57 +51,220 @@ func (x *X1337Indexer) SearchShows(ctx context.Context, query string, season, ep
 }
 
 func (x *X1337Indexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
-	// 1337x doesn't have an official public API
-	// Options:
-	// 1. Use a proxy API service (if available)
-	// 2. Use Jackett/Prowlarr which provides Torznab API for 1337x
-	// 3. Implement HTML scraping (requires more maintenance)
+	// Build 1337x search URL
+	// 1337x search format: https://1337x.to/search/{query}/1/
+	searchPath := url.PathEscape(query)
+	searchURL := fmt.Sprintf("https://1337x.to/search/%s/1/", searchPath)
 
-	// Try using a proxy API endpoint if available
-	// Note: These endpoints may not be stable - consider using Jackett/Prowlarr instead
-	proxyURL := BuildQueryURL("https://1337x.wtf/api/search", map[string]string{
-		"q": query,
-	})
-
-	resp, err := MakeHTTPRequest(ctx, proxyURL, DefaultHTTPClient)
+	// Use Cloudflare bypass service to fetch the page
+	htmlContent, err := x.fetchViaBypass(ctx, searchURL)
 	if err != nil {
 		// Graceful degradation - return empty results instead of error
-		// This allows other indexers to still work
 		return []SearchResult{}, nil
 	}
 
-	var apiResp X1337Response
-	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
-		// If JSON decode fails, return empty results (graceful degradation)
-		return []SearchResult{}, nil
-	}
-
-	if apiResp.Status != "success" {
-		return []SearchResult{}, nil
-	}
-
-	var results []SearchResult
-	for _, r := range apiResp.Results {
-		// Parse size string to bytes
-		sizeBytes := parseSize(r.Size)
-
-		// Extract quality/resolution from title
-		quality, resolution := extractQualityInfo(r.Name)
-
-		results = append(results, SearchResult{
-			Title:      r.Name,
-			Size:       format.Bytes(sizeBytes),
-			Seeds:      r.Seeders,
-			Peers:      r.Leechers,
-			MagnetLink: r.Magnet,
-			InfoHash:   r.Hash,
-			Source:     "1337x",
-			Resolution: resolution,
-			Quality:    quality,
-		})
-	}
-
+	// Parse HTML and extract torrent results
+	results := x.parseSearchResults(htmlContent)
 	return results, nil
+}
+
+// fetchViaBypass uses the Cloudflare bypass service (Flaresolverr-compatible) to fetch a URL
+func (x *X1337Indexer) fetchViaBypass(ctx context.Context, targetURL string) (string, error) {
+	// Flaresolverr-compatible API format
+	// POST to /v1 with JSON body
+	requestBody := map[string]interface{}{
+		"cmd":       "request.get",
+		"url":       targetURL,
+		"maxTimeout": 60000,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Make POST request to bypass service
+	req, err := http.NewRequestWithContext(ctx, "POST", x.bypassURL+"/v1", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := sharedhttp.DefaultClient
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call bypass service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("bypass service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse Flaresolverr response
+	var bypassResp struct {
+		Status string `json:"status"`
+		Solution struct {
+			URL      string `json:"url"`
+			Response string `json:"response"`
+			Cookies  []interface{} `json:"cookies"`
+		} `json:"solution"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&bypassResp); err != nil {
+		return "", fmt.Errorf("failed to decode bypass response: %w", err)
+	}
+
+	if bypassResp.Status != "ok" || bypassResp.Solution.Response == "" {
+		return "", fmt.Errorf("bypass service returned invalid response")
+	}
+
+	return bypassResp.Solution.Response, nil
+}
+
+// parseSearchResults parses HTML from 1337x search results page
+func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
+	var results []SearchResult
+
+	doc, err := html.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return results
+	}
+
+	// Find all table rows that contain torrent links
+	var findTorrentRows func(*html.Node) []*html.Node
+	findTorrentRows = func(n *html.Node) []*html.Node {
+		var rows []*html.Node
+		
+		if n.Type == html.ElementNode && n.Data == "tr" {
+			// Check if this row contains a link to /torrent/
+			hasTorrentLink := false
+			var walk func(*html.Node)
+			walk = func(node *html.Node) {
+				if node.Type == html.ElementNode && node.Data == "a" {
+					for _, attr := range node.Attr {
+						if attr.Key == "href" && strings.Contains(attr.Val, "/torrent/") {
+							hasTorrentLink = true
+							return
+						}
+					}
+				}
+				for c := node.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
+			}
+			walk(n)
+			
+			if hasTorrentLink {
+				rows = append(rows, n)
+			}
+		}
+		
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			rows = append(rows, findTorrentRows(c)...)
+		}
+		
+		return rows
+	}
+
+	torrentRows := findTorrentRows(doc)
+
+	// Extract data from each row
+	for _, row := range torrentRows {
+		var title, link string
+		var seeders, leechers int
+		var size string
+		
+		cellIndex := 0
+		for c := row.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode && c.Data == "td" {
+				text := strings.TrimSpace(x.getTextContent(c))
+				
+				// Try to find link in this cell
+				var findLink func(*html.Node)
+				findLink = func(node *html.Node) {
+					if node.Type == html.ElementNode && node.Data == "a" {
+						for _, attr := range node.Attr {
+							if attr.Key == "href" && strings.Contains(attr.Val, "/torrent/") {
+								link = attr.Val
+								title = strings.TrimSpace(x.getTextContent(node))
+								return
+							}
+						}
+					}
+					for child := node.FirstChild; child != nil; child = child.NextSibling {
+						findLink(child)
+					}
+				}
+				findLink(c)
+				
+				// Parse numeric values (seeders, leechers)
+				if cellIndex > 0 && text != "" {
+					// Try to parse as number (could be seeders or leechers)
+					if val, err := strconv.Atoi(text); err == nil {
+						if seeders == 0 {
+							seeders = val
+						} else if leechers == 0 {
+							leechers = val
+						}
+					}
+					
+					// Check if this looks like a size (contains MB, GB, etc.)
+					if strings.Contains(strings.ToUpper(text), "MB") || 
+					   strings.Contains(strings.ToUpper(text), "GB") ||
+					   strings.Contains(strings.ToUpper(text), "KB") ||
+					   strings.Contains(strings.ToUpper(text), "TB") {
+						size = text
+					}
+				}
+				
+				cellIndex++
+			}
+		}
+		
+		// Create result if we have title and link
+		if title != "" && link != "" {
+			// Build full URL if needed
+			magnetLink := link
+			if !strings.HasPrefix(link, "http") {
+				magnetLink = "https://1337x.to" + link
+			}
+			
+			sizeBytes := parseSize(size)
+			quality, resolution := extractQualityInfo(title)
+			
+			results = append(results, SearchResult{
+				Title:      title,
+				Size:       format.Bytes(sizeBytes),
+				Seeds:      seeders,
+				Peers:      leechers,
+				MagnetLink: magnetLink,
+				InfoHash:   "",
+				Source:     "1337x",
+				Resolution: resolution,
+				Quality:    quality,
+			})
+		}
+	}
+
+	return results
+}
+
+// getTextContent extracts all text content from a node
+func (x *X1337Indexer) getTextContent(n *html.Node) string {
+	var text strings.Builder
+	var extractText func(*html.Node)
+	extractText = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			text.WriteString(node.Data)
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			extractText(c)
+		}
+	}
+	extractText(n)
+	return text.String()
 }
 
 // parseSize converts size string like "1.5 GB" to bytes

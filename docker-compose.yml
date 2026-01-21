@@ -145,6 +145,9 @@ services:
     environment:
       - PORT=5004
       - ENV=development
+      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://192.168.10.11:8191}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - arrgo-network
     restart: unless-stopped
