@@ -1,10 +1,12 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -81,6 +83,7 @@ func (q *QBittorrentClient) ensureLogin(ctx context.Context) error {
 	return q.Login(ctx)
 }
 
+// AddTorrent adds a torrent to qBittorrent via magnet link or URL
 func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, category string, savePath string) error {
 	// Ensure we're logged in (uses cached session if valid)
 	if err := q.ensureLogin(ctx); err != nil {
@@ -136,6 +139,105 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to add torrent: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// AddTorrentFile adds a torrent to qBittorrent via .torrent file data
+func (q *QBittorrentClient) AddTorrentFile(ctx context.Context, torrentData []byte, category string, savePath string) error {
+	// Ensure we're logged in (uses cached session if valid)
+	if err := q.ensureLogin(ctx); err != nil {
+		return fmt.Errorf("failed to login before adding torrent: %w", err)
+	}
+
+	addURL := fmt.Sprintf("%s/api/v2/torrents/add", q.cfg.QBittorrentURL)
+	
+	// Create multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+	
+	// Add torrent file
+	part, err := writer.CreateFormFile("torrents", "torrent.torrent")
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+	if _, err := part.Write(torrentData); err != nil {
+		return fmt.Errorf("failed to write torrent data: %w", err)
+	}
+	
+	// Add category if specified
+	if category != "" {
+		if err := writer.WriteField("category", category); err != nil {
+			return fmt.Errorf("failed to write category: %w", err)
+		}
+	}
+	
+	// Add save path if specified
+	if savePath != "" {
+		if err := writer.WriteField("savepath", savePath); err != nil {
+			return fmt.Errorf("failed to write savepath: %w", err)
+		}
+	}
+	
+	// Skip hash checking for faster start
+	if err := writer.WriteField("skip_checking", "false"); err != nil {
+		return fmt.Errorf("failed to write skip_checking: %w", err)
+	}
+	
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", addURL, &requestBody)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := q.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusForbidden {
+		// Session expired, invalidate and retry once
+		q.mu.Lock()
+		q.sessionValid = false
+		q.mu.Unlock()
+
+		// Retry login and request
+		if err := q.ensureLogin(ctx); err != nil {
+			return fmt.Errorf("failed to re-login after 403: %w", err)
+		}
+
+		// Recreate request body for retry
+		var retryBody bytes.Buffer
+		retryWriter := multipart.NewWriter(&retryBody)
+		retryPart, _ := retryWriter.CreateFormFile("torrents", "torrent.torrent")
+		retryPart.Write(torrentData)
+		if category != "" {
+			retryWriter.WriteField("category", category)
+		}
+		if savePath != "" {
+			retryWriter.WriteField("savepath", savePath)
+		}
+		retryWriter.WriteField("skip_checking", "false")
+		retryWriter.Close()
+
+		req, _ = http.NewRequestWithContext(ctx, "POST", addURL, &retryBody)
+		req.Header.Set("Content-Type", retryWriter.FormDataContentType())
+		resp, err = q.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to add torrent file: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	return nil

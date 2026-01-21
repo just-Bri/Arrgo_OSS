@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -561,21 +562,47 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	}
 
 	slog.Info("Adding torrent to qBittorrent", "request_id", r.ID, "info_hash", infoHash, "category", category, "save_path", savePath)
-	// If the indexer result does not include a magnet link but has an info hash,
-	// construct a magnet link fallback so qBittorrent can add the torrent by info-hash.
-	magnetLink := best.MagnetLink
-	if magnetLink == "" && infoHash != "" {
-		magnetLink = fmt.Sprintf("magnet:?xt=urn:btih:%s", strings.ToLower(infoHash))
-		slog.Debug("Constructed magnet link from info hash", "request_id", r.ID, "magnet_preview", magnetLink)
+
+	// Try to fetch .torrent file first (avoids metadata download issues)
+	var addErr error
+	torrentFileData := fetchTorrentFile(ctx, infoHash)
+	if torrentFileData != nil {
+		slog.Info("Successfully fetched .torrent file, adding via file upload",
+			"request_id", r.ID,
+			"info_hash", infoHash,
+			"file_size", len(torrentFileData))
+		addErr = s.qb.AddTorrentFile(ctx, torrentFileData, category, savePath)
+		if addErr == nil {
+			slog.Info("Successfully added torrent via .torrent file", "request_id", r.ID)
+		} else {
+			slog.Warn("Failed to add torrent via .torrent file, will try magnet link",
+				"request_id", r.ID,
+				"error", addErr)
+		}
+	} else {
+		slog.Debug("Could not fetch .torrent file, will use magnet link", "request_id", r.ID)
 	}
 
-	// Add public trackers to magnet link to help qBittorrent fetch metadata faster
-	magnetLink = addTrackersToMagnet(magnetLink, infoHash)
-	slog.Debug("Enhanced magnet link with trackers",
-		"request_id", r.ID,
-		"has_trackers", strings.Contains(magnetLink, "&tr="),
-		"tracker_count", strings.Count(magnetLink, "&tr="))
-	if err := s.qb.AddTorrent(ctx, magnetLink, category, savePath); err != nil {
+	// If .torrent file method failed or wasn't available, fall back to magnet link
+	if addErr != nil || torrentFileData == nil {
+		// If the indexer result does not include a magnet link but has an info hash,
+		// construct a magnet link fallback so qBittorrent can add the torrent by info-hash.
+		magnetLink := best.MagnetLink
+		if magnetLink == "" && infoHash != "" {
+			magnetLink = fmt.Sprintf("magnet:?xt=urn:btih:%s", strings.ToLower(infoHash))
+			slog.Debug("Constructed magnet link from info hash", "request_id", r.ID, "magnet_preview", magnetLink)
+		}
+
+		// Add public trackers to magnet link to help qBittorrent fetch metadata faster
+		magnetLink = addTrackersToMagnet(magnetLink, infoHash)
+		slog.Debug("Enhanced magnet link with trackers",
+			"request_id", r.ID,
+			"has_trackers", strings.Contains(magnetLink, "&tr="),
+			"tracker_count", strings.Count(magnetLink, "&tr="))
+		addErr = s.qb.AddTorrent(ctx, magnetLink, category, savePath)
+	}
+
+	if addErr != nil {
 		// If qBittorrent add fails, check if it's because torrent already exists
 		// (qBittorrent might return an error even if torrent exists)
 		existingTorrent, checkErr := s.qb.GetTorrentByHash(ctx, normalizedHash)
@@ -902,6 +929,109 @@ func extractInfoHashFromMagnet(magnetLink string) string {
 	}
 
 	return hash
+}
+
+// fetchTorrentFile attempts to download a .torrent file from trackers using the info hash
+// Returns the .torrent file data if successful, nil otherwise
+func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
+	if infoHash == "" || len(infoHash) != 40 {
+		return nil
+	}
+
+	// Common tracker patterns for downloading .torrent files
+	// Many trackers don't actually serve .torrent files directly, but we try common patterns
+	trackerPatterns := []struct {
+		baseURL string
+		pattern string
+	}{
+		// Pattern: http://tracker/torrent/{hash}.torrent
+		{"http://tracker.opentrackr.org:1337", "/torrent/%s.torrent"},
+		{"http://tracker.openbittorrent.com:80", "/torrent/%s.torrent"},
+		// Pattern: http://tracker/download.php?info_hash={hash}
+		{"http://tracker.opentrackr.org:1337", "/download.php?info_hash=%s"},
+		{"http://tracker.openbittorrent.com:80", "/download.php?info_hash=%s"},
+		// Pattern: http://tracker/get/{hash}
+		{"http://tracker.opentrackr.org:1337", "/get/%s"},
+		{"http://tracker.openbittorrent.com:80", "/get/%s"},
+		// Pattern: http://tracker/scrape?info_hash={hash} (some trackers serve torrents via scrape)
+		{"http://tracker.opentrackr.org:1337", "/scrape?info_hash=%s"},
+	}
+
+	// Try public APIs that can convert info hash to .torrent file
+	// These services scrape trackers and can provide .torrent files
+	publicAPIs := []string{
+		fmt.Sprintf("https://itorrents.org/torrent/%s.torrent", strings.ToUpper(infoHash)),
+		fmt.Sprintf("https://itorrents.org/torrent/%s.torrent", strings.ToLower(infoHash)),
+		fmt.Sprintf("https://api.bitport.io/api/v1/torrents/%s/download", strings.ToLower(infoHash)),
+	}
+
+	// Try public APIs first (they're more reliable)
+	for _, apiURL := range publicAPIs {
+		resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
+		if err == nil {
+			defer resp.Body.Close()
+
+			// Check content type
+			contentType := resp.Header.Get("Content-Type")
+			if strings.Contains(contentType, "torrent") || strings.Contains(contentType, "octet-stream") {
+				body, err := io.ReadAll(resp.Body)
+				if err == nil && len(body) > 0 {
+					// Validate it's a torrent file (bencoded, starts with 'd')
+					if len(body) > 10 && body[0] == 'd' {
+						slog.Info("Successfully fetched .torrent file from public API",
+							"url", apiURL,
+							"size", len(body))
+						return body
+					}
+				}
+			}
+		}
+	}
+
+	// Try tracker patterns (less reliable, but worth trying)
+	infoHashUpper := strings.ToUpper(infoHash)
+	infoHashLower := strings.ToLower(infoHash)
+
+	for _, pattern := range trackerPatterns {
+		// Try uppercase hash
+		torrentURL := fmt.Sprintf(pattern.baseURL+pattern.pattern, infoHashUpper)
+		resp, err := sharedhttp.MakeRequest(ctx, torrentURL, sharedhttp.DefaultClient)
+		if err == nil {
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err == nil && len(body) > 0 {
+				// Torrent files are bencoded and typically start with 'd' (dictionary)
+				if len(body) > 10 && body[0] == 'd' {
+					slog.Info("Successfully fetched .torrent file from tracker",
+						"url", torrentURL,
+						"size", len(body))
+					return body
+				}
+			}
+		}
+
+		// Try lowercase hash
+		if infoHashLower != infoHashUpper {
+			torrentURL = fmt.Sprintf(pattern.baseURL+pattern.pattern, infoHashLower)
+			resp, err = sharedhttp.MakeRequest(ctx, torrentURL, sharedhttp.DefaultClient)
+			if err == nil {
+				defer resp.Body.Close()
+
+				body, err := io.ReadAll(resp.Body)
+				if err == nil && len(body) > 0 {
+					if len(body) > 10 && body[0] == 'd' {
+						slog.Info("Successfully fetched .torrent file from tracker",
+							"url", torrentURL,
+							"size", len(body))
+						return body
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // addTrackersToMagnet adds public trackers to a magnet link to help qBittorrent fetch metadata faster
