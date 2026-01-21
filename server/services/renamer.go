@@ -170,7 +170,15 @@ func sanitizePath(name string) string {
 func cleanTitleTags(title string) string {
 	// Remove common uploader/junk patterns and tags without nuking everything after
 	// We use a list of specific tags to remove
-	tags := []string{"- IMPORTED", "RARBG", "YTS", "YIFY", "Eztv", "1337x", "GalaxyRG", "TGX", "PSA", "VXT", "EVO", "MeGusta", "AVS", "SNEAKY", "BRRip", "WEB-DL", "BluRay", "1080p", "720p", "2160p", "x264", "x265", "HEVC", "H264", "H265"}
+	tags := []string{
+		"- IMPORTED", "RARBG", "YTS", "YIFY", "Eztv", "1337x", "GalaxyRG", "TGX", "PSA", "VXT", "EVO", "MeGusta", "AVS", "SNEAKY",
+		"BRRip", "WEB-DL", "WEB-DLRip", "WEBRip", "BluRay", "BDRip", "DVDRip", "HDTV", "PDTV", "SDTV",
+		"1080p", "720p", "480p", "2160p", "4K", "UHD",
+		"x264", "x265", "HEVC", "H264", "H265", "AVC", "XviD", "DivX",
+		"AC3", "DTS", "AAC", "MP3", "DDP", "DD5.1", "DTS-HD", "TrueHD",
+		"Subs", "Sub", "Dub", "Dubbed", "Multi", "Multi-Audio",
+		"REPACK", "PROPER", "READNFO", "NFO",
+	}
 
 	cleaned := title
 	for _, tag := range tags {
@@ -178,9 +186,21 @@ func cleanTitleTags(title string) string {
 		cleaned = re.ReplaceAllString(cleaned, "")
 	}
 
-	// Also remove generic [brackets] or {braces} if they didn't match ID patterns
+	// Remove generic [brackets] or {braces} if they didn't match ID patterns
 	bracketRegex := regexp.MustCompile(`\s*[\[\{].*?[\]\}]`)
 	cleaned = bracketRegex.ReplaceAllString(cleaned, "")
+
+	// Remove parentheses content that isn't a year (4 digits)
+	// This handles cases like "(Карусель)" or "(Dub)" etc.
+	parenRegex := regexp.MustCompile(`\s*\([^)]*\)`)
+	cleaned = parenRegex.ReplaceAllStringFunc(cleaned, func(match string) string {
+		// Check if it's a year pattern (4 digits)
+		yearMatch := regexp.MustCompile(`^\((\d{4})\)$`)
+		if yearMatch.MatchString(match) {
+			return match // Keep year parentheses
+		}
+		return "" // Remove other parentheses content
+	})
 
 	return strings.Trim(cleaned, " -._")
 }

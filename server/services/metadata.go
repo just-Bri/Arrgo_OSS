@@ -440,11 +440,13 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	// 2. Search TMDB if ID not provided
 	if matchedTMDBID == "" {
-		slog.Info("Searching TMDB for movie", "title", m.Title, "year", m.Year)
+		// Clean the title before searching to remove quality tags and other metadata
+		cleanedTitle := cleanTitleTags(m.Title)
+		slog.Info("Searching TMDB for movie", "title", cleanedTitle, "original_title", m.Title, "year", m.Year)
 		throttle()
 		params := map[string]string{
 			"api_key":  cfg.TMDBAPIKey,
-			"query":    m.Title,
+			"query":    cleanedTitle,
 			"language": "en-US",
 		}
 		if m.Year > 0 {
@@ -567,8 +569,10 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	// 3. Fallback to title search if IDs didn't work
 	if matchedTVDBID == "" {
-		slog.Info("Searching TVDB for show", "title", s.Title, "year", s.Year)
-		results, err := SearchTVDB(cfg, s.Title)
+		// Clean the title before searching to remove quality tags and other metadata
+		cleanedTitle := cleanTitleTags(s.Title)
+		slog.Info("Searching TVDB for show", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
+		results, err := SearchTVDB(cfg, cleanedTitle)
 		if err == nil && len(results) > 0 {
 			// If year is provided, try to find a result with matching year
 			if s.Year > 0 {
