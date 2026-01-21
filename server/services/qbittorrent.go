@@ -190,8 +190,9 @@ func (q *QBittorrentClient) GetTorrentByHash(ctx context.Context, hash string) (
 		return nil, err
 	}
 
+	normalizedHash := strings.ToLower(hash)
 	for _, t := range torrents {
-		if t.Hash == hash {
+		if strings.ToLower(t.Hash) == normalizedHash {
 			return &t, nil
 		}
 	}

@@ -36,6 +36,8 @@ services:
         condition: service_started
       arrgo_gluetun:
         condition: service_healthy
+      arrgo_qbittorrent:
+        condition: service_started
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro

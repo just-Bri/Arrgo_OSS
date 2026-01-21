@@ -66,9 +66,14 @@ func (s *AutomationService) Start(ctx context.Context) {
 	subtitleTicker := time.NewTicker(15 * time.Minute)
 	defer subtitleTicker.Stop()
 
-	// Process immediately on startup
-	slog.Info("Processing approved requests on startup")
-	s.ProcessApprovedRequests(ctx)
+	// Wait for qBittorrent to be available before processing requests
+	slog.Info("Waiting for qBittorrent to be available before processing requests")
+	if err := s.waitForQBittorrent(ctx); err != nil {
+		slog.Error("Failed to connect to qBittorrent after retries, requests will be processed on next cycle", "error", err)
+	} else {
+		slog.Info("qBittorrent is available, processing approved requests on startup")
+		s.ProcessApprovedRequests(ctx)
+	}
 
 	for {
 		select {
@@ -82,6 +87,28 @@ func (s *AutomationService) Start(ctx context.Context) {
 			s.ProcessSubtitleQueue(ctx)
 		}
 	}
+}
+
+// waitForQBittorrent waits for qBittorrent to be available with retries
+func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
+	maxRetries := 10
+	retryDelay := 5 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		if err := s.qb.Login(ctx); err == nil {
+			return nil
+		}
+		if i < maxRetries-1 {
+			slog.Debug("qBittorrent not ready yet, retrying", "attempt", i+1, "max_retries", maxRetries, "retry_delay", retryDelay)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(retryDelay):
+				// Continue retrying
+			}
+		}
+	}
+	return fmt.Errorf("qBittorrent not available after %d retries", maxRetries)
 }
 
 // TriggerImmediateProcessing triggers immediate processing of approved requests
@@ -131,6 +158,53 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 }
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
+	// 0. Check if this request already has an active download/torrent
+	var existingHash string
+	err := database.DB.QueryRow(`
+		SELECT torrent_hash 
+		FROM downloads 
+		WHERE request_id = $1 
+		AND torrent_hash IS NOT NULL 
+		AND torrent_hash != ''
+		ORDER BY created_at DESC 
+		LIMIT 1`, r.ID).Scan(&existingHash)
+	
+	if err == nil && existingHash != "" {
+		// Check if torrent still exists in qBittorrent
+		normalizedHash := strings.ToLower(existingHash)
+		existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+		if err == nil && existingTorrent != nil {
+			slog.Info("Request already has active torrent in qBittorrent, skipping processing", 
+				"request_id", r.ID, 
+				"torrent_hash", normalizedHash, 
+				"torrent_name", existingTorrent.Name,
+				"progress", existingTorrent.Progress,
+				"state", existingTorrent.State)
+			
+			// Update download status to match current torrent state
+			database.DB.Exec(`
+				UPDATE downloads
+				SET progress = $1, status = $2, updated_at = NOW()
+				WHERE LOWER(torrent_hash) = $3`,
+				existingTorrent.Progress, existingTorrent.State, normalizedHash)
+			
+			// Update request status if torrent is completed
+			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
+				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", r.ID)
+			} else {
+				database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
+			}
+			
+			return nil // Skip processing, torrent already exists
+		} else {
+			// Torrent hash exists in DB but not in qBittorrent - might have been deleted
+			// Continue with processing to re-add it
+			slog.Debug("Request has torrent hash in DB but not found in qBittorrent, will re-process", 
+				"request_id", r.ID, 
+				"torrent_hash", normalizedHash)
+		}
+	}
+
 	// 1. Build search query with season info for shows
 	searchType := r.MediaType
 	searchQuery := r.Title
@@ -279,6 +353,20 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		savePath = s.cfg.IncomingShowsPath
 	}
 
+	// Check if torrent already exists in qBittorrent before adding
+	normalizedHash := strings.ToLower(infoHash)
+	existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+	if err == nil && existingTorrent != nil {
+		slog.Info("Torrent already exists in qBittorrent, skipping add", "request_id", r.ID, "info_hash", normalizedHash, "torrent_name", existingTorrent.Name)
+		// Torrent already exists, update download status to match
+		database.DB.Exec(`
+			UPDATE downloads
+			SET progress = $1, status = $2, updated_at = NOW()
+			WHERE LOWER(torrent_hash) = $3`,
+			existingTorrent.Progress, existingTorrent.State, normalizedHash)
+		return nil
+	}
+
 	slog.Info("Adding torrent to qBittorrent", "request_id", r.ID, "info_hash", infoHash, "category", category, "save_path", savePath)
 	// If the indexer result does not include a magnet link but has an info hash,
 	// construct a magnet link fallback so qBittorrent can add the torrent by info-hash.
@@ -288,11 +376,25 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		slog.Debug("Constructed magnet link from info hash", "request_id", r.ID, "magnet_preview", magnetLink)
 	}
 	if err := s.qb.AddTorrent(ctx, magnetLink, category, savePath); err != nil {
-		// If qBittorrent add fails, rollback the database changes
+		// If qBittorrent add fails, check if it's because torrent already exists
+		// (qBittorrent might return an error even if torrent exists)
+		existingTorrent, checkErr := s.qb.GetTorrentByHash(ctx, normalizedHash)
+		if checkErr == nil && existingTorrent != nil {
+			slog.Info("Torrent exists in qBittorrent despite add error, continuing", "request_id", r.ID, "info_hash", normalizedHash)
+			// Torrent exists, update download status
+			database.DB.Exec(`
+				UPDATE downloads
+				SET progress = $1, status = $2, updated_at = NOW()
+				WHERE LOWER(torrent_hash) = $3`,
+				existingTorrent.Progress, existingTorrent.State, normalizedHash)
+			return nil
+		}
+
+		// If qBittorrent add fails and torrent doesn't exist, rollback the database changes
 		// Reset request back to approved so it can be retried
 		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
 		database.DB.Exec("UPDATE requests SET status = 'approved', updated_at = NOW() WHERE id = $1", r.ID)
-		database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", strings.ToLower(infoHash))
+		database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
 
