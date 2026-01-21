@@ -277,7 +277,14 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	}
 
 	slog.Info("Adding torrent to qBittorrent", "request_id", r.ID, "info_hash", infoHash, "category", category, "save_path", savePath)
-	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category, savePath); err != nil {
+	// If the indexer result does not include a magnet link but has an info hash,
+	// construct a magnet link fallback so qBittorrent can add the torrent by info-hash.
+	magnetLink := best.MagnetLink
+	if magnetLink == "" && infoHash != "" {
+		magnetLink = fmt.Sprintf("magnet:?xt=urn:btih:%s", strings.ToLower(infoHash))
+		slog.Debug("Constructed magnet link from info hash", "request_id", r.ID, "magnet_preview", magnetLink)
+	}
+	if err := s.qb.AddTorrent(ctx, magnetLink, category, savePath); err != nil {
 		// If qBittorrent add fails, rollback the database changes
 		// Reset request back to approved so it can be retried
 		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
