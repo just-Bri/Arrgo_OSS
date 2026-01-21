@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,7 +52,7 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 	// 1. Use a proxy API service (if available)
 	// 2. Use Jackett/Prowlarr which provides Torznab API for 1337x
 	// 3. Implement HTML scraping (requires more maintenance)
-	
+
 	// Try using a proxy API endpoint if available
 	// Note: These endpoints may not be stable - consider using Jackett/Prowlarr instead
 	proxyURL := BuildQueryURL("https://1337x.wtf/api/search", map[string]string{
@@ -70,7 +71,7 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 		// If JSON decode fails, return empty results (graceful degradation)
 		return []SearchResult{}, nil
 	}
-	
+
 	if apiResp.Status != "success" {
 		return []SearchResult{}, nil
 	}
@@ -79,7 +80,7 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 	for _, r := range apiResp.Results {
 		// Parse size string to bytes
 		sizeBytes := parseSize(r.Size)
-		
+
 		// Extract quality/resolution from title
 		quality, resolution := extractQualityInfo(r.Name)
 
