@@ -145,11 +145,17 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 
 	if mediaType == "movie" {
 		var id int
-		err := database.DB.QueryRow("SELECT id FROM movies WHERE tmdb_id = $1", externalID).Scan(&id)
+		var path string
+		err := database.DB.QueryRow("SELECT id, path FROM movies WHERE tmdb_id = $1", externalID).Scan(&id, &path)
 		if err == nil {
+			cfg := config.Load()
 			status.Exists = true
 			status.LocalID = id
-			status.Message = "Already in library"
+			if strings.HasPrefix(path, cfg.IncomingMoviesPath) {
+				status.Message = "Downloading/Processing"
+			} else {
+				status.Message = "Already in library"
+			}
 		} else if err == sql.ErrNoRows {
 			// Not in library, check if already requested
 			var reqStatus string
@@ -160,10 +166,17 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		}
 	} else if mediaType == "show" {
 		var showID int
-		err := database.DB.QueryRow("SELECT id FROM shows WHERE tvdb_id = $1", externalID).Scan(&showID)
+		var path string
+		err := database.DB.QueryRow("SELECT id, path FROM shows WHERE tvdb_id = $1", externalID).Scan(&showID, &path)
 		if err == nil {
+			cfg := config.Load()
 			status.Exists = true
 			status.LocalID = showID
+			if strings.HasPrefix(path, cfg.IncomingShowsPath) {
+				status.Message = "Downloading/Processing"
+			} else {
+				status.Message = "Already in library"
+			}
 
 			// Get seasons in library
 			rows, err := database.DB.Query("SELECT season_number FROM seasons WHERE show_id = $1 ORDER BY season_number", showID)

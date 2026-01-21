@@ -24,7 +24,19 @@ func init() {
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	if err := indexTmpl.Execute(w, nil); err != nil {
+	indexers := providers.GetIndexers()
+	var names []string
+	for _, idx := range indexers {
+		names = append(names, idx.GetName())
+	}
+
+	data := struct {
+		Sources []string
+	}{
+		Sources: names,
+	}
+
+	if err := indexTmpl.Execute(w, data); err != nil {
 		slog.Error("Error rendering index template", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -98,28 +110,23 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 
 		switch {
 		case searchType == "show" || searchType == "tv":
-			// Skip movie-only indexers for TV searches
+			// Skip indexers that only support movies
 			if idx.GetName() == "YTS" {
 				continue
 			}
-			// Use first season number if available, otherwise 0
-			season := 0
+
+			// If multiple seasons requested, perform search for each
 			if len(seasonNums) > 0 {
-				season = seasonNums[0]
-			}
-			res, err = idx.SearchShows(ctx, query, season, 0)
-		case searchType == "solid":
-			// Specific Solid search (shows everything)
-			if idx.GetName() == "SolidTorrents" {
-				res, err = idx.SearchMovies(ctx, query)
+				for _, sn := range seasonNums {
+					sRes, sErr := idx.SearchShows(ctx, query, sn, 0)
+					if sErr == nil {
+						res = append(res, sRes...)
+					}
+				}
 			} else {
-				continue
+				res, err = idx.SearchShows(ctx, query, 0, 0)
 			}
-		default: // "movie" or empty
-			// Skip Solid for "movie" type if you want to prefer YTS
-			if idx.GetName() == "SolidTorrents" {
-				continue
-			}
+		default: // "movie", "solid" (general search) or empty
 			res, err = idx.SearchMovies(ctx, query)
 		}
 
@@ -155,6 +162,7 @@ func writeHTMLResponse(w http.ResponseWriter, results []providers.SearchResult, 
 			<thead class="bg-gray-700">
 				<tr>
 					<th class="p-3">Title</th>
+					<th class="p-3 text-center">Source</th>
 					<th class="p-3 text-center">Size</th>
 					<th class="p-3 text-center">Seeds</th>
 					<th class="p-3 text-center">Action</th>
@@ -162,13 +170,21 @@ func writeHTMLResponse(w http.ResponseWriter, results []providers.SearchResult, 
 			</thead>
 			<tbody>
 				{{range .Results}}
-				<tr class="border-t border-gray-700 hover:bg-gray-750">
+				<tr class="border-t border-gray-700 hover:bg-gray-750 transition-colors">
 					<td class="p-3">
-						<div class="font-bold text-blue-300">{{.Title}}</div>
-						<div class="text-xs text-gray-400">{{.Source}} • {{.Resolution}}</div>
+						<div class="font-bold text-blue-300 leading-tight">{{.Title}}</div>
+						<div class="text-xs text-gray-400 mt-1">
+							{{if .Quality}}<span class="bg-gray-700 px-1 rounded text-gray-300">{{.Quality}}</span>{{end}}
+							{{if .Resolution}}<span class="bg-blue-900/30 px-1 rounded text-blue-300 ml-1">{{.Resolution}}</span>{{end}}
+						</div>
 					</td>
-					<td class="p-3 text-center text-sm">{{.Size}}</td>
-					<td class="p-3 text-center text-green-400 font-mono">{{.Seeds}}</td>
+					<td class="p-3 text-center">
+						<span class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-700 text-gray-300 border border-gray-600">
+							{{.Source}}
+						</span>
+					</td>
+					<td class="p-3 text-center text-sm font-mono">{{.Size}}</td>
+					<td class="p-3 text-center text-green-400 font-mono font-bold">{{.Seeds}}</td>
 					<td class="p-3 text-center">
 						<a href="{{.MagnetLink}}" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition">
 							Magnet

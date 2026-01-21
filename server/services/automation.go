@@ -134,7 +134,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	// 1. Build search query with season info for shows
 	searchType := r.MediaType
 	searchQuery := r.Title
-	
+
 	if r.MediaType == "show" {
 		searchType = "show"
 		// Parse seasons and enhance search query
@@ -164,7 +164,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		"type":   searchType,
 		"format": "json",
 	})
-	
+
 	// Add season parameter for show searches
 	if r.MediaType == "show" && r.Seasons != "" {
 		searchURL = sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
@@ -309,8 +309,8 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		activeHashes[t.Hash] = true
 		// Update our downloads table
 		_, err := database.DB.Exec(`
-			UPDATE downloads 
-			SET progress = $1, status = $2, updated_at = NOW() 
+			UPDATE downloads
+			SET progress = $1, status = $2, updated_at = NOW()
 			WHERE torrent_hash = $3`,
 			t.Progress, t.State, t.Hash)
 		if err != nil {
@@ -321,8 +321,8 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		// If finished, update request status
 		if t.Progress >= 1.0 || t.State == "uploading" || t.State == "stalledUP" {
 			_, err = database.DB.Exec(`
-				UPDATE requests 
-				SET status = 'completed', updated_at = NOW() 
+				UPDATE requests
+				SET status = 'completed', updated_at = NOW()
 				WHERE id = (SELECT request_id FROM downloads WHERE torrent_hash = $1)`,
 				t.Hash)
 			if err != nil {
@@ -331,8 +331,13 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		}
 	}
 
-	// SELF-HEALING: Reset requests that are "downloading" but missing from qBittorrent
-	rows, err := database.DB.Query("SELECT request_id, torrent_hash FROM downloads WHERE status = 'downloading'")
+	// SELF-HEALING: Reset requests that are active but missing from qBittorrent
+	// We use a 15-minute grace period to avoid transient qBittorrent issues purging our state.
+	rows, err := database.DB.Query(`
+		SELECT request_id, torrent_hash
+		FROM downloads
+		WHERE status NOT IN ('completed', 'cancelled')
+		AND updated_at < NOW() - INTERVAL '15 minutes'`)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -340,7 +345,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			var hash string
 			if err := rows.Scan(&reqID, &hash); err == nil {
 				if !activeHashes[hash] {
-					slog.Warn("Download vanished from qBittorrent, resetting request to approved", "torrent_hash", hash, "request_id", reqID)
+					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved", "torrent_hash", hash, "request_id", reqID)
 					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
 					database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", hash)
 				}
@@ -468,7 +473,7 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 	scoreResult := func(r *TorrentSearchResult) int {
 		score := 0
 		titleLower := strings.ToLower(r.Title)
-		
+
 		// Prioritize 1080p (highest priority)
 		if strings.Contains(titleLower, "1080") || strings.Contains(strings.ToLower(r.Resolution), "1080") {
 			score += 1000
@@ -477,7 +482,7 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		} else if strings.Contains(titleLower, "480") || strings.Contains(strings.ToLower(r.Resolution), "480") {
 			score += 100
 		}
-		
+
 		// Season matching bonus (for shows)
 		if mediaType == "show" && len(requestedSeasonNums) > 0 {
 			for _, seasonNum := range requestedSeasonNums {
@@ -496,17 +501,17 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 				}
 			}
 		}
-		
+
 		// Seeds contribute to score (but less than quality/season match)
 		score += r.Seeds
-		
+
 		return score
 	}
 
 	// Find best result
 	best := &filtered[0]
 	bestScore := scoreResult(best)
-	
+
 	for i := 1; i < len(filtered); i++ {
 		current := &filtered[i]
 		currentScore := scoreResult(current)
