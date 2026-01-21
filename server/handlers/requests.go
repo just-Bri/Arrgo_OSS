@@ -148,10 +148,12 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger immediate processing if automation service is available
 	if automation := services.GetGlobalAutomationService(); automation != nil {
-		// Use background context with timeout for immediate processing
-		processCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		go automation.TriggerImmediateProcessing(processCtx)
+		// Use background context with longer timeout for immediate processing
+		// Don't cancel immediately - let the goroutine complete or timeout naturally
+		processCtx, _ := context.WithTimeout(context.Background(), 5*time.Minute)
+		go func() {
+			automation.TriggerImmediateProcessing(processCtx)
+		}()
 		slog.Info("Triggered immediate processing for new request", "title", req.Title)
 	} else {
 		slog.Warn("Automation service not available, request will be processed on next scheduled check (1 hour)")
