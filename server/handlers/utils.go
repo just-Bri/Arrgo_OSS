@@ -171,18 +171,18 @@ func ExtractStatusesFromShows(shows []models.Show) []string {
 }
 
 // SeparateIncomingMovies separates incoming and library movies based on path prefixes
-// Filters out movies that have been imported (imported_at IS NOT NULL) from incoming list
-// Also filters out movies that are still downloading (only shows seeding or no-torrent items)
+// Shows items in incoming if they are seeding or have no torrent (hides items that are still downloading)
+// Items that have been imported but are still seeding will still show in incoming
 func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmin bool) (libraryMovies []models.Movie, incomingMovies []models.Movie) {
 	ctx := context.Background()
 	
 	for _, m := range allMovies {
 		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
 		if isIncoming {
-			// Only show in incoming if:
-			// 1. It hasn't been imported yet
-			// 2. It's not still downloading (has no torrent OR torrent is seeding)
-			if isAdmin && m.ImportedAt == nil {
+			// Show in incoming if:
+			// 1. It's not still downloading (has no torrent OR torrent is seeding)
+			// Note: We show items even if imported_at is set, as long as they're still in incoming folder (seeding)
+			if isAdmin {
 				// Check if it has a torrent hash and if it's still downloading
 				var torrentHash sql.NullString
 				database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", m.ID).Scan(&torrentHash)
@@ -200,8 +200,8 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 }
 
 // SeparateIncomingShows separates incoming and library shows based on path prefixes
-// Filters out shows where all episodes in incoming have been imported
-// Also filters out shows where episodes are still downloading (only shows seeding or no-torrent items)
+// Shows shows in incoming if they have episodes that are seeding or have no torrent (hides if episodes are still downloading)
+// Episodes that have been imported but are still seeding will still show in incoming
 func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin bool) (libraryShows []models.Show, incomingShows []models.Show) {
 	ctx := context.Background()
 	
@@ -209,11 +209,10 @@ func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin b
 		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
 		if isIncoming {
 			if isAdmin {
-				// Check if all episodes in incoming for this show have been imported
-				// Only show in incoming if there are unimported episodes
-				hasUnimportedEpisodes := checkShowHasUnimportedEpisodes(s.ID, cfg.IncomingShowsPath)
-				if hasUnimportedEpisodes {
-					// Also check if any unimported episodes are still downloading
+				// Check if there are episodes in incoming for this show (imported or not)
+				hasEpisodesInIncoming := checkShowHasEpisodesInIncoming(s.ID, cfg.IncomingShowsPath)
+				if hasEpisodesInIncoming {
+					// Check if any episodes in incoming are still downloading
 					// Only show if episodes have no torrent OR torrents are seeding (not downloading)
 					hasDownloadingEpisodes := checkShowHasDownloadingEpisodes(ctx, s.ID, cfg.IncomingShowsPath, cfg)
 					if !hasDownloadingEpisodes {
@@ -228,26 +227,26 @@ func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin b
 	return libraryShows, incomingShows
 }
 
-// checkShowHasUnimportedEpisodes checks if a show has any episodes in incoming that haven't been imported yet
-func checkShowHasUnimportedEpisodes(showID int, incomingShowsPath string) bool {
+// checkShowHasEpisodesInIncoming checks if a show has any episodes in incoming (regardless of import status)
+func checkShowHasEpisodesInIncoming(showID int, incomingShowsPath string) bool {
 	query := `
 		SELECT COUNT(*) 
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		WHERE s.show_id = $1 
 		AND e.file_path LIKE $2 || '%'
-		AND e.imported_at IS NULL
 	`
 	var count int
 	err := database.DB.QueryRow(query, showID, incomingShowsPath).Scan(&count)
 	if err != nil {
-		// On error, assume there are unimported episodes to be safe
+		// On error, assume there are episodes to be safe
 		return true
 	}
 	return count > 0
 }
 
 // checkShowHasDownloadingEpisodes checks if a show has any episodes in incoming that are still downloading
+// Checks all episodes in incoming, regardless of import status (since imported episodes might still be seeding)
 func checkShowHasDownloadingEpisodes(ctx context.Context, showID int, incomingShowsPath string, cfg *config.Config) bool {
 	query := `
 		SELECT e.torrent_hash
@@ -255,7 +254,6 @@ func checkShowHasDownloadingEpisodes(ctx context.Context, showID int, incomingSh
 		JOIN seasons s ON e.season_id = s.id
 		WHERE s.show_id = $1 
 		AND e.file_path LIKE $2 || '%'
-		AND e.imported_at IS NULL
 		AND e.torrent_hash IS NOT NULL
 		AND e.torrent_hash != ''
 	`

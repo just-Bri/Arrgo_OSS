@@ -158,6 +158,145 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 }
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
+	// For shows with multiple seasons, process each season separately
+	if r.MediaType == "show" && r.Seasons != "" {
+		return s.processShowRequestWithSeasons(ctx, r)
+	}
+	
+	// For movies or single-season shows, use the original logic
+	return s.processSingleRequest(ctx, r)
+}
+
+func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r models.Request) error {
+	// Parse requested seasons
+	requestedSeasons := strings.Split(r.Seasons, ",")
+	var seasonsToProcess []string
+	
+	// Get existing downloads for this request and check which seasons might already have torrents
+	rows, err := database.DB.Query(`
+		SELECT torrent_hash, title 
+		FROM downloads 
+		WHERE request_id = $1 
+		AND torrent_hash IS NOT NULL 
+		AND torrent_hash != ''`, r.ID)
+	existingHashes := make(map[string]bool)
+	existingSeasons := make(map[string]bool) // Track which seasons we've found torrents for
+	
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var hash, title string
+			if err := rows.Scan(&hash, &title); err == nil {
+				normalizedHash := strings.ToLower(hash)
+				existingHashes[normalizedHash] = true
+				// Check if torrent still exists in qBittorrent
+				existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+				if err == nil && existingTorrent != nil {
+					// Update download status
+					database.DB.Exec(`
+						UPDATE downloads
+						SET progress = $1, status = $2, updated_at = NOW()
+						WHERE LOWER(torrent_hash) = $3`,
+						existingTorrent.Progress, existingTorrent.State, normalizedHash)
+					
+					// Try to determine which season this torrent is for by checking the title
+					torrentTitle := strings.ToLower(existingTorrent.Name)
+					for _, seasonStr := range requestedSeasons {
+						seasonStr = strings.TrimSpace(seasonStr)
+						seasonNum, _ := strconv.Atoi(seasonStr)
+						// Check for season patterns in torrent title
+						seasonPatterns := []string{
+							fmt.Sprintf("s%02d", seasonNum),
+							fmt.Sprintf("s%d", seasonNum),
+							fmt.Sprintf("season %d", seasonNum),
+							fmt.Sprintf("season %02d", seasonNum),
+						}
+						for _, pattern := range seasonPatterns {
+							if strings.Contains(torrentTitle, pattern) {
+								existingSeasons[seasonStr] = true
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Determine which seasons still need processing
+	for _, seasonStr := range requestedSeasons {
+		seasonStr = strings.TrimSpace(seasonStr)
+		if seasonStr == "" {
+			continue
+		}
+		// Only process if we haven't found a torrent for this season yet
+		if !existingSeasons[seasonStr] {
+			seasonsToProcess = append(seasonsToProcess, seasonStr)
+		} else {
+			slog.Debug("Season already has torrent, skipping", "request_id", r.ID, "season", seasonStr)
+		}
+	}
+	
+	if len(seasonsToProcess) == 0 {
+		slog.Info("All seasons already have torrents", "request_id", r.ID)
+		// Check if all torrents are completed
+		allCompleted := true
+		rows, _ := database.DB.Query(`
+			SELECT d.torrent_hash 
+			FROM downloads d
+			WHERE d.request_id = $1 
+			AND d.torrent_hash IS NOT NULL`, r.ID)
+		if rows != nil {
+			defer rows.Close()
+			for rows.Next() {
+				var hash string
+				if err := rows.Scan(&hash); err == nil {
+					torrent, err := s.qb.GetTorrentByHash(ctx, strings.ToLower(hash))
+					if err != nil || torrent == nil || (torrent.Progress < 1.0 && torrent.State != "uploading" && torrent.State != "stalledUP") {
+						allCompleted = false
+						break
+					}
+				}
+			}
+		}
+		if allCompleted {
+			database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", r.ID)
+		} else {
+			database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
+		}
+		return nil
+	}
+	
+	// Process each season separately
+	anyProcessed := false
+	for _, seasonStr := range seasonsToProcess {
+		seasonStr = strings.TrimSpace(seasonStr)
+		if seasonStr == "" {
+			continue
+		}
+		
+		// Create a temporary request for this single season
+		singleSeasonReq := r
+		singleSeasonReq.Seasons = seasonStr
+		
+		slog.Info("Processing season for show request", "request_id", r.ID, "season", seasonStr, "title", r.Title)
+		if err := s.processSingleSeason(ctx, singleSeasonReq); err != nil {
+			slog.Error("Failed to process season", "request_id", r.ID, "season", seasonStr, "error", err)
+			// Continue with other seasons even if one fails
+		} else {
+			anyProcessed = true
+		}
+	}
+	
+	// Update request status
+	if anyProcessed {
+		database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
+	}
+	
+	return nil
+}
+
+func (s *AutomationService) processSingleRequest(ctx context.Context, r models.Request) error {
 	// 0. Check if this request already has an active download/torrent
 	var existingHash string
 	err := database.DB.QueryRow(`
@@ -204,6 +343,11 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 				"torrent_hash", normalizedHash)
 		}
 	}
+	
+	return s.processSingleSeason(ctx, r)
+}
+
+func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Request) error {
 
 	// 1. Build search query with season info for shows
 	searchType := r.MediaType

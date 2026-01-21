@@ -25,8 +25,8 @@ func CreateRequest(req models.Request) error {
 	if req.MediaType == "show" {
 		var existingID int
 		var existingSeasons string
-		// Look for approved requests to append seasons to
-		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status = 'approved'", req.TVDBID).Scan(&existingID, &existingSeasons)
+		// Look for active requests (approved or downloading) to append seasons to
+		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('approved', 'downloading')", req.TVDBID).Scan(&existingID, &existingSeasons)
 		if err == nil {
 			// Update existing request
 			newSeasons := existingSeasons
@@ -188,13 +188,14 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		}
 
 		// Always check for requested seasons, even if show exists (partial match)
+		// Check for active requests (approved or downloading)
 		var reqSeasons sql.NullString
 		var reqStatus string
-		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status != 'cancelled' AND status != 'completed'", externalID).Scan(&reqSeasons, &reqStatus)
+		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('approved', 'downloading')", externalID).Scan(&reqSeasons, &reqStatus)
 		if err == nil {
 			if reqSeasons.Valid && reqSeasons.String != "" {
-				seasonStrs := strings.SplitSeq(reqSeasons.String, ",")
-				for s := range seasonStrs {
+				seasonStrs := strings.Split(reqSeasons.String, ",")
+				for _, s := range seasonStrs {
 					if sn, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
 						status.RequestedSeasons = append(status.RequestedSeasons, sn)
 					}

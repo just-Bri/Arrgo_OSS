@@ -6,6 +6,7 @@ import (
 	"Arrgo/services"
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
@@ -110,9 +111,14 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 	} else if req.MediaType == "show" {
 		// For shows, we check if the requested seasons are already in library or already requested
 		requestedSeasons := strings.Split(req.Seasons, ",")
-		allNew := true
+		var duplicateSeasons []string
+		
 		for _, rs := range requestedSeasons {
-			sn, _ := strconv.Atoi(strings.TrimSpace(rs))
+			rs = strings.TrimSpace(rs)
+			sn, err := strconv.Atoi(rs)
+			if err != nil {
+				continue
+			}
 
 			// Check if in library
 			inLibrary := slices.Contains(status.Seasons, sn)
@@ -121,13 +127,13 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 			alreadyRequested := slices.Contains(status.RequestedSeasons, sn)
 
 			if inLibrary || alreadyRequested {
-				allNew = false
-				break
+				duplicateSeasons = append(duplicateSeasons, rs)
 			}
 		}
 
-		if !allNew && len(requestedSeasons) == 1 {
-			http.Error(w, "Season already exists or has been requested", http.StatusConflict)
+		// Block if any seasons are duplicates
+		if len(duplicateSeasons) > 0 {
+			http.Error(w, fmt.Sprintf("Season(s) %s already exist(s) or have been requested", strings.Join(duplicateSeasons, ", ")), http.StatusConflict)
 			return
 		}
 	}

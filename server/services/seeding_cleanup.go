@@ -318,7 +318,7 @@ func StartSeedingCleanupWorker(cfg *config.Config, qb *QBittorrentClient) {
 	slog.Info("Starting seeding cleanup background worker")
 
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute) // Check every 15 minutes
+		ticker := time.NewTicker(1 * time.Hour) // Check every 1 hour
 		defer ticker.Stop()
 
 		for {

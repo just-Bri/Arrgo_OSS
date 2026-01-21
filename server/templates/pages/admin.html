@@ -76,10 +76,27 @@
                 </div>
             </div>
             <script>
+            let pollInterval = 60000; // Start with 60 seconds
+            let intervalId = null;
+
             function updateScanButtons() {
                 fetch('/api/scan/status')
                     .then(response => response.json())
                     .then(status => {
+                        // Check if any scan is running
+                        const anyScanRunning = status.incoming_shows || status.incoming_movies || 
+                                             status.show_library || status.movie_library;
+                        
+                        // Adjust polling interval: faster when scans are running, slower when idle
+                        const newInterval = anyScanRunning ? 5000 : 60000;
+                        if (newInterval !== pollInterval) {
+                            pollInterval = newInterval;
+                            if (intervalId) {
+                                clearInterval(intervalId);
+                            }
+                            intervalId = setInterval(updateScanButtons, pollInterval);
+                        }
+
                         // Update Incoming Shows button
                         const incomingShowsBtn = document.getElementById('incoming-shows-button');
                         if (status.incoming_shows) {
@@ -163,8 +180,9 @@
                     .catch(err => console.error('Error fetching scan status:', err));
             }
 
-            // Poll every 2 seconds
-            setInterval(updateScanButtons, 2000);
+            // Initial call and start polling
+            updateScanButtons();
+            intervalId = setInterval(updateScanButtons, pollInterval);
             </script>
         </div>
 
