@@ -36,7 +36,13 @@ func (x *X1337Indexer) SearchMovies(ctx context.Context, query string) ([]Search
 }
 
 func (x *X1337Indexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	return x.search(ctx, query, "TV")
+	// Enhance query with season info if provided
+	searchQuery := query
+	if season > 0 {
+		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
+		searchQuery = fmt.Sprintf("%s S%02d", query, season)
+	}
+	return x.search(ctx, searchQuery, "TV")
 }
 
 func (x *X1337Indexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {

@@ -6,6 +6,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/justbri/arrgo/indexer/providers"
@@ -30,8 +32,9 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
-	searchType := r.URL.Query().Get("type") // "movie", "show", or "solid"
-	format := r.URL.Query().Get("format")   // "json" or "html" (default)
+	searchType := r.URL.Query().Get("type")   // "movie", "show", or "solid"
+	seasons := r.URL.Query().Get("seasons")   // Comma-separated season numbers for shows
+	format := r.URL.Query().Get("format")     // "json" or "html" (default)
 
 	if query == "" {
 		if format == "json" {
@@ -44,7 +47,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, errs := performSearch(r.Context(), query, searchType)
+	results, errs := performSearch(r.Context(), query, searchType, seasons)
 
 	// Log all errors, not just when results are empty
 	if len(errs) > 0 {
@@ -73,9 +76,20 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // performSearch executes the search across all indexers based on search type
-func performSearch(ctx context.Context, query, searchType string) ([]providers.SearchResult, []error) {
+func performSearch(ctx context.Context, query, searchType string, seasons string) ([]providers.SearchResult, []error) {
 	var results []providers.SearchResult
 	var errs []error
+
+	// Parse seasons for show searches
+	var seasonNums []int
+	if seasons != "" {
+		seasonStrs := strings.Split(seasons, ",")
+		for _, s := range seasonStrs {
+			if num, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+				seasonNums = append(seasonNums, num)
+			}
+		}
+	}
 
 	indexers := providers.GetIndexers()
 	for _, idx := range indexers {
@@ -88,7 +102,12 @@ func performSearch(ctx context.Context, query, searchType string) ([]providers.S
 			if idx.GetName() == "YTS" {
 				continue
 			}
-			res, err = idx.SearchShows(ctx, query, 0, 0)
+			// Use first season number if available, otherwise 0
+			season := 0
+			if len(seasonNums) > 0 {
+				season = seasonNums[0]
+			}
+			res, err = idx.SearchShows(ctx, query, season, 0)
 		case searchType == "solid":
 			// Specific Solid search (shows everything)
 			if idx.GetName() == "SolidTorrents" {

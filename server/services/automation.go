@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -130,17 +131,49 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 }
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
-	// 1. Search Indexer
+	// 1. Build search query with season info for shows
 	searchType := r.MediaType
+	searchQuery := r.Title
+	
 	if r.MediaType == "show" {
-		searchType = "show" // Updated to use "show" instead of "solid"
+		searchType = "show"
+		// Parse seasons and enhance search query
+		if r.Seasons != "" {
+			seasons := strings.Split(r.Seasons, ",")
+			// Build query with season info: "Show Name S02" or "Show Name Season 2"
+			// Try multiple formats to catch different naming conventions
+			seasonQueries := []string{}
+			for _, seasonStr := range seasons {
+				seasonNum := strings.TrimSpace(seasonStr)
+				if seasonNum != "" {
+					// Format: "Show Name S02" (most common)
+					seasonQueries = append(seasonQueries, fmt.Sprintf("%s S%02s", r.Title, seasonNum))
+					// Format: "Show Name Season 2"
+					seasonQueries = append(seasonQueries, fmt.Sprintf("%s Season %s", r.Title, seasonNum))
+				}
+			}
+			// Use the first season query for now (we'll filter results by season match)
+			if len(seasonQueries) > 0 {
+				searchQuery = seasonQueries[0]
+			}
+		}
 	}
 
 	searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
-		"q":      r.Title,
+		"q":      searchQuery,
 		"type":   searchType,
 		"format": "json",
 	})
+	
+	// Add season parameter for show searches
+	if r.MediaType == "show" && r.Seasons != "" {
+		searchURL = sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
+			"q":       searchQuery,
+			"type":    searchType,
+			"seasons": r.Seasons,
+			"format":  "json",
+		})
+	}
 
 	slog.Info("Searching indexer for request", "request_id", r.ID, "title", r.Title, "indexer_url", searchURL)
 	resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
@@ -173,10 +206,10 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		}
 	}
 
-	// 2. Choose best result - sort by seeds, filter by quality
-	best := selectBestResult(results, r.MediaType)
+	// 2. Choose best result - prioritize 1080p, match seasons, sort by seeds
+	best := selectBestResult(results, r.MediaType, r.Seasons)
 	if best == nil {
-		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results))
+		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons)
 		return nil
 	}
 
@@ -378,8 +411,8 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 	}
 }
 
-// selectBestResult selects the best torrent result based on seeds, quality, and minimum requirements
-func selectBestResult(results []TorrentSearchResult, mediaType string) *TorrentSearchResult {
+// selectBestResult selects the best torrent result based on seeds, quality, season matching, and minimum requirements
+func selectBestResult(results []TorrentSearchResult, mediaType string, requestedSeasons string) *TorrentSearchResult {
 	if len(results) == 0 {
 		return nil
 	}
@@ -388,6 +421,17 @@ func selectBestResult(results []TorrentSearchResult, mediaType string) *TorrentS
 	if len(results) > 0 {
 		sample := results[0]
 		slog.Debug("Sample torrent result", "title", sample.Title, "seeds", sample.Seeds, "quality", sample.Quality, "resolution", sample.Resolution, "info_hash", sample.InfoHash)
+	}
+
+	// Parse requested seasons
+	var requestedSeasonNums []int
+	if requestedSeasons != "" {
+		seasonStrs := strings.Split(requestedSeasons, ",")
+		for _, s := range seasonStrs {
+			if num, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+				requestedSeasonNums = append(requestedSeasonNums, num)
+			}
+		}
 	}
 
 	// Filter by minimum seeds (at least 1 seed required)
@@ -413,36 +457,59 @@ func selectBestResult(results []TorrentSearchResult, mediaType string) *TorrentS
 
 	slog.Debug("Filtered results", "total_results", len(results), "filtered_count", len(filtered), "zero_seed_count", zeroSeedCount)
 
-	// Sort by seeds (descending), then by quality preference
-	// Quality preference: 1080p > 720p > 480p > others
-	qualityScore := func(res string) int {
-		resLower := strings.ToLower(res)
-		if strings.Contains(resLower, "1080") {
-			return 3
+	// Score function: higher is better
+	scoreResult := func(r *TorrentSearchResult) int {
+		score := 0
+		titleLower := strings.ToLower(r.Title)
+		
+		// Prioritize 1080p (highest priority)
+		if strings.Contains(titleLower, "1080") || strings.Contains(strings.ToLower(r.Resolution), "1080") {
+			score += 1000
+		} else if strings.Contains(titleLower, "720") || strings.Contains(strings.ToLower(r.Resolution), "720") {
+			score += 500
+		} else if strings.Contains(titleLower, "480") || strings.Contains(strings.ToLower(r.Resolution), "480") {
+			score += 100
 		}
-		if strings.Contains(resLower, "720") {
-			return 2
-		}
-		if strings.Contains(resLower, "480") {
-			return 1
-		}
-		return 0
-	}
-
-	best := &filtered[0]
-	for i := 1; i < len(filtered); i++ {
-		current := &filtered[i]
-		// Prefer higher seeds
-		if current.Seeds > best.Seeds {
-			best = current
-		} else if current.Seeds == best.Seeds {
-			// If same seeds, prefer higher quality
-			if qualityScore(current.Resolution) > qualityScore(best.Resolution) {
-				best = current
+		
+		// Season matching bonus (for shows)
+		if mediaType == "show" && len(requestedSeasonNums) > 0 {
+			for _, seasonNum := range requestedSeasonNums {
+				// Match patterns like S02, S2, Season 2, Season 02
+				seasonPatterns := []string{
+					fmt.Sprintf("s%02d", seasonNum),
+					fmt.Sprintf("s%d", seasonNum),
+					fmt.Sprintf("season %d", seasonNum),
+					fmt.Sprintf("season %02d", seasonNum),
+				}
+				for _, pattern := range seasonPatterns {
+					if strings.Contains(titleLower, pattern) {
+						score += 500 // Big bonus for season match
+						break
+					}
+				}
 			}
 		}
+		
+		// Seeds contribute to score (but less than quality/season match)
+		score += r.Seeds
+		
+		return score
 	}
 
+	// Find best result
+	best := &filtered[0]
+	bestScore := scoreResult(best)
+	
+	for i := 1; i < len(filtered); i++ {
+		current := &filtered[i]
+		currentScore := scoreResult(current)
+		if currentScore > bestScore {
+			best = current
+			bestScore = currentScore
+		}
+	}
+
+	slog.Debug("Selected best result", "title", best.Title, "seeds", best.Seeds, "resolution", best.Resolution, "score", bestScore)
 	return best
 }
 

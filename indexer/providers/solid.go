@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/justbri/arrgo/shared/format"
 )
@@ -32,7 +33,13 @@ func (s *SolidTorrentsIndexer) SearchMovies(ctx context.Context, query string) (
 }
 
 func (s *SolidTorrentsIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	return s.search(ctx, query, "Video")
+	// Enhance query with season info if provided
+	searchQuery := query
+	if season > 0 {
+		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
+		searchQuery = fmt.Sprintf("%s S%02d", query, season)
+	}
+	return s.search(ctx, searchQuery, "Video")
 }
 
 func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {

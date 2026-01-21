@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/justbri/arrgo/shared/format"
 )
@@ -34,7 +35,13 @@ func (tg *TorrentGalaxyIndexer) SearchMovies(ctx context.Context, query string) 
 }
 
 func (tg *TorrentGalaxyIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	return tg.search(ctx, query, "TV")
+	// Enhance query with season info if provided
+	searchQuery := query
+	if season > 0 {
+		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
+		searchQuery = fmt.Sprintf("%s S%02d", query, season)
+	}
+	return tg.search(ctx, searchQuery, "TV")
 }
 
 func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
