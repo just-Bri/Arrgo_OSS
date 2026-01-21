@@ -238,6 +238,9 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		return fmt.Errorf("invalid info hash format: %s (expected 40 characters)", infoHash)
 	}
 
+	// Normalize to lowercase for consistency (qBittorrent returns lowercase)
+	infoHash = strings.ToLower(infoHash)
+
 	slog.Debug("InfoHash validated successfully", "request_id", r.ID, "info_hash", infoHash)
 
 	// 3. Begin Database Transaction FIRST
@@ -289,7 +292,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		// Reset request back to approved so it can be retried
 		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
 		database.DB.Exec("UPDATE requests SET status = 'approved', updated_at = NOW() WHERE id = $1", r.ID)
-		database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", infoHash)
+		database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", strings.ToLower(infoHash))
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
 
@@ -304,17 +307,23 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		return
 	}
 
+	// Build map of active hashes (normalized to lowercase for comparison)
 	activeHashes := make(map[string]bool)
+	slog.Debug("Updating download status", "torrent_count", len(torrents))
 	for _, t := range torrents {
-		activeHashes[t.Hash] = true
-		// Update our downloads table
+		// Normalize hash to lowercase for consistent comparison
+		normalizedHash := strings.ToLower(t.Hash)
+		activeHashes[normalizedHash] = true
+		slog.Debug("Found active torrent", "hash_original", t.Hash, "hash_normalized", normalizedHash, "state", t.State, "progress", t.Progress)
+		
+		// Update our downloads table (use normalized hash for WHERE clause)
 		_, err := database.DB.Exec(`
 			UPDATE downloads
 			SET progress = $1, status = $2, updated_at = NOW()
-			WHERE torrent_hash = $3`,
-			t.Progress, t.State, t.Hash)
+			WHERE LOWER(torrent_hash) = $3`,
+			t.Progress, t.State, normalizedHash)
 		if err != nil {
-			slog.Error("Error updating download status", "error", err, "torrent_hash", t.Hash)
+			slog.Error("Error updating download status", "error", err, "torrent_hash", normalizedHash)
 			continue
 		}
 
@@ -323,10 +332,10 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			_, err = database.DB.Exec(`
 				UPDATE requests
 				SET status = 'completed', updated_at = NOW()
-				WHERE id = (SELECT request_id FROM downloads WHERE torrent_hash = $1)`,
-				t.Hash)
+				WHERE id = (SELECT request_id FROM downloads WHERE LOWER(torrent_hash) = $1)`,
+				normalizedHash)
 			if err != nil {
-				slog.Error("Error updating request status to completed", "error", err, "torrent_hash", t.Hash)
+				slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash)
 			}
 		}
 	}
@@ -344,10 +353,29 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			var reqID int
 			var hash string
 			if err := rows.Scan(&reqID, &hash); err == nil {
-				if !activeHashes[hash] {
-					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved", "torrent_hash", hash, "request_id", reqID)
+				// Normalize hash to lowercase for comparison
+				normalizedHash := strings.ToLower(hash)
+				if !activeHashes[normalizedHash] {
+					// Log all active hashes for debugging
+					var activeHashList []string
+					for h := range activeHashes {
+						activeHashList = append(activeHashList, h)
+					}
+					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved", 
+						"torrent_hash", hash, 
+						"normalized_hash", normalizedHash, 
+						"request_id", reqID,
+						"active_hashes_count", len(activeHashes),
+						"sample_active_hashes", func() []string {
+							if len(activeHashList) > 5 {
+								return activeHashList[:5]
+							}
+							return activeHashList
+						}())
 					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
-					database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", hash)
+					database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
+				} else {
+					slog.Debug("Download still active in qBittorrent", "torrent_hash", hash, "normalized_hash", normalizedHash, "request_id", reqID)
 				}
 			}
 		}
