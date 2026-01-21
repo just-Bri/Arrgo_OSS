@@ -50,8 +50,6 @@ func setupRoutes() *http.ServeMux {
 		"/search":               handlers.SearchHandler,
 		"/requests":             handlers.RequestsHandler,
 		"/requests/create":      handlers.CreateRequestHandler,
-		"/requests/approve":     handlers.ApproveRequestHandler,
-		"/requests/deny":        handlers.DenyRequestHandler,
 		"/requests/delete":      handlers.DeleteRequestHandler,
 		"/scan/movies":          handlers.ScanMoviesHandler,
 		"/scan/shows":           handlers.ScanShowsHandler,
@@ -144,6 +142,9 @@ func main() {
 		automation := services.NewAutomationService(cfg, qb)
 		services.SetGlobalAutomationService(automation)
 		go automation.Start(ctx)
+		
+		// Start seeding cleanup worker
+		services.StartSeedingCleanupWorker(cfg, qb)
 	}
 
 	// Setup routes

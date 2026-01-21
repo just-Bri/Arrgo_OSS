@@ -29,13 +29,14 @@ type Season struct {
 }
 
 type Episode struct {
-	ID            int       `json:"id"`
-	SeasonID      int       `json:"season_id"`
-	EpisodeNumber int       `json:"episode_number"`
-	Title         string    `json:"title"`
-	FilePath      string    `json:"file_path"`
-	Quality       string    `json:"quality"`
-	Size          int64     `json:"size"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            int        `json:"id"`
+	SeasonID      int        `json:"season_id"`
+	EpisodeNumber int        `json:"episode_number"`
+	Title         string     `json:"title"`
+	FilePath      string     `json:"file_path"`
+	Quality       string     `json:"quality"`
+	Size          int64      `json:"size"`
+	ImportedAt    *time.Time `json:"imported_at,omitempty"` // Timestamp when imported to library
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }

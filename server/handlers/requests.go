@@ -148,7 +148,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		go automation.TriggerImmediateProcessing(processCtx)
 		slog.Info("Triggered immediate processing for new request", "title", req.Title)
 	} else {
-		slog.Warn("Automation service not available, request will be processed on next scheduled check (5 minutes)")
+		slog.Warn("Automation service not available, request will be processed on next scheduled check (1 hour)")
 	}
 
 	w.WriteHeader(http.StatusCreated)

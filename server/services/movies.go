@@ -151,6 +151,12 @@ func processMovieFile(cfg *config.Config, path string) {
 	if id, err := upsertMovie(movie); err != nil {
 		slog.Error("Error upserting movie", "title", title, "error", err)
 	} else {
+		// Try to link torrent hash if file is in incoming folder
+		if strings.HasPrefix(path, cfg.IncomingMoviesPath) {
+			if qb, err := NewQBittorrentClient(cfg); err == nil {
+				LinkTorrentHashToFile(cfg, qb, path, "movie")
+			}
+		}
 		// Fetch metadata immediately
 		MatchMovie(cfg, id)
 	}
@@ -178,7 +184,7 @@ func upsertMovie(movie models.Movie) (int, error) {
 }
 
 func GetMovies() ([]models.Movie, error) {
-	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at FROM movies ORDER BY title ASC`
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, created_at, updated_at FROM movies ORDER BY title ASC`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -188,8 +194,9 @@ func GetMovies() ([]models.Movie, error) {
 	movies := []models.Movie{}
 	for rows.Next() {
 		var m models.Movie
-		var tmdbID, imdbID, overview, posterPath, quality, genres sql.NullString
-		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
+		var importedAt sql.NullTime
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -197,6 +204,9 @@ func GetMovies() ([]models.Movie, error) {
 		m.IMDBID = imdbID.String
 		m.Overview = overview.String
 		m.PosterPath = posterPath.String
+		if importedAt.Valid {
+			m.ImportedAt = &importedAt.Time
+		}
 		m.Quality = quality.String
 		m.Genres = genres.String
 		movies = append(movies, m)
@@ -205,10 +215,11 @@ func GetMovies() ([]models.Movie, error) {
 }
 
 func GetMovieByID(id int) (*models.Movie, error) {
-	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at FROM movies WHERE id = $1`
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, created_at, updated_at FROM movies WHERE id = $1`
 	var m models.Movie
 	var tmdbID, imdbID, overview, posterPath, quality, genres sql.NullString
-	err := database.DB.QueryRow(query, id).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+	var importedAt sql.NullTime
+	err := database.DB.QueryRow(query, id).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -218,6 +229,9 @@ func GetMovieByID(id int) (*models.Movie, error) {
 	m.PosterPath = posterPath.String
 	m.Quality = quality.String
 	m.Genres = genres.String
+	if importedAt.Valid {
+		m.ImportedAt = &importedAt.Time
+	}
 	return &m, nil
 }
 

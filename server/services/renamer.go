@@ -4,6 +4,8 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
+	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log/slog"
@@ -229,8 +231,9 @@ func RenameAndMoveMovie(cfg *config.Config, movieID int) error {
 
 func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bool) error {
 	var m models.Movie
-	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, poster_path FROM movies WHERE id = $1`
-	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.IMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath)
+	var torrentHash sql.NullString
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, poster_path, torrent_hash FROM movies WHERE id = $1`
+	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &m.TMDBID, &m.IMDBID, &m.Path, &m.Quality, &m.Size, &m.PosterPath, &torrentHash)
 	if err != nil {
 		return err
 	}
@@ -287,12 +290,33 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 		return nil
 	}
 
-	// Move the file
+	// Check seeding criteria BEFORE moving - if still seeding, copy instead of move
 	oldPath := m.Path
-	if err := safeRename(oldPath, destPath); err != nil {
-		return err
+	shouldCopyInsteadOfMove := false
+	if torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingMoviesPath) {
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			ctx := context.Background()
+			meetsCriteria, err := CheckSeedingCriteriaOnImport(ctx, cfg, qb, torrentHash.String)
+			if err == nil && !meetsCriteria {
+				// Still seeding, copy instead of move to keep original for seeding
+				shouldCopyInsteadOfMove = true
+				slog.Info("Movie still seeding, copying instead of moving", "movie_id", m.ID, "torrent_hash", torrentHash.String)
+			}
+		}
 	}
-	slog.Info("Successfully moved movie", "old_path", oldPath, "new_path", destPath)
+
+	// Move or copy the file based on seeding status
+	if shouldCopyInsteadOfMove {
+		if err := copyFile(oldPath, destPath); err != nil {
+			return err
+		}
+		slog.Info("Successfully copied movie (still seeding)", "old_path", oldPath, "new_path", destPath)
+	} else {
+		if err := safeRename(oldPath, destPath); err != nil {
+			return err
+		}
+		slog.Info("Successfully moved movie", "old_path", oldPath, "new_path", destPath)
+	}
 
 	// Copy the poster if it exists and is in the same directory as the movie
 	newPosterPath := ""
@@ -317,11 +341,24 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 		CleanupEmptyDirs(cfg.IncomingMoviesPath)
 	}
 
-	// Update DB with new path and status
-	updateQuery := `UPDATE movies SET path = $1, poster_path = $2, status = 'ready', updated_at = CURRENT_TIMESTAMP WHERE id = $3`
+	// Update DB with new path and status, mark as imported
+	updateQuery := `UPDATE movies SET path = $1, poster_path = $2, status = 'ready', imported_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $3`
 	_, err = database.DB.Exec(updateQuery, destPath, newPosterPath, m.ID)
 	if err != nil {
 		return err
+	}
+
+	// Check seeding criteria and clean up torrent if needed (only if we moved, not copied)
+	if !shouldCopyInsteadOfMove && torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingMoviesPath) {
+		// Try to get qBittorrent client
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			go func() {
+				ctx := context.Background()
+				if err := CleanupTorrentOnImport(ctx, cfg, qb, torrentHash.String, oldPath); err != nil {
+					slog.Error("Failed to cleanup torrent on movie import", "movie_id", m.ID, "error", err)
+				}
+			}()
+		}
 	}
 
 	// Trigger subtitle download
@@ -342,15 +379,16 @@ func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanu
 	var e models.Episode
 	var s models.Season
 	var sh models.Show
+	var torrentHash sql.NullString
 
 	query := `
-		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.imdb_id, sh.poster_path
+		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, e.torrent_hash, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.imdb_id, sh.poster_path
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		JOIN shows sh ON s.show_id = sh.id
 		WHERE e.id = $1
 	`
-	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.IMDBID, &sh.PosterPath)
+	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &torrentHash, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.IMDBID, &sh.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -424,16 +462,54 @@ func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanu
 		return nil
 	}
 
+	// Check seeding criteria BEFORE moving - if still seeding, copy instead of move
 	oldPath := e.FilePath
-	if err := safeRename(oldPath, destPath); err != nil {
-		return err
+	shouldCopyInsteadOfMove := false
+	if torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingShowsPath) {
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			ctx := context.Background()
+			meetsCriteria, err := CheckSeedingCriteriaOnImport(ctx, cfg, qb, torrentHash.String)
+			if err == nil && !meetsCriteria {
+				// Still seeding, copy instead of move to keep original for seeding
+				shouldCopyInsteadOfMove = true
+				slog.Info("Episode still seeding, copying instead of moving", "episode_id", e.ID, "torrent_hash", torrentHash.String)
+			}
+		}
 	}
-	slog.Info("Successfully moved episode", "old_path", oldPath, "new_path", destPath)
 
-	updateQuery := `UPDATE episodes SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	// Move or copy the file based on seeding status
+	if shouldCopyInsteadOfMove {
+		if err := copyFile(oldPath, destPath); err != nil {
+			return err
+		}
+		slog.Info("Successfully copied episode (still seeding)", "old_path", oldPath, "new_path", destPath)
+	} else {
+		if err := safeRename(oldPath, destPath); err != nil {
+			return err
+		}
+		slog.Info("Successfully moved episode", "old_path", oldPath, "new_path", destPath)
+	}
+
+	// Update DB with new path, mark as imported
+	updateQuery := `UPDATE episodes SET file_path = $1, imported_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err = database.DB.Exec(updateQuery, destPath, e.ID)
 	if err != nil {
 		return err
+	}
+
+	// Check seeding criteria and clean up torrent if needed (only if we moved, not copied)
+	if !shouldCopyInsteadOfMove && torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingShowsPath) {
+		// Try to get qBittorrent client
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			go func() {
+				ctx := context.Background()
+				if err := CleanupTorrentOnImport(ctx, cfg, qb, torrentHash.String, oldPath); err != nil {
+					slog.Error("Failed to cleanup torrent on episode import",
+						"episode_id", e.ID,
+						"error", err)
+				}
+			}()
+		}
 	}
 
 	// Cleanup old directory if it was in incoming (only if requested)

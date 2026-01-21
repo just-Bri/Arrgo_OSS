@@ -146,6 +146,9 @@ type TorrentStatus struct {
 	State         string  `json:"state"`
 	Eta           int     `json:"eta"`
 	DownloadSpeed int     `json:"dlspeed"`
+	Ratio         float64 `json:"ratio"`         // Share ratio
+	SeedingTime   int64   `json:"seeding_time"`  // Seeding time in seconds
+	SavePath      string  `json:"save_path"`     // Save path for the torrent
 }
 
 func (q *QBittorrentClient) GetTorrents(ctx context.Context, filter string) ([]TorrentStatus, error) {
@@ -194,6 +197,41 @@ func (q *QBittorrentClient) GetTorrentByHash(ctx context.Context, hash string) (
 	}
 
 	return nil, fmt.Errorf("torrent with hash %s not found", hash)
+}
+
+// GetTorrentsDetailed gets torrents with detailed information including ratio and seeding time
+func (q *QBittorrentClient) GetTorrentsDetailed(ctx context.Context, filter string) ([]TorrentStatus, error) {
+	if err := q.ensureLogin(ctx); err != nil {
+		return nil, fmt.Errorf("failed to login: %w", err)
+	}
+
+	// Use the properties parameter to request specific fields
+	listURL := fmt.Sprintf("%s/api/v2/torrents/info", q.cfg.QBittorrentURL)
+	if filter != "" {
+		listURL += "?filter=" + filter
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", listURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := q.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get torrents: status %d", resp.StatusCode)
+	}
+
+	var torrents []TorrentStatus
+	if err := json.NewDecoder(resp.Body).Decode(&torrents); err != nil {
+		return nil, fmt.Errorf("failed to decode torrents info: %w", err)
+	}
+
+	return torrents, nil
 }
 
 func (q *QBittorrentClient) PauseTorrent(ctx context.Context, hash string) error {

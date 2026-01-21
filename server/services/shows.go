@@ -250,6 +250,14 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		quality := DetectQuality(episodePath)
 
 		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
+		
+		// Try to link torrent hash if file is in incoming folder
+		cfg := config.Load()
+		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
+			if qb, err := NewQBittorrentClient(cfg); err == nil {
+				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
+			}
+		}
 	}
 }
 

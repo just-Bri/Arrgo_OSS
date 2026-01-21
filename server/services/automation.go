@@ -54,8 +54,8 @@ func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *Automation
 func (s *AutomationService) Start(ctx context.Context) {
 	slog.Info("Starting Automation Service")
 
-	// Check for approved requests every 5 minutes
-	ticker := time.NewTicker(5 * time.Minute)
+	// Check for approved requests every hour
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	// Update download progress every 30 seconds

@@ -25,8 +25,8 @@ func CreateRequest(req models.Request) error {
 	if req.MediaType == "show" {
 		var existingID int
 		var existingSeasons string
-		// Look for either pending or approved requests to append seasons to
-		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('pending', 'approved')", req.TVDBID).Scan(&existingID, &existingSeasons)
+		// Look for approved requests to append seasons to
+		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status = 'approved'", req.TVDBID).Scan(&existingID, &existingSeasons)
 		if err == nil {
 			// Update existing request
 			newSeasons := existingSeasons
@@ -97,12 +97,12 @@ func GetRequests() ([]models.Request, error) {
 func GetPendingRequestCounts() (int, int, error) {
 	var movieCount, showCount int
 
-	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status IN ('pending', 'approved')").Scan(&movieCount)
+	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status = 'approved'").Scan(&movieCount)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status IN ('pending', 'approved')").Scan(&showCount)
+	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status = 'approved'").Scan(&showCount)
 	if err != nil {
 		return 0, 0, err
 	}

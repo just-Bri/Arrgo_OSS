@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"Arrgo/config"
+	"Arrgo/database"
 	"Arrgo/models"
 	"Arrgo/services"
+	"context"
+	"database/sql"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -168,12 +171,26 @@ func ExtractStatusesFromShows(shows []models.Show) []string {
 }
 
 // SeparateIncomingMovies separates incoming and library movies based on path prefixes
+// Filters out movies that have been imported (imported_at IS NOT NULL) from incoming list
+// Also filters out movies that are still downloading (only shows seeding or no-torrent items)
 func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmin bool) (libraryMovies []models.Movie, incomingMovies []models.Movie) {
+	ctx := context.Background()
+	
 	for _, m := range allMovies {
 		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
 		if isIncoming {
-			if isAdmin {
-				incomingMovies = append(incomingMovies, m)
+			// Only show in incoming if:
+			// 1. It hasn't been imported yet
+			// 2. It's not still downloading (has no torrent OR torrent is seeding)
+			if isAdmin && m.ImportedAt == nil {
+				// Check if it has a torrent hash and if it's still downloading
+				var torrentHash sql.NullString
+				database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", m.ID).Scan(&torrentHash)
+				
+				// Show if no torrent hash OR torrent is not downloading (seeding)
+				if !torrentHash.Valid || torrentHash.String == "" || !services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String) {
+					incomingMovies = append(incomingMovies, m)
+				}
 			}
 		} else {
 			libraryMovies = append(libraryMovies, m)
@@ -183,18 +200,81 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 }
 
 // SeparateIncomingShows separates incoming and library shows based on path prefixes
+// Filters out shows where all episodes in incoming have been imported
+// Also filters out shows where episodes are still downloading (only shows seeding or no-torrent items)
 func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin bool) (libraryShows []models.Show, incomingShows []models.Show) {
+	ctx := context.Background()
+	
 	for _, s := range allShows {
 		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
 		if isIncoming {
 			if isAdmin {
-				incomingShows = append(incomingShows, s)
+				// Check if all episodes in incoming for this show have been imported
+				// Only show in incoming if there are unimported episodes
+				hasUnimportedEpisodes := checkShowHasUnimportedEpisodes(s.ID, cfg.IncomingShowsPath)
+				if hasUnimportedEpisodes {
+					// Also check if any unimported episodes are still downloading
+					// Only show if episodes have no torrent OR torrents are seeding (not downloading)
+					hasDownloadingEpisodes := checkShowHasDownloadingEpisodes(ctx, s.ID, cfg.IncomingShowsPath, cfg)
+					if !hasDownloadingEpisodes {
+						incomingShows = append(incomingShows, s)
+					}
+				}
 			}
 		} else {
 			libraryShows = append(libraryShows, s)
 		}
 	}
 	return libraryShows, incomingShows
+}
+
+// checkShowHasUnimportedEpisodes checks if a show has any episodes in incoming that haven't been imported yet
+func checkShowHasUnimportedEpisodes(showID int, incomingShowsPath string) bool {
+	query := `
+		SELECT COUNT(*) 
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1 
+		AND e.file_path LIKE $2 || '%'
+		AND e.imported_at IS NULL
+	`
+	var count int
+	err := database.DB.QueryRow(query, showID, incomingShowsPath).Scan(&count)
+	if err != nil {
+		// On error, assume there are unimported episodes to be safe
+		return true
+	}
+	return count > 0
+}
+
+// checkShowHasDownloadingEpisodes checks if a show has any episodes in incoming that are still downloading
+func checkShowHasDownloadingEpisodes(ctx context.Context, showID int, incomingShowsPath string, cfg *config.Config) bool {
+	query := `
+		SELECT e.torrent_hash
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1 
+		AND e.file_path LIKE $2 || '%'
+		AND e.imported_at IS NULL
+		AND e.torrent_hash IS NOT NULL
+		AND e.torrent_hash != ''
+	`
+	rows, err := database.DB.Query(query, showID, incomingShowsPath)
+	if err != nil {
+		// On error, assume not downloading to be safe
+		return false
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var torrentHash string
+		if err := rows.Scan(&torrentHash); err == nil {
+			if services.IsTorrentStillDownloading(ctx, cfg, torrentHash) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RequireAdmin checks if the current user is an admin, returns error if not
