@@ -153,17 +153,16 @@
                                             <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">View</button>
                                         </a>
                                     {{else}}
-                                        {{$inLibrary := .LibraryStatus.Exists}}
                                         {{$isRequested := contains .LibraryStatus.Message "Already requested"}}
-                                        {{$isDisabled := or $inLibrary $isRequested}}
+                                        {{$buttonLabel := "Select Seasons"}}
                                         
-                                        {{if not $isDisabled}}
+                                        {{if not $isRequested}}
                                             <a href="{{$detailsUrl}}" style="text-decoration: none;">
-                                                <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Select Seasons</button>
+                                                <button style="width: 100%; padding: 6px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">{{$buttonLabel}}</button>
                                             </a>
                                         {{else}}
                                             <button disabled style="width: 100%; padding: 6px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; cursor: not-allowed; font-size: 12px;">
-                                                {{if $inLibrary}}In Library{{else}}Requested{{end}}
+                                                Requested
                                             </button>
                                         {{end}}
                                     {{end}}
