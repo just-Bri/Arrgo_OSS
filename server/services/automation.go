@@ -20,6 +20,19 @@ type AutomationService struct {
 	qb  *QBittorrentClient
 }
 
+// Global instance for immediate triggering
+var globalAutomationService *AutomationService
+
+// SetGlobalAutomationService sets the global automation service instance
+func SetGlobalAutomationService(service *AutomationService) {
+	globalAutomationService = service
+}
+
+// GetGlobalAutomationService returns the global automation service instance
+func GetGlobalAutomationService() *AutomationService {
+	return globalAutomationService
+}
+
 type TorrentSearchResult struct {
 	Title      string `json:"title"`
 	MagnetLink string `json:"magnet_link"`
@@ -52,6 +65,10 @@ func (s *AutomationService) Start(ctx context.Context) {
 	subtitleTicker := time.NewTicker(15 * time.Minute)
 	defer subtitleTicker.Stop()
 
+	// Process immediately on startup
+	slog.Info("Processing approved requests on startup")
+	s.ProcessApprovedRequests(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -66,10 +83,17 @@ func (s *AutomationService) Start(ctx context.Context) {
 	}
 }
 
+// TriggerImmediateProcessing triggers immediate processing of approved requests
+func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
+	slog.Info("Triggering immediate processing of approved requests")
+	s.ProcessApprovedRequests(ctx)
+}
+
 func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	var requests []models.Request
 	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons FROM requests WHERE status = 'approved'`
 
+	slog.Debug("Checking for approved requests to process")
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		slog.Error("Error querying approved requests", "error", err)
@@ -91,8 +115,14 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 		requests = append(requests, r)
 	}
 
+	if len(requests) == 0 {
+		slog.Debug("No approved requests found to process")
+		return
+	}
+
+	slog.Info("Found approved requests to process", "count", len(requests))
 	for _, r := range requests {
-		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType)
+		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons)
 		if err := s.processRequest(ctx, r); err != nil {
 			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}
@@ -112,16 +142,21 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		"format": "json",
 	})
 
+	slog.Info("Searching indexer for request", "request_id", r.ID, "title", r.Title, "indexer_url", searchURL)
 	resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
 	if err != nil {
+		slog.Error("Failed to call indexer", "request_id", r.ID, "error", err, "indexer_url", searchURL)
 		return fmt.Errorf("failed to call indexer: %w", err)
 	}
 	// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
 
 	var results []TorrentSearchResult
 	if err := sharedhttp.DecodeJSONResponse(resp, &results); err != nil {
+		slog.Error("Failed to decode indexer response", "request_id", r.ID, "error", err)
 		return fmt.Errorf("failed to decode indexer response: %w", err)
 	}
+
+	slog.Info("Indexer search completed", "request_id", r.ID, "results_count", len(results))
 
 	if len(results) == 0 {
 		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title)
@@ -137,6 +172,8 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		slog.Info("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results))
 		return nil
 	}
+
+	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution)
 
 	// Extract or validate InfoHash
 	infoHash := best.InfoHash
@@ -189,14 +226,17 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		savePath = s.cfg.IncomingShowsPath
 	}
 
+	slog.Info("Adding torrent to qBittorrent", "request_id", r.ID, "info_hash", infoHash, "category", category, "save_path", savePath)
 	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category, savePath); err != nil {
 		// If qBittorrent add fails, rollback the database changes
 		// Reset request back to approved so it can be retried
+		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
 		database.DB.Exec("UPDATE requests SET status = 'approved', updated_at = NOW() WHERE id = $1", r.ID)
 		database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", infoHash)
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
 
+	slog.Info("Successfully processed request", "request_id", r.ID, "title", r.Title, "status", "downloading")
 	return nil
 }
 

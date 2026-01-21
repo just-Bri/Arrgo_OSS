@@ -5,6 +5,7 @@ import (
 	"Arrgo/models"
 	"context"
 	"database/sql"
+	"log/slog"
 	"strconv"
 	"strings"
 )
@@ -46,16 +47,24 @@ func CreateRequest(req models.Request) error {
 				}
 			}
 
+			slog.Info("Updating existing show request with additional seasons", "request_id", existingID, "title", req.Title, "existing_seasons", existingSeasons, "new_seasons", newSeasons)
 			_, err = database.DB.Exec("UPDATE requests SET seasons = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2", newSeasons, existingID)
+			if err == nil {
+				slog.Info("Successfully updated existing request", "request_id", existingID, "seasons", newSeasons)
+			}
 			return err
 		}
 	}
 
+	slog.Info("Creating new request", "title", req.Title, "media_type", req.MediaType, "seasons", req.Seasons, "user_id", req.UserID)
 	query := `
 		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'approved', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
 	_, err := database.DB.Exec(query, req.UserID, req.Title, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
+	if err == nil {
+		slog.Info("Successfully created new request", "title", req.Title, "media_type", req.MediaType, "status", "approved")
+	}
 	return err
 }
 

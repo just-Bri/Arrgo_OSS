@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
+	"context"
 	"encoding/json"
 	"html/template"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var requestsTmpl *template.Template
@@ -145,6 +147,19 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error creating request", "error", err, "user_id", req.UserID, "title", req.Title, "media_type", req.MediaType)
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
+	}
+
+	slog.Info("Request created successfully", "user_id", req.UserID, "title", req.Title, "media_type", req.MediaType, "seasons", req.Seasons)
+
+	// Trigger immediate processing if automation service is available
+	if automation := services.GetGlobalAutomationService(); automation != nil {
+		// Use background context with timeout for immediate processing
+		processCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		go automation.TriggerImmediateProcessing(processCtx)
+		slog.Info("Triggered immediate processing for new request", "title", req.Title)
+	} else {
+		slog.Warn("Automation service not available, request will be processed on next scheduled check (5 minutes)")
 	}
 
 	w.WriteHeader(http.StatusCreated)

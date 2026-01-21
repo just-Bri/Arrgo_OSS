@@ -142,6 +142,7 @@ func main() {
 			slog.Info("Successfully connected to qBittorrent")
 		}
 		automation := services.NewAutomationService(cfg, qb)
+		services.SetGlobalAutomationService(automation)
 		go automation.Start(ctx)
 	}
 
