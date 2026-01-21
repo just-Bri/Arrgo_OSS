@@ -173,7 +173,12 @@ func scanSeasons(showID int, showPath string) {
 	}
 
 	seasonRegex := regexp.MustCompile(`(?i)Season\s+(\d+)`)
+	// Also match patterns like [S02], S02, Season02, etc.
+	altSeasonRegex := regexp.MustCompile(`(?i)[\[_]?S(?:eason)?\s*(\d+)[\]_]?`)
 
+	var foundSeasonFolders bool
+
+	// First pass: look for standard "Season XX" folders
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -184,6 +189,7 @@ func scanSeasons(showID int, showPath string) {
 			continue
 		}
 
+		foundSeasonFolders = true
 		seasonNum, _ := strconv.Atoi(matches[1])
 		seasonPath := filepath.Join(showPath, entry.Name())
 
@@ -193,6 +199,106 @@ func scanSeasons(showID int, showPath string) {
 		}
 
 		scanEpisodes(seasonID, seasonPath)
+	}
+
+	// Second pass: if no standard Season folders found, try alternative patterns
+	if !foundSeasonFolders {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			matches := altSeasonRegex.FindStringSubmatch(entry.Name())
+			if len(matches) < 2 {
+				continue
+			}
+
+			seasonNum, _ := strconv.Atoi(matches[1])
+			seasonPath := filepath.Join(showPath, entry.Name())
+
+			seasonID, err := upsertSeason(showID, seasonNum)
+			if err != nil {
+				continue
+			}
+
+			scanEpisodes(seasonID, seasonPath)
+		}
+	}
+
+	// Third pass: if still no season folders found, check if episodes are directly in show folder
+	// Extract season number from show folder name if possible (e.g., "[S02]" in folder name)
+	if !foundSeasonFolders {
+		showDirName := filepath.Base(showPath)
+		matches := altSeasonRegex.FindStringSubmatch(showDirName)
+		if len(matches) >= 2 {
+			// Show folder itself contains season info (e.g., "Show Name [S02]")
+			seasonNum, _ := strconv.Atoi(matches[1])
+			seasonID, err := upsertSeason(showID, seasonNum)
+			if err == nil {
+				scanEpisodes(seasonID, showPath)
+			}
+		} else {
+			// No season info in folder name, try to detect season from episode files
+			// Scan episodes directly from show folder and try to infer season from filenames
+			scanEpisodesFromShowFolder(showID, showPath)
+		}
+	}
+}
+
+// scanEpisodesFromShowFolder scans episodes directly from show folder and infers season from filenames
+func scanEpisodesFromShowFolder(showID int, showPath string) {
+	entries, err := os.ReadDir(showPath)
+	if err != nil {
+		return
+	}
+
+	// Match SXXEXX pattern to extract both season and episode
+	episodeRegex := regexp.MustCompile(`(?i)S(\d+)E(\d+)`)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if !MovieExtensions[ext] {
+			continue
+		}
+
+		matches := episodeRegex.FindStringSubmatch(entry.Name())
+		if len(matches) < 3 {
+			continue
+		}
+
+		seasonNum, _ := strconv.Atoi(matches[1])
+		episodeNum, _ := strconv.Atoi(matches[2])
+		episodePath := filepath.Join(showPath, entry.Name())
+
+		seasonID, err := upsertSeason(showID, seasonNum)
+		if err != nil {
+			continue
+		}
+
+		// Clean the episode title
+		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		epTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+		if epTitle == "" {
+			epTitle = fmt.Sprintf("Episode %d", episodeNum)
+		}
+
+		info, _ := entry.Info()
+		size := info.Size()
+		quality := DetectQuality(episodePath)
+
+		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
+		
+		// Try to link torrent hash if file is in incoming folder
+		cfg := config.Load()
+		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
+			if qb, err := NewQBittorrentClient(cfg); err == nil {
+				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
+			}
+		}
 	}
 }
 
