@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
