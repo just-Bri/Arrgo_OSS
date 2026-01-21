@@ -132,11 +132,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := services.GetSession(r)
 	if err == nil {
-		session.Values = make(map[interface{}]interface{})
+		session.Values = make(map[any]any)
 		session.Options.MaxAge = -1
 		services.SaveSession(w, r, session)
 	}
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
-

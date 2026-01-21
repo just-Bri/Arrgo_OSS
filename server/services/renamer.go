@@ -25,11 +25,11 @@ var (
 func getPathMutex(path string) *sync.Mutex {
 	pathMu.Lock()
 	defer pathMu.Unlock()
-	
+
 	if mu, exists := pathMutexes[path]; exists {
 		return mu
 	}
-	
+
 	mu := &sync.Mutex{}
 	pathMutexes[path] = mu
 	return mu
@@ -512,15 +512,15 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 	}
 	defer rows.Close()
 
-		for rows.Next() {
-			var epID int
-			if err := rows.Scan(&epID); err != nil {
-				continue
-			}
-			if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, false); err != nil {
-				slog.Error("Error renaming episode", "episode_id", epID, "error", err)
-			}
+	for rows.Next() {
+		var epID int
+		if err := rows.Scan(&epID); err != nil {
+			continue
 		}
+		if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, false); err != nil {
+			slog.Error("Error renaming episode", "episode_id", epID, "error", err)
+		}
+	}
 
 	// Update show status and path in DB, handling potential duplicates
 	var existingID int
@@ -553,10 +553,10 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 
 		// Update metadata on the existing show and delete the duplicate
 		_, err = database.DB.Exec(`
-			UPDATE shows 
-			SET poster_path = CASE WHEN poster_path = '' OR poster_path IS NULL THEN $1 ELSE poster_path END, 
-				status = 'ready', 
-				updated_at = CURRENT_TIMESTAMP 
+			UPDATE shows
+			SET poster_path = CASE WHEN poster_path = '' OR poster_path IS NULL THEN $1 ELSE poster_path END,
+				status = 'ready',
+				updated_at = CURRENT_TIMESTAMP
 			WHERE id = $2`, newPosterPath, existingID)
 		database.DB.Exec("DELETE FROM shows WHERE id = $1", showID)
 	} else {

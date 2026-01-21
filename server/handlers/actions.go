@@ -354,7 +354,8 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	cfg := config.Load()
 
-	if mediaType == "movie" {
+	switch mediaType {
+	case "movie":
 		m, err := services.GetMovieByID(id)
 		if err != nil {
 			http.Error(w, "Movie not found", http.StatusNotFound)
@@ -380,7 +381,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
 		}
-	} else if mediaType == "episode" {
+	case "episode":
 		var e models.Episode
 		var sh models.Show
 		var s models.Season
@@ -422,7 +423,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
 		}
-	} else {
+	default:
 		http.Error(w, "Invalid media type", http.StatusBadRequest)
 		return
 	}

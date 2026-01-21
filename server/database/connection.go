@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"Arrgo/config"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var DB *sql.DB
@@ -30,4 +31,3 @@ func Close() error {
 	}
 	return nil
 }
-

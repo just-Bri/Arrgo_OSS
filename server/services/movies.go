@@ -256,8 +256,8 @@ func PurgeMissingMovies() {
 
 func SearchMoviesLocal(query string) ([]models.Movie, error) {
 	dbQuery := `
-		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at 
-		FROM movies 
+		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at
+		FROM movies
 		WHERE title ILIKE $1 OR overview ILIKE $1 OR genres ILIKE $1
 		ORDER BY title ASC
 	`

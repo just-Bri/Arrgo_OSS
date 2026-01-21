@@ -78,7 +78,7 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 	if ext == "" {
 		ext = ".jpg"
 	}
-	
+
 	// Local path: data/images/movies/{id}{ext}
 	localDir := "data/images/movies"
 	if err := EnsureImageDir(localDir); err != nil {
@@ -86,7 +86,7 @@ func ServeMovieImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	localPath := filepath.Join(localDir, fmt.Sprintf("%d%s", id, ext))
 
 	// 2. Check if file exists locally in cache

@@ -16,10 +16,10 @@ import (
 )
 
 type QBittorrentClient struct {
-	cfg         *config.Config
-	client      *http.Client
-	mu          sync.Mutex
-	lastLogin   time.Time
+	cfg          *config.Config
+	client       *http.Client
+	mu           sync.Mutex
+	lastLogin    time.Time
 	sessionValid bool
 }
 
@@ -114,12 +114,12 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 		q.mu.Lock()
 		q.sessionValid = false
 		q.mu.Unlock()
-		
+
 		// Retry login and request
 		if err := q.ensureLogin(ctx); err != nil {
 			return fmt.Errorf("failed to re-login after 403: %w", err)
 		}
-		
+
 		// Retry the request
 		req, _ = http.NewRequestWithContext(ctx, "POST", addURL, strings.NewReader(data.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

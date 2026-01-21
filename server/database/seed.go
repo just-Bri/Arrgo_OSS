@@ -39,4 +39,3 @@ func SeedAdminUser() error {
 
 	return nil
 }
-

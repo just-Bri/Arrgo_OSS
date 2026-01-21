@@ -1,12 +1,13 @@
 package services
 
 import (
-	config "Arrgo/config"
+	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/models"
 	"context"
 	"database/sql"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -33,13 +34,7 @@ func CreateRequest(req models.Request) error {
 			existingSeasonsList := strings.Split(existingSeasons, ",")
 
 			for _, rs := range reqSeasons {
-				found := false
-				for _, es := range existingSeasonsList {
-					if rs == es {
-						found = true
-						break
-					}
-				}
+				found := slices.Contains(existingSeasonsList, rs)
 				if !found {
 					if newSeasons != "" {
 						newSeasons += ","
@@ -198,8 +193,8 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status != 'cancelled' AND status != 'completed'", externalID).Scan(&reqSeasons, &reqStatus)
 		if err == nil {
 			if reqSeasons.Valid && reqSeasons.String != "" {
-				seasonStrs := strings.Split(reqSeasons.String, ",")
-				for _, s := range seasonStrs {
+				seasonStrs := strings.SplitSeq(reqSeasons.String, ",")
+				for s := range seasonStrs {
 					if sn, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
 						status.RequestedSeasons = append(status.RequestedSeasons, sn)
 					}

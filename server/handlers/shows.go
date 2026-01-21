@@ -147,7 +147,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seasons, _ = services.GetShowSeasons(show.ID)
-		
+
 		// If we have a TVDB ID, fetch all episodes to show what's missing
 		if show.TVDBID != "" {
 			allEpisodes, _ = services.GetTVDBShowEpisodes(cfg, show.TVDBID)
@@ -230,13 +230,13 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 			if _, ok := seasonMap[te.SeasonNumber]; !ok {
 				seasonMap[te.SeasonNumber] = &EnhancedSeason{SeasonNumber: te.SeasonNumber}
 			}
-			
+
 			inLibrary := false
 			quality := ""
 			var size int64 = 0
 			hasSubtitles := false
 			localID := 0
-			
+
 			// Check if in local library
 			for _, ls := range seasons {
 				if ls.SeasonNumber == te.SeasonNumber {
@@ -254,7 +254,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			
+
 			seasonMap[te.SeasonNumber].Episodes = append(seasonMap[te.SeasonNumber].Episodes, struct {
 				ID           int
 				Number       int
@@ -273,7 +273,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 				HasSubtitles: hasSubtitles,
 			})
 		}
-		
+
 		// Sort seasons
 		var keys []int
 		for k := range seasonMap {

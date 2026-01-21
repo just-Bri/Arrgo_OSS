@@ -92,4 +92,3 @@ func GetUserByID(userID int64) (*models.User, error) {
 
 	return &user, nil
 }
-

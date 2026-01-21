@@ -424,7 +424,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	if err == nil {
 		slog.Info("Found existing metadata in DB, reusing", "title", m.Title, "year", m.Year)
 		updateQuery := `
-			UPDATE movies 
+			UPDATE movies
 			SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $7
 		`
@@ -496,7 +496,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	// 4. Update DB with official metadata
 	updateQuery := `
-		UPDATE movies 
+		UPDATE movies
 		SET title = $1, year = $2, tmdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, genres = $7, status = 'matched', raw_metadata = $8, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $9
 	`
@@ -536,7 +536,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 	if err == nil {
 		slog.Info("Found existing metadata for show in DB, reusing", "title", s.Title, "year", s.Year)
 		updateQuery := `
-			UPDATE shows 
+			UPDATE shows
 			SET tvdb_id = $1, tmdb_id = $2, imdb_id = $3, overview = $4, poster_path = $5, genres = $6, status = 'matched', raw_metadata = $7, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $8
 		`
@@ -620,7 +620,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 
 	// 5. Update DB with official metadata
 	updateQuery := `
-		UPDATE shows 
+		UPDATE shows
 		SET title = $1, year = $2, tvdb_id = $3, tmdb_id = $4, imdb_id = $5, overview = $6, poster_path = $7, genres = $8, status = 'matched', raw_metadata = $9, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $10
 	`
@@ -706,8 +706,8 @@ func SyncShowEpisodes(cfg *config.Config, showID int) error {
 	for _, ep := range episodes {
 		// Update existing episodes with official titles
 		query := `
-			UPDATE episodes 
-			SET title = $1 
+			UPDATE episodes
+			SET title = $1
 			WHERE season_id IN (SELECT id FROM seasons WHERE show_id = $2 AND season_number = $3)
 			AND episode_number = $4
 		`

@@ -37,7 +37,7 @@ func CleanupEmptyDirs(root string) error {
 	// List of junk files that shouldn't prevent a folder from being deleted in incoming
 	junkExtensions := map[string]bool{
 		".nfo": true, ".txt": true, ".url": true, ".exe": true,
-		".db":  true, ".md":  true, ".png": true, ".jpg": true,
+		".db": true, ".md": true, ".png": true, ".jpg": true,
 		".jpeg": true, ".gif": true, ".svg": true, ".webp": true,
 		".sfv": true, ".srr": true, ".xml": true, ".html": true,
 		".htm": true, ".info": true, ".srt": true, ".sub": true,
@@ -63,10 +63,10 @@ func CleanupEmptyDirs(root string) error {
 
 			name := strings.ToLower(entry.Name())
 			ext := filepath.Ext(name)
-			
+
 			// Also check for "sample" in filename
 			isJunk := junkExtensions[ext] || strings.Contains(name, "sample")
-			
+
 			if !isJunk {
 				actuallyEmpty = false
 				break
@@ -75,7 +75,7 @@ func CleanupEmptyDirs(root string) error {
 
 		if actuallyEmpty {
 			slog.Info("Removing directory (contains only junk or empty)", "path", path)
-			
+
 			// Let's be safer: Only delete the files we identify as junk first, then Remove the dir.
 			// This prevents os.RemoveAll from nuking non-junk if we missed something.
 			junkFiles, err := os.ReadDir(path)
@@ -83,7 +83,7 @@ func CleanupEmptyDirs(root string) error {
 				slog.Debug("Error reading directory for cleanup", "path", path, "error", err)
 				continue
 			}
-			
+
 			for _, jf := range junkFiles {
 				if !jf.IsDir() {
 					filePath := filepath.Join(path, jf.Name())
@@ -92,7 +92,7 @@ func CleanupEmptyDirs(root string) error {
 					}
 				}
 			}
-			
+
 			// Remove will fail if directory is still not empty (e.g. contains subdirs)
 			err = os.Remove(path)
 			if err != nil {

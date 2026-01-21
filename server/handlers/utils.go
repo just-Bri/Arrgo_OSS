@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"slices"
+
 	"github.com/justbri/arrgo/shared/format"
 )
 
@@ -31,12 +33,7 @@ func GetFuncMap() template.FuncMap {
 		"split":     strings.Split,
 		"contains":  strings.Contains,
 		"containsInt": func(slice []int, val int) bool {
-			for _, item := range slice {
-				if item == val {
-					return true
-				}
-			}
-			return false
+			return slices.Contains(slice, val)
 		},
 		"formatSize": format.Bytes,
 		"title": func(s string) string {
@@ -53,8 +50,8 @@ func ExtractGenresFromMovies(movies []models.Movie) []string {
 	genreMap := make(map[string]bool)
 	for _, m := range movies {
 		if m.Genres != "" {
-			gs := strings.Split(m.Genres, ", ")
-			for _, g := range gs {
+			gs := strings.SplitSeq(m.Genres, ", ")
+			for g := range gs {
 				if g != "" {
 					genreMap[g] = true
 				}
@@ -74,8 +71,8 @@ func ExtractGenresFromShows(shows []models.Show) []string {
 	genreMap := make(map[string]bool)
 	for _, s := range shows {
 		if s.Genres != "" {
-			gs := strings.Split(s.Genres, ", ")
-			for _, g := range gs {
+			gs := strings.SplitSeq(s.Genres, ", ")
+			for g := range gs {
 				if g != "" {
 					genreMap[g] = true
 				}

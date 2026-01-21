@@ -10,6 +10,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -112,31 +113,19 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		allNew := true
 		for _, rs := range requestedSeasons {
 			sn, _ := strconv.Atoi(strings.TrimSpace(rs))
-			
+
 			// Check if in library
-			inLibrary := false
-			for _, s := range status.Seasons {
-				if s == sn {
-					inLibrary = true
-					break
-				}
-			}
-			
+			inLibrary := slices.Contains(status.Seasons, sn)
+
 			// Check if already requested
-			alreadyRequested := false
-			for _, s := range status.RequestedSeasons {
-				if s == sn {
-					alreadyRequested = true
-					break
-				}
-			}
-			
+			alreadyRequested := slices.Contains(status.RequestedSeasons, sn)
+
 			if inLibrary || alreadyRequested {
 				allNew = false
 				break
 			}
 		}
-		
+
 		if !allNew && len(requestedSeasons) == 1 {
 			http.Error(w, "Season already exists or has been requested", http.StatusConflict)
 			return

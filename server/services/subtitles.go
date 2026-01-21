@@ -67,7 +67,7 @@ func parseOpenSubtitlesError(resp *http.Response) error {
 
 func SetSetting(key, value string) error {
 	_, err := database.DB.Exec(`
-		INSERT INTO settings (key, value, updated_at) 
+		INSERT INTO settings (key, value, updated_at)
 		VALUES ($1, $2, CURRENT_TIMESTAMP)
 		ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
 		key, value)
@@ -132,11 +132,11 @@ func osThrottle() {
 	lastOSRequestTime = time.Now()
 }
 
-func doRequestWithRetry(cfg *config.Config, client *http.Client, reqFunc func() (*http.Request, error)) (*http.Response, error) {
+func doRequestWithRetry(client *http.Client, reqFunc func() (*http.Request, error)) (*http.Response, error) {
 	var lastResp *http.Response
 	var lastErr error
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		req, err := reqFunc()
 		if err != nil {
 			return nil, err
@@ -205,7 +205,7 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 		"password": cfg.OpenSubtitlesPass,
 	})
 
-	resp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("POST", "https://api.opensubtitles.com/api/v1/login", bytes.NewBuffer(payload))
 		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
@@ -288,7 +288,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 		"hearing_impaired": "include",
 		"order_by":         "votes",
 	})
-	resp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("GET", searchURL, nil)
 		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
@@ -362,7 +362,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
 	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
-	downloadResp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	downloadResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
 		downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 		downloadReq.Header.Set("Content-Type", "application/json")
@@ -392,7 +392,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 3. Download the actual file
-	fileResp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	fileResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		fileReq, _ := http.NewRequest("GET", downloadInfo.Link, nil)
 		fileReq.Header.Set("User-Agent", "Arrgo v1.0")
 		return fileReq, nil
@@ -481,7 +481,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		"order_by":         "votes",
 	})
 
-	resp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("GET", searchURL, nil)
 		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
@@ -551,7 +551,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
 	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
-	downloadResp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	downloadResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
 		downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
 		downloadReq.Header.Set("Content-Type", "application/json")
@@ -581,7 +581,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	// 3. Download the actual file
-	fileResp, err := doRequestWithRetry(cfg, sharedhttp.DefaultClient, func() (*http.Request, error) {
+	fileResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		fileReq, _ := http.NewRequest("GET", downloadInfo.Link, nil)
 		fileReq.Header.Set("User-Agent", "Arrgo v1.0")
 		return fileReq, nil

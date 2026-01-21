@@ -339,6 +339,9 @@
                     {{if .PosterPath}} {{if hasPrefix .PosterPath "http"}}
                     <img
                         src="{{.PosterPath}}"
+                        loading="lazy"
+                        width="80"
+                        height="120"
                         style="
                             width: 80px;
                             border-radius: 4px;
@@ -349,6 +352,9 @@
                     {{else if eq .Source "local"}}
                     <img
                         src="/images/shows/{{.LocalID}}"
+                        loading="lazy"
+                        width="80"
+                        height="120"
                         style="
                             width: 80px;
                             border-radius: 4px;
@@ -359,6 +365,9 @@
                     {{else}}
                     <img
                         src="/images/tmdb/{{.PosterPath}}"
+                        loading="lazy"
+                        width="80"
+                        height="120"
                         style="
                             width: 80px;
                             border-radius: 4px;
@@ -486,9 +495,7 @@
                         {{else}} {{$isRequested := contains
                         .LibraryStatus.Message "Already requested"}}
                         {{$isDownloading := eq .LibraryStatus.Message
-                        "Downloading/Processing"}} {{$buttonLabel := "Select
-                        Seasons"}} {{if and (not $isRequested) (not
-                        $isDownloading)}}
+                        "Downloading/Processing"}} {{$buttonLabel := "Select Seasons"}} {{if and (not $isRequested) (not $isDownloading)}}
                         <a href="{{$detailsUrl}}" style="text-decoration: none">
                             <button
                                 style="
