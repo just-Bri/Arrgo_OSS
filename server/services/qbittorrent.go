@@ -246,6 +246,37 @@ func (q *QBittorrentClient) ResumeTorrent(ctx context.Context, hash string) erro
 	return q.batchAction(ctx, "resume", hash)
 }
 
+// ReannounceTorrent forces qBittorrent to reannounce to all trackers
+// This can help with stuck metadata downloads
+func (q *QBittorrentClient) ReannounceTorrent(ctx context.Context, hash string) error {
+	if err := q.ensureLogin(ctx); err != nil {
+		return err
+	}
+
+	reannounceURL := fmt.Sprintf("%s/api/v2/torrents/reannounce", q.cfg.QBittorrentURL)
+	data := url.Values{}
+	data.Set("hashes", hash)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", reannounceURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := q.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to reannounce torrent: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 func (q *QBittorrentClient) DeleteTorrent(ctx context.Context, hash string, deleteFiles bool) error {
 	action := "delete"
 	if err := q.ensureLogin(ctx); err != nil {

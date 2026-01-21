@@ -618,6 +618,29 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		activeHashes[normalizedHash] = true
 		slog.Debug("Found active torrent", "hash_original", t.Hash, "hash_normalized", normalizedHash, "state", t.State, "progress", t.Progress)
 
+		// Check if torrent is stuck downloading metadata (metadl state for more than 10 minutes)
+		if strings.ToLower(t.State) == "metadl" {
+			// Check when this download was last updated
+			var lastUpdated time.Time
+			err := database.DB.QueryRow(`
+				SELECT updated_at FROM downloads WHERE LOWER(torrent_hash) = $1`,
+				normalizedHash).Scan(&lastUpdated)
+			if err == nil {
+				// If stuck for more than 10 minutes, try to force reannounce
+				if time.Since(lastUpdated) > 10*time.Minute {
+					slog.Warn("Torrent stuck downloading metadata, forcing reannounce",
+						"hash", normalizedHash,
+						"name", t.Name,
+						"stuck_duration", time.Since(lastUpdated))
+					if err := s.qb.ReannounceTorrent(ctx, normalizedHash); err != nil {
+						slog.Error("Failed to reannounce stuck torrent", "error", err, "hash", normalizedHash)
+					} else {
+						slog.Info("Successfully reannounced stuck torrent", "hash", normalizedHash)
+					}
+				}
+			}
+		}
+
 		// Update our downloads table (use normalized hash for WHERE clause)
 		_, err := database.DB.Exec(`
 			UPDATE downloads
