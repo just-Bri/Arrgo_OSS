@@ -21,6 +21,16 @@ type AutomationService struct {
 	qb  *QBittorrentClient
 }
 
+type SearchResult struct {
+	Title      string `json:"title"`
+	MagnetLink string `json:"magnet_link"`
+	InfoHash   string `json:"info_hash"`
+	Seeds      int    `json:"seeds"`
+	Size       string `json:"size"`
+	Resolution string `json:"resolution"`
+	Quality    string `json:"quality"`
+}
+
 func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *AutomationService {
 	return &AutomationService{
 		cfg: cfg,
@@ -107,19 +117,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	if err != nil {
 		return fmt.Errorf("failed to call indexer: %w", err)
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := sharedhttp.ReadResponseBody(resp)
-		return fmt.Errorf("indexer returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	type SearchResult struct {
-		Title      string `json:"title"`
-		MagnetLink string `json:"magnet_link"`
-		InfoHash   string `json:"info_hash"`
-		Seeds      int    `json:"seeds"`
-		Size       string `json:"size"`
-	}
+	// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
 
 	var results []SearchResult
 	if err := sharedhttp.DecodeJSONResponse(resp, &results); err != nil {
@@ -128,14 +126,63 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 
 	if len(results) == 0 {
 		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title)
+		// Update request to track retry attempts - add a retry_count column or use updated_at
+		// For now, increment a counter in a comment field or leave as-is for retry
+		// The request will be retried on next cycle (5 minutes)
 		return nil
 	}
 
-	// 2. Choose best result (simplest: first one with most seeds)
-	// The indexer already sorts by seeds for YTS
-	best := results[0]
+	// 2. Choose best result - sort by seeds, filter by quality
+	best := selectBestResult(results, r.MediaType)
+	if best == nil {
+		slog.Info("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results))
+		return nil
+	}
 
-	// 3. Add to qBittorrent
+	// Extract or validate InfoHash
+	infoHash := best.InfoHash
+	if infoHash == "" {
+		// Try to extract from magnet link
+		infoHash = extractInfoHashFromMagnet(best.MagnetLink)
+		if infoHash == "" {
+			return fmt.Errorf("could not extract info hash from magnet link")
+		}
+	}
+
+	// Validate InfoHash format (should be 40 hex characters)
+	if len(infoHash) != 40 {
+		return fmt.Errorf("invalid info hash format: %s (expected 40 characters)", infoHash)
+	}
+
+	// 3. Begin Database Transaction FIRST
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update request status to downloading
+	_, err = tx.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update request status: %w", err)
+	}
+
+	// Add to downloads table
+	_, err = tx.Exec(`
+		INSERT INTO downloads (request_id, torrent_hash, title, status, updated_at)
+		VALUES ($1, $2, $3, 'downloading', NOW())
+		ON CONFLICT (torrent_hash) DO NOTHING`,
+		r.ID, infoHash, best.Title)
+	if err != nil {
+		return fmt.Errorf("failed to insert download record: %w", err)
+	}
+
+	// Commit transaction before adding to qBittorrent
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// 4. Add to qBittorrent AFTER database is updated
 	category := "arrgo-movies"
 	savePath := s.cfg.IncomingMoviesPath
 	if r.MediaType == "show" {
@@ -144,33 +191,14 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	}
 
 	if err := s.qb.AddTorrent(ctx, best.MagnetLink, category, savePath); err != nil {
+		// If qBittorrent add fails, rollback the database changes
+		// Reset request back to approved so it can be retried
+		database.DB.Exec("UPDATE requests SET status = 'approved', updated_at = NOW() WHERE id = $1", r.ID)
+		database.DB.Exec("DELETE FROM downloads WHERE torrent_hash = $1", infoHash)
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
 
-	// 4. Update Database
-	tx, err := database.DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Update request status
-	_, err = tx.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
-	if err != nil {
-		return err
-	}
-
-	// Add to downloads table
-	_, err = tx.Exec(`
-		INSERT INTO downloads (request_id, torrent_hash, title, status, updated_at)
-		VALUES ($1, $2, $3, 'downloading', NOW())
-		ON CONFLICT (torrent_hash) DO NOTHING`,
-		r.ID, best.InfoHash, best.Title)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	return nil
 }
 
 func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
@@ -292,4 +320,81 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// selectBestResult selects the best torrent result based on seeds, quality, and minimum requirements
+func selectBestResult(results []SearchResult, mediaType string) *SearchResult {
+	if len(results) == 0 {
+		return nil
+	}
+
+	// Filter by minimum seeds (at least 1 seed required)
+	var filtered []SearchResult
+	for _, r := range results {
+		if r.Seeds > 0 {
+			filtered = append(filtered, r)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	// Sort by seeds (descending), then by quality preference
+	// Quality preference: 1080p > 720p > 480p > others
+	qualityScore := func(res string) int {
+		resLower := strings.ToLower(res)
+		if strings.Contains(resLower, "1080") {
+			return 3
+		}
+		if strings.Contains(resLower, "720") {
+			return 2
+		}
+		if strings.Contains(resLower, "480") {
+			return 1
+		}
+		return 0
+	}
+
+	best := &filtered[0]
+	for i := 1; i < len(filtered); i++ {
+		current := &filtered[i]
+		// Prefer higher seeds
+		if current.Seeds > best.Seeds {
+			best = current
+		} else if current.Seeds == best.Seeds {
+			// If same seeds, prefer higher quality
+			if qualityScore(current.Resolution) > qualityScore(best.Resolution) {
+				best = current
+			}
+		}
+	}
+
+	return best
+}
+
+// extractInfoHashFromMagnet extracts the info hash from a magnet link
+func extractInfoHashFromMagnet(magnetLink string) string {
+	// Magnet link format: magnet:?xt=urn:btih:HASH&dn=...
+	// Look for "xt=urn:btih:" followed by 40 hex characters
+	prefix := "xt=urn:btih:"
+	idx := strings.Index(magnetLink, prefix)
+	if idx == -1 {
+		return ""
+	}
+
+	start := idx + len(prefix)
+	if start+40 > len(magnetLink) {
+		return ""
+	}
+
+	hash := magnetLink[start : start+40]
+	// Validate it's hex
+	for _, c := range hash {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return ""
+		}
+	}
+
+	return hash
 }

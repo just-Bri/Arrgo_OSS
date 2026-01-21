@@ -30,8 +30,12 @@ services:
       - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
       - INDEXER_URL=http://arrgo-indexer:5004
     depends_on:
-      - arrgo-db
-      - arrgo-indexer
+      arrgo-db:
+        condition: service_healthy
+      arrgo-indexer:
+        condition: service_started
+      arrgo_gluetun:
+        condition: service_healthy
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
@@ -114,6 +118,8 @@ services:
     depends_on:
       arrgo_gluetun:
         condition: service_healthy
+    # Note: Health check would need to be on gluetun's network, so we rely on gluetun's healthcheck
+    # qBittorrent WebUI should be accessible via arrgo_gluetun:8080 once gluetun is healthy
     environment:
       - PUID=99
       - PGID=100

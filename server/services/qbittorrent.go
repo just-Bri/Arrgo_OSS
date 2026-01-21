@@ -16,10 +16,16 @@ import (
 )
 
 type QBittorrentClient struct {
-	cfg    *config.Config
-	client *http.Client
-	mu     sync.Mutex
+	cfg         *config.Config
+	client      *http.Client
+	mu          sync.Mutex
+	lastLogin   time.Time
+	sessionValid bool
 }
+
+const (
+	sessionTimeout = 15 * time.Minute // qBittorrent sessions typically last longer
+)
 
 func NewQBittorrentClient(cfg *config.Config) (*QBittorrentClient, error) {
 	jar, _ := cookiejar.New(nil)
@@ -36,6 +42,11 @@ func (q *QBittorrentClient) Login(ctx context.Context) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	// Check if session is still valid
+	if q.sessionValid && time.Since(q.lastLogin) < sessionTimeout {
+		return nil
+	}
+
 	loginURL := fmt.Sprintf("%s/api/v2/auth/login", q.cfg.QBittorrentURL)
 	data := url.Values{}
 	data.Set("username", q.cfg.QBittorrentUser)
@@ -49,21 +60,30 @@ func (q *QBittorrentClient) Login(ctx context.Context) error {
 
 	resp, err := q.client.Do(req)
 	if err != nil {
+		q.sessionValid = false
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		q.sessionValid = false
 		return fmt.Errorf("login failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
+	q.lastLogin = time.Now()
+	q.sessionValid = true
 	return nil
 }
 
+// ensureLogin ensures we're logged in, refreshing if needed
+func (q *QBittorrentClient) ensureLogin(ctx context.Context) error {
+	return q.Login(ctx)
+}
+
 func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, category string, savePath string) error {
-	// Ensure we're logged in (qBittorrent might need re-auth)
-	if err := q.Login(ctx); err != nil {
+	// Ensure we're logged in (uses cached session if valid)
+	if err := q.ensureLogin(ctx); err != nil {
 		return fmt.Errorf("failed to login before adding torrent: %w", err)
 	}
 
@@ -89,6 +109,27 @@ func (q *QBittorrentClient) AddTorrent(ctx context.Context, magnetLink string, c
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden {
+		// Session expired, invalidate and retry once
+		q.mu.Lock()
+		q.sessionValid = false
+		q.mu.Unlock()
+		
+		// Retry login and request
+		if err := q.ensureLogin(ctx); err != nil {
+			return fmt.Errorf("failed to re-login after 403: %w", err)
+		}
+		
+		// Retry the request
+		req, _ = http.NewRequestWithContext(ctx, "POST", addURL, strings.NewReader(data.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err = q.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to add torrent: status %d, body: %s", resp.StatusCode, string(body))
@@ -108,7 +149,7 @@ type TorrentStatus struct {
 }
 
 func (q *QBittorrentClient) GetTorrents(ctx context.Context, filter string) ([]TorrentStatus, error) {
-	if err := q.Login(ctx); err != nil {
+	if err := q.ensureLogin(ctx); err != nil {
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
@@ -165,7 +206,7 @@ func (q *QBittorrentClient) ResumeTorrent(ctx context.Context, hash string) erro
 
 func (q *QBittorrentClient) DeleteTorrent(ctx context.Context, hash string, deleteFiles bool) error {
 	action := "delete"
-	if err := q.Login(ctx); err != nil {
+	if err := q.ensureLogin(ctx); err != nil {
 		return err
 	}
 
@@ -194,7 +235,7 @@ func (q *QBittorrentClient) DeleteTorrent(ctx context.Context, hash string, dele
 }
 
 func (q *QBittorrentClient) batchAction(ctx context.Context, action string, hash string) error {
-	if err := q.Login(ctx); err != nil {
+	if err := q.ensureLogin(ctx); err != nil {
 		return err
 	}
 

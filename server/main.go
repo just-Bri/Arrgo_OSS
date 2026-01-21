@@ -129,8 +129,18 @@ func main() {
 
 	qb, err := services.NewQBittorrentClient(cfg)
 	if err != nil {
-		slog.Warn("Failed to initialize qBittorrent client", "error", err)
+		slog.Error("Failed to initialize qBittorrent client", "error", err)
+		slog.Warn("Automation service will not start without qBittorrent client")
 	} else {
+		// Verify qBittorrent connectivity before starting automation
+		testCtx, testCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer testCancel()
+		if err := qb.Login(testCtx); err != nil {
+			slog.Error("Failed to connect to qBittorrent, automation may not work", "error", err, "url", cfg.QBittorrentURL)
+			slog.Warn("Automation service will start but may fail until qBittorrent is available")
+		} else {
+			slog.Info("Successfully connected to qBittorrent")
+		}
 		automation := services.NewAutomationService(cfg, qb)
 		go automation.Start(ctx)
 	}

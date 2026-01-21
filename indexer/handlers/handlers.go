@@ -34,14 +34,33 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")   // "json" or "html" (default)
 
 	if query == "" {
+		if format == "json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "query parameter 'q' is required"})
+		} else {
+			http.Error(w, "query parameter 'q' is required", http.StatusBadRequest)
+		}
 		return
 	}
 
 	results, errs := performSearch(r.Context(), query, searchType)
 
+	// Log all errors, not just when results are empty
+	if len(errs) > 0 {
+		for _, err := range errs {
+			slog.Error("Indexer search error", "error", err, "query", query, "type", searchType)
+		}
+	}
+
 	if len(results) == 0 && len(errs) > 0 {
-		slog.Error("Search error", "error", errs[0], "query", query, "type", searchType)
-		http.Error(w, errs[0].Error(), http.StatusInternalServerError)
+		if format == "json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": errs[0].Error()})
+		} else {
+			http.Error(w, errs[0].Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
