@@ -58,12 +58,12 @@ func (s *AutomationService) Start(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
-	// Update download progress every 30 seconds
-	updateTicker := time.NewTicker(30 * time.Second)
+	// Update download progress every 60 minutes
+	updateTicker := time.NewTicker(60 * time.Minute)
 	defer updateTicker.Stop()
 
-	// Check subtitle queue every 15 minutes
-	subtitleTicker := time.NewTicker(15 * time.Minute)
+	// Check subtitle queue every 60 minutes
+	subtitleTicker := time.NewTicker(60 * time.Minute)
 	defer subtitleTicker.Stop()
 
 	// Wait for qBittorrent to be available before processing requests
@@ -162,7 +162,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	if r.MediaType == "show" && r.Seasons != "" {
 		return s.processShowRequestWithSeasons(ctx, r)
 	}
-	
+
 	// For movies or single-season shows, use the original logic
 	return s.processSingleRequest(ctx, r)
 }
@@ -171,7 +171,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 	// Parse requested seasons
 	requestedSeasons := strings.Split(r.Seasons, ",")
 	var seasonsToProcess []string
-	
+
 	// Get existing downloads for this request and check which seasons might already have torrents
 	rows, err := database.DB.Query(`
 		SELECT torrent_hash, title 
@@ -181,7 +181,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 		AND torrent_hash != ''`, r.ID)
 	existingHashes := make(map[string]bool)
 	existingSeasons := make(map[string]bool) // Track which seasons we've found torrents for
-	
+
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -198,7 +198,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 						SET progress = $1, status = $2, updated_at = NOW()
 						WHERE LOWER(torrent_hash) = $3`,
 						existingTorrent.Progress, existingTorrent.State, normalizedHash)
-					
+
 					// Try to determine which season this torrent is for by checking the title
 					torrentTitle := strings.ToLower(existingTorrent.Name)
 					for _, seasonStr := range requestedSeasons {
@@ -222,7 +222,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 			}
 		}
 	}
-	
+
 	// Determine which seasons still need processing
 	for _, seasonStr := range requestedSeasons {
 		seasonStr = strings.TrimSpace(seasonStr)
@@ -236,7 +236,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 			slog.Debug("Season already has torrent, skipping", "request_id", r.ID, "season", seasonStr)
 		}
 	}
-	
+
 	if len(seasonsToProcess) == 0 {
 		slog.Info("All seasons already have torrents", "request_id", r.ID)
 		// Check if all torrents are completed
@@ -266,7 +266,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 		}
 		return nil
 	}
-	
+
 	// Process each season separately
 	anyProcessed := false
 	for _, seasonStr := range seasonsToProcess {
@@ -274,11 +274,11 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 		if seasonStr == "" {
 			continue
 		}
-		
+
 		// Create a temporary request for this single season
 		singleSeasonReq := r
 		singleSeasonReq.Seasons = seasonStr
-		
+
 		slog.Info("Processing season for show request", "request_id", r.ID, "season", seasonStr, "title", r.Title)
 		if err := s.processSingleSeason(ctx, singleSeasonReq); err != nil {
 			slog.Error("Failed to process season", "request_id", r.ID, "season", seasonStr, "error", err)
@@ -287,12 +287,12 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 			anyProcessed = true
 		}
 	}
-	
+
 	// Update request status
 	if anyProcessed {
 		database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
 	}
-	
+
 	return nil
 }
 
@@ -307,43 +307,43 @@ func (s *AutomationService) processSingleRequest(ctx context.Context, r models.R
 		AND torrent_hash != ''
 		ORDER BY created_at DESC 
 		LIMIT 1`, r.ID).Scan(&existingHash)
-	
+
 	if err == nil && existingHash != "" {
 		// Check if torrent still exists in qBittorrent
 		normalizedHash := strings.ToLower(existingHash)
 		existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
 		if err == nil && existingTorrent != nil {
-			slog.Info("Request already has active torrent in qBittorrent, skipping processing", 
-				"request_id", r.ID, 
-				"torrent_hash", normalizedHash, 
+			slog.Info("Request already has active torrent in qBittorrent, skipping processing",
+				"request_id", r.ID,
+				"torrent_hash", normalizedHash,
 				"torrent_name", existingTorrent.Name,
 				"progress", existingTorrent.Progress,
 				"state", existingTorrent.State)
-			
+
 			// Update download status to match current torrent state
 			database.DB.Exec(`
 				UPDATE downloads
 				SET progress = $1, status = $2, updated_at = NOW()
 				WHERE LOWER(torrent_hash) = $3`,
 				existingTorrent.Progress, existingTorrent.State, normalizedHash)
-			
+
 			// Update request status if torrent is completed
 			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
 				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", r.ID)
 			} else {
 				database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
 			}
-			
+
 			return nil // Skip processing, torrent already exists
 		} else {
 			// Torrent hash exists in DB but not in qBittorrent - might have been deleted
 			// Continue with processing to re-add it
-			slog.Debug("Request has torrent hash in DB but not found in qBittorrent, will re-process", 
-				"request_id", r.ID, 
+			slog.Debug("Request has torrent hash in DB but not found in qBittorrent, will re-process",
+				"request_id", r.ID,
 				"torrent_hash", normalizedHash)
 		}
 	}
-	
+
 	return s.processSingleSeason(ctx, r)
 }
 
@@ -561,7 +561,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		normalizedHash := strings.ToLower(t.Hash)
 		activeHashes[normalizedHash] = true
 		slog.Debug("Found active torrent", "hash_original", t.Hash, "hash_normalized", normalizedHash, "state", t.State, "progress", t.Progress)
-		
+
 		// Update our downloads table (use normalized hash for WHERE clause)
 		_, err := database.DB.Exec(`
 			UPDATE downloads
@@ -607,9 +607,9 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 					for h := range activeHashes {
 						activeHashList = append(activeHashList, h)
 					}
-					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved", 
-						"torrent_hash", hash, 
-						"normalized_hash", normalizedHash, 
+					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved",
+						"torrent_hash", hash,
+						"normalized_hash", normalizedHash,
 						"request_id", reqID,
 						"active_hashes_count", len(activeHashes),
 						"sample_active_hashes", func() []string {
