@@ -21,7 +21,7 @@ type AutomationService struct {
 	qb  *QBittorrentClient
 }
 
-type SearchResult struct {
+type TorrentSearchResult struct {
 	Title      string `json:"title"`
 	MagnetLink string `json:"magnet_link"`
 	InfoHash   string `json:"info_hash"`
@@ -119,7 +119,7 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 	}
 	// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
 
-	var results []SearchResult
+	var results []TorrentSearchResult
 	if err := sharedhttp.DecodeJSONResponse(resp, &results); err != nil {
 		return fmt.Errorf("failed to decode indexer response: %w", err)
 	}
@@ -323,13 +323,13 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 }
 
 // selectBestResult selects the best torrent result based on seeds, quality, and minimum requirements
-func selectBestResult(results []SearchResult, mediaType string) *SearchResult {
+func selectBestResult(results []TorrentSearchResult, mediaType string) *TorrentSearchResult {
 	if len(results) == 0 {
 		return nil
 	}
 
 	// Filter by minimum seeds (at least 1 seed required)
-	var filtered []SearchResult
+	var filtered []TorrentSearchResult
 	for _, r := range results {
 		if r.Seeds > 0 {
 			filtered = append(filtered, r)
