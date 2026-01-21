@@ -203,19 +203,54 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 					torrentTitle := strings.ToLower(existingTorrent.Name)
 					for _, seasonStr := range requestedSeasons {
 						seasonStr = strings.TrimSpace(seasonStr)
-						seasonNum, _ := strconv.Atoi(seasonStr)
-						// Check for season patterns in torrent title
-						seasonPatterns := []string{
-							fmt.Sprintf("s%02d", seasonNum),
-							fmt.Sprintf("s%d", seasonNum),
-							fmt.Sprintf("season %d", seasonNum),
-							fmt.Sprintf("season %02d", seasonNum),
+						if seasonStr == "" {
+							continue
 						}
+						seasonNum, err := strconv.Atoi(seasonStr)
+						if err != nil {
+							continue
+						}
+						// Check for season patterns in torrent title
+						// Use word boundaries to avoid false matches (e.g., "S10" matching "S1")
+						seasonPatterns := []string{
+							fmt.Sprintf("s%02d", seasonNum),       // S02
+							fmt.Sprintf("s%d", seasonNum),         // S2
+							fmt.Sprintf("season %d", seasonNum),   // Season 2
+							fmt.Sprintf("season %02d", seasonNum), // Season 02
+							fmt.Sprintf("s%02de", seasonNum),      // S02E (episode format)
+						}
+						matched := false
 						for _, pattern := range seasonPatterns {
 							if strings.Contains(torrentTitle, pattern) {
-								existingSeasons[seasonStr] = true
-								break
+								// Additional check: ensure we're not matching a higher season number
+								// e.g., "S10" shouldn't match "S1"
+								if seasonNum < 10 {
+									// For single-digit seasons, check that it's not part of a larger number
+									patternIndex := strings.Index(torrentTitle, pattern)
+									if patternIndex >= 0 {
+										// Check character after the pattern to ensure it's not a digit
+										if patternIndex+len(pattern) < len(torrentTitle) {
+											nextChar := torrentTitle[patternIndex+len(pattern)]
+											if nextChar >= '0' && nextChar <= '9' {
+												// This might be part of a larger number (e.g., S1 in S10)
+												continue
+											}
+										}
+										matched = true
+										break
+									}
+								} else {
+									matched = true
+									break
+								}
 							}
+						}
+						if matched {
+							existingSeasons[seasonStr] = true
+							slog.Debug("Found existing torrent for season",
+								"request_id", r.ID,
+								"season", seasonStr,
+								"torrent_title", existingTorrent.Name)
 						}
 					}
 				}
@@ -269,7 +304,13 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 
 	// Process each season separately
 	anyProcessed := false
-	for _, seasonStr := range seasonsToProcess {
+	slog.Info("Processing seasons for show request",
+		"request_id", r.ID,
+		"title", r.Title,
+		"total_seasons", len(seasonsToProcess),
+		"seasons", strings.Join(seasonsToProcess, ","))
+
+	for i, seasonStr := range seasonsToProcess {
 		seasonStr = strings.TrimSpace(seasonStr)
 		if seasonStr == "" {
 			continue
@@ -279,12 +320,23 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 		singleSeasonReq := r
 		singleSeasonReq.Seasons = seasonStr
 
-		slog.Info("Processing season for show request", "request_id", r.ID, "season", seasonStr, "title", r.Title)
+		slog.Info("Processing season for show request",
+			"request_id", r.ID,
+			"season", seasonStr,
+			"season_index", i+1,
+			"total_seasons", len(seasonsToProcess),
+			"title", r.Title)
 		if err := s.processSingleSeason(ctx, singleSeasonReq); err != nil {
-			slog.Error("Failed to process season", "request_id", r.ID, "season", seasonStr, "error", err)
+			slog.Error("Failed to process season",
+				"request_id", r.ID,
+				"season", seasonStr,
+				"error", err)
 			// Continue with other seasons even if one fails
 		} else {
 			anyProcessed = true
+			slog.Info("Successfully processed season",
+				"request_id", r.ID,
+				"season", seasonStr)
 		}
 	}
 
@@ -359,20 +411,17 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		if r.Seasons != "" {
 			seasons := strings.Split(r.Seasons, ",")
 			// Build query with season info: "Show Name S02" or "Show Name Season 2"
-			// Try multiple formats to catch different naming conventions
-			seasonQueries := []string{}
-			for _, seasonStr := range seasons {
-				seasonNum := strings.TrimSpace(seasonStr)
-				if seasonNum != "" {
+			// For single season requests, use the specific season in the query
+			seasonNum := strings.TrimSpace(seasons[0])
+			if seasonNum != "" {
+				// Convert to int for proper zero-padding
+				if num, err := strconv.Atoi(seasonNum); err == nil {
 					// Format: "Show Name S02" (most common)
-					seasonQueries = append(seasonQueries, fmt.Sprintf("%s S%02s", r.Title, seasonNum))
-					// Format: "Show Name Season 2"
-					seasonQueries = append(seasonQueries, fmt.Sprintf("%s Season %s", r.Title, seasonNum))
+					searchQuery = fmt.Sprintf("%s S%02d", r.Title, num)
+				} else {
+					// Fallback to string format if conversion fails
+					searchQuery = fmt.Sprintf("%s S%s", r.Title, seasonNum)
 				}
-			}
-			// Use the first season query for now (we'll filter results by season match)
-			if len(seasonQueries) > 0 {
-				searchQuery = seasonQueries[0]
 			}
 		}
 	}
