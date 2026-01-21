@@ -26,5 +26,7 @@ func GetIndexers() []Indexer {
 	return []Indexer{
 		&YTSIndexer{},
 		NewSolidTorrentsIndexer(),
+		NewX1337Indexer(),
+		NewTorrentGalaxyIndexer(),
 	}
 }

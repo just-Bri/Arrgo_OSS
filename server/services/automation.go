@@ -166,29 +166,46 @@ func (s *AutomationService) processRequest(ctx context.Context, r models.Request
 		return nil
 	}
 
+	// Log first few results for debugging
+	for i, result := range results {
+		if i < 3 {
+			slog.Debug("Indexer result", "index", i, "title", result.Title, "seeds", result.Seeds, "quality", result.Quality, "resolution", result.Resolution, "has_info_hash", result.InfoHash != "", "has_magnet", result.MagnetLink != "")
+		}
+	}
+
 	// 2. Choose best result - sort by seeds, filter by quality
 	best := selectBestResult(results, r.MediaType)
 	if best == nil {
-		slog.Info("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results))
+		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results))
 		return nil
 	}
 
-	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution)
+	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution, "info_hash", best.InfoHash, "has_magnet", best.MagnetLink != "")
 
 	// Extract or validate InfoHash
 	infoHash := best.InfoHash
 	if infoHash == "" {
+		magnetPreview := best.MagnetLink
+		if len(magnetPreview) > 100 {
+			magnetPreview = magnetPreview[:100] + "..."
+		}
+		slog.Debug("InfoHash not in result, extracting from magnet link", "request_id", r.ID, "magnet_preview", magnetPreview)
 		// Try to extract from magnet link
 		infoHash = extractInfoHashFromMagnet(best.MagnetLink)
 		if infoHash == "" {
+			slog.Error("Could not extract info hash from magnet link", "request_id", r.ID, "magnet_link", best.MagnetLink)
 			return fmt.Errorf("could not extract info hash from magnet link")
 		}
+		slog.Debug("Extracted info hash from magnet", "request_id", r.ID, "info_hash", infoHash)
 	}
 
 	// Validate InfoHash format (should be 40 hex characters)
 	if len(infoHash) != 40 {
+		slog.Error("Invalid info hash format", "request_id", r.ID, "info_hash", infoHash, "length", len(infoHash))
 		return fmt.Errorf("invalid info hash format: %s (expected 40 characters)", infoHash)
 	}
+
+	slog.Debug("InfoHash validated successfully", "request_id", r.ID, "info_hash", infoHash)
 
 	// 3. Begin Database Transaction FIRST
 	tx, err := database.DB.Begin()
@@ -367,17 +384,34 @@ func selectBestResult(results []TorrentSearchResult, mediaType string) *TorrentS
 		return nil
 	}
 
+	// Log sample results for debugging
+	if len(results) > 0 {
+		sample := results[0]
+		slog.Debug("Sample torrent result", "title", sample.Title, "seeds", sample.Seeds, "quality", sample.Quality, "resolution", sample.Resolution, "info_hash", sample.InfoHash)
+	}
+
 	// Filter by minimum seeds (at least 1 seed required)
 	var filtered []TorrentSearchResult
+	zeroSeedCount := 0
 	for _, r := range results {
 		if r.Seeds > 0 {
 			filtered = append(filtered, r)
+		} else {
+			zeroSeedCount++
 		}
 	}
 
 	if len(filtered) == 0 {
+		slog.Warn("All results filtered out due to zero seeds", "total_results", len(results), "zero_seed_count", zeroSeedCount)
+		// If all results have 0 seeds, still try to use the first one (might be a new torrent)
+		if len(results) > 0 {
+			slog.Info("Using first result despite zero seeds", "title", results[0].Title, "seeds", results[0].Seeds)
+			return &results[0]
+		}
 		return nil
 	}
+
+	slog.Debug("Filtered results", "total_results", len(results), "filtered_count", len(filtered), "zero_seed_count", zeroSeedCount)
 
 	// Sort by seeds (descending), then by quality preference
 	// Quality preference: 1080p > 720p > 480p > others
