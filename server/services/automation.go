@@ -568,6 +568,9 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		magnetLink = fmt.Sprintf("magnet:?xt=urn:btih:%s", strings.ToLower(infoHash))
 		slog.Debug("Constructed magnet link from info hash", "request_id", r.ID, "magnet_preview", magnetLink)
 	}
+
+	// Add public trackers to magnet link to help qBittorrent fetch metadata faster
+	magnetLink = addTrackersToMagnet(magnetLink, infoHash)
 	if err := s.qb.AddTorrent(ctx, magnetLink, category, savePath); err != nil {
 		// If qBittorrent add fails, check if it's because torrent already exists
 		// (qBittorrent might return an error even if torrent exists)
@@ -872,4 +875,56 @@ func extractInfoHashFromMagnet(magnetLink string) string {
 	}
 
 	return hash
+}
+
+// addTrackersToMagnet adds public trackers to a magnet link to help qBittorrent fetch metadata faster
+func addTrackersToMagnet(magnetLink string, infoHash string) string {
+	// Common public trackers that help with metadata fetching
+	publicTrackers := []string{
+		"udp://tracker.opentrackr.org:1337/announce",
+		"udp://tracker.openbittorrent.com:80/announce",
+		"udp://tracker.coppersurfer.tk:6969/announce",
+		"udp://tracker.leechers-paradise.org:6969/announce",
+		"udp://tracker.internetwarriors.net:1337/announce",
+		"udp://exodus.desync.com:6969/announce",
+		"udp://open.stealth.si:80/announce",
+		"udp://tracker.torrent.eu.org:451/announce",
+		"udp://tracker.tiny-vps.com:6969/announce",
+		"udp://tracker.cyberia.is:6969/announce",
+	}
+
+	// Extract info hash if not provided
+	if infoHash == "" {
+		infoHash = extractInfoHashFromMagnet(magnetLink)
+	}
+	if infoHash == "" {
+		// Can't enhance without info hash
+		return magnetLink
+	}
+
+	// Check if magnet link already has trackers
+	if strings.Contains(magnetLink, "&tr=") {
+		// Already has trackers, just return as-is
+		return magnetLink
+	}
+
+	// Build enhanced magnet link with trackers
+	enhancedLink := fmt.Sprintf("magnet:?xt=urn:btih:%s", strings.ToLower(infoHash))
+
+	// Add display name if present in original
+	if idx := strings.Index(magnetLink, "&dn="); idx != -1 {
+		end := strings.Index(magnetLink[idx+4:], "&")
+		if end == -1 {
+			enhancedLink += magnetLink[idx:]
+		} else {
+			enhancedLink += magnetLink[idx : idx+4+end]
+		}
+	}
+
+	// Add all trackers (trackers in magnet links don't need URL encoding)
+	for _, tracker := range publicTrackers {
+		enhancedLink += "&tr=" + tracker
+	}
+
+	return enhancedLink
 }
