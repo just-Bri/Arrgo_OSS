@@ -80,8 +80,8 @@ services:
       # VPN Provider - Private Internet Access (PIA)
       - VPN_ENABLED=yes
       - VPN_PROV=pia
-      - VPN_USER=${PIA_USER:-p2072392}
-      - VPN_PASS=${PIA_PASSWORD:-J1_15ttpo7}
+      - VPN_USER=${PIA_USER}
+      - VPN_PASS=${PIA_PASSWORD}
       # VPN Server selection (optional - leave empty for auto-select)
       - VPN_REMOTE=${PIA_REMOTE:-}  # e.g., "us-california.privacy.network" or leave empty for auto
       # Port forwarding (PIA supports port forwarding)

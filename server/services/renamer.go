@@ -402,13 +402,13 @@ func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanu
 	var torrentHash sql.NullString
 
 	query := `
-		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, e.torrent_hash, s.season_number, sh.title, sh.year, sh.tvdb_id, sh.imdb_id, sh.poster_path
+		SELECT e.id, e.episode_number, e.title, e.file_path, e.quality, e.size, e.torrent_hash, s.season_number, sh.id, sh.title, sh.year, sh.tvdb_id, sh.imdb_id, sh.poster_path
 		FROM episodes e
 		JOIN seasons s ON e.season_id = s.id
 		JOIN shows sh ON s.show_id = sh.id
 		WHERE e.id = $1
 	`
-	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &torrentHash, &s.SeasonNumber, &sh.Title, &sh.Year, &sh.TVDBID, &sh.IMDBID, &sh.PosterPath)
+	err := database.DB.QueryRow(query, episodeID).Scan(&e.ID, &e.EpisodeNumber, &e.Title, &e.FilePath, &e.Quality, &e.Size, &torrentHash, &s.SeasonNumber, &sh.ID, &sh.Title, &sh.Year, &sh.TVDBID, &sh.IMDBID, &sh.PosterPath)
 	if err != nil {
 		return err
 	}
@@ -516,6 +516,18 @@ func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanu
 	if err != nil {
 		return err
 	}
+
+	// Rescan the show directory to ensure all episodes are detected and added to the database
+	// This is important after importing episodes so the library is up-to-date
+	go func() {
+		showDirPath := filepath.Join(cfg.ShowsPath, showDirName)
+		scanSeasons(sh.ID, showDirPath)
+		slog.Info("Rescanned show directory after episode import",
+			"show_id", sh.ID,
+			"show_title", sh.Title,
+			"season", s.SeasonNumber,
+			"episode", e.EpisodeNumber)
+	}()
 
 	// Check seeding criteria and clean up torrent if needed (only if we moved, not copied)
 	if !shouldCopyInsteadOfMove && torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingShowsPath) {
