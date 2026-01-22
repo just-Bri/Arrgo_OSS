@@ -25,7 +25,7 @@ services:
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
       - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
       - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
-      - QBITTORRENT_URL=http://arrgo_gluetun:8080
+      - QBITTORRENT_URL=http://arrgo_qbittorrentvpn:8080
       - QBITTORRENT_USER=${QBITTORRENT_USER:-admin}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
       - INDEXER_URL=http://arrgo-indexer:5004
@@ -34,9 +34,7 @@ services:
         condition: service_healthy
       arrgo-indexer:
         condition: service_started
-      arrgo_gluetun:
-        condition: service_healthy
-      arrgo_qbittorrent:
+      arrgo_qbittorrentvpn:
         condition: service_started
     volumes:
       - ./server/templates:/root/templates:ro
@@ -67,9 +65,9 @@ services:
       - arrgo-network
     restart: unless-stopped
 
-  arrgo_gluetun:
-    image: qmcgaw/gluetun:latest
-    container_name: arrgo_gluetun
+  arrgo_qbittorrentvpn:
+    image: binhex/arch-qbittorrentvpn:latest
+    container_name: arrgo_qbittorrentvpn
     cap_add:
       - NET_ADMIN
     devices:
@@ -78,72 +76,32 @@ services:
       - 8080:8080 # qBittorrent WebUI
       - 6881:6881 # qBittorrent TCP
       - 6881:6881/udp # qBittorrent UDP
-    volumes:
-      - /mnt/user/appdata/gluetun:/gluetun
-      # Mount OpenVPN config file
-      - /mnt/user/appdata/gluetun/ca.protonvpn.udp.ovpn:/gluetun/ca.protonvpn.udp.ovpn:ro
     environment:
-      # ProtonVPN settings - Using OpenVPN
-      # Option 1: Let Gluetun handle ProtonVPN automatically (recommended)
-      - VPN_SERVICE_PROVIDER=protonvpn
-      - VPN_TYPE=openvpn
-      # OpenVPN credentials (ProtonVPN username/password)
-      - OPENVPN_USER=${OPENVPN_USER:-BKjGc2M8KeUcj34T}
-      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD:-2EMy4Wl6FkG5wPzQHCVyTjwzravF2QrQ}
-      # Server selection
-      - SERVER_COUNTRIES=${SERVER_COUNTRIES:-Canada}
-      
-      # Option 2: Use custom OpenVPN config file (uncomment below and comment out above)
-      # - VPN_SERVICE_PROVIDER=custom
-      # - OPENVPN_CONFIG=/gluetun/ca.protonvpn.udp.ovpn
-      # - OPENVPN_USER=${OPENVPN_USER}
-      # - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
-      # Port forwarding
-      - VPN_PORT_FORWARDING=on
-      - VPN_PORT_FORWARDING_PROVIDER=protonvpn
-      # Firewall - allow local network
-      - FIREWALL_OUTBOUND_SUBNETS=192.168.10.0/24,172.16.0.0/12
-      # Timezone
-      - TZ=America/Los_Angeles
-      # Health check
-      - HEALTH_VPN_DURATION_INITIAL=30s
-    networks:
-      - arrgo-network
-    restart: unless-stopped
-    healthcheck:
-      test:
-        - CMD
-        - ping
-        - -c
-        - "1"
-        - 1.1.1.1
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      net.unraid.docker.shell: bash
-      io.hass.type: addon
-
-  arrgo_qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: arrgo_qbittorrent
-    network_mode: service:arrgo_gluetun
-    depends_on:
-      arrgo_gluetun:
-        condition: service_healthy
-    # Note: Health check would need to be on gluetun's network, so we rely on gluetun's healthcheck
-    # qBittorrent WebUI should be accessible via arrgo_gluetun:8080 once gluetun is healthy
-    environment:
+      # VPN Provider - Private Internet Access (PIA)
+      - VPN_ENABLED=yes
+      - VPN_PROV=pia
+      - VPN_USER=${PIA_USER:-p2072392}
+      - VPN_PASS=${PIA_PASSWORD:-J1_15ttpo7}
+      # VPN Server selection (optional - leave empty for auto-select)
+      - VPN_REMOTE=${PIA_REMOTE:-}  # e.g., "us-california.privacy.network" or leave empty for auto
+      # Port forwarding (PIA supports port forwarding)
+      - ENABLE_PRIVOXY=no
+      - LAN_NETWORK=192.168.10.0/24
+      # qBittorrent settings
+      - WEBUI_PORT=8080
+      - UMASK=000
       - PUID=99
       - PGID=100
+      # Timezone
       - TZ=America/Los_Angeles
-      - WEBUI_PORT=8080
     volumes:
       - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config:/config
       - /mnt/user/media/incoming:/data/incoming
+    networks:
+      - arrgo-network
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: qbittorrent
+      net.unraid.docker.managed: qbittorrentvpn
       net.unraid.docker.webui: http://192.168.10.11:8080
 
   arrgo-indexer:
