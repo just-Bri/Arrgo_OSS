@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type LibraryStatus struct {
@@ -136,6 +137,39 @@ func DeleteRequest(id int, qb *QBittorrentClient) error {
 	return err
 }
 
+// DeleteCompletedRequest deletes only the request record from the database.
+// This is used for cleaning up completed requests - it does NOT delete torrents or files.
+// The movies/shows remain in the library.
+func DeleteCompletedRequest(id int) error {
+	// Delete only the request record (cascades to downloads table due to foreign key)
+	// We intentionally do NOT delete torrents or files - they should remain in the library
+	_, err := database.DB.Exec("DELETE FROM requests WHERE id = $1", id)
+	if err == nil {
+		slog.Info("Deleted completed request", "request_id", id)
+	}
+	return err
+}
+
+// CleanupCompletedRequests deletes all completed requests from the database.
+// This keeps movies/shows in the library but removes the request records.
+func CleanupCompletedRequests() (int, error) {
+	result, err := database.DB.Exec("DELETE FROM requests WHERE status = 'completed'")
+	if err != nil {
+		return 0, err
+	}
+	
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	
+	if count > 0 {
+		slog.Info("Cleaned up completed requests", "count", count)
+	}
+	
+	return int(count), nil
+}
+
 func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, error) {
 	status := LibraryStatus{Exists: false}
 
@@ -216,4 +250,28 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 	}
 
 	return status, nil
+}
+
+// StartCompletedRequestsCleanupWorker starts a background worker that periodically deletes completed requests.
+// This keeps movies/shows in the library but removes request records once they're completed.
+func StartCompletedRequestsCleanupWorker() {
+	slog.Info("Starting completed requests cleanup background worker")
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour) // Check every 1 hour
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				slog.Debug("Running completed requests cleanup check")
+				count, err := CleanupCompletedRequests()
+				if err != nil {
+					slog.Error("Error during completed requests cleanup", "error", err)
+				} else if count > 0 {
+					slog.Info("Completed requests cleanup finished", "requests_deleted", count)
+				}
+			}
+		}
+	}()
 }

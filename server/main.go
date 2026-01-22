@@ -124,6 +124,9 @@ func main() {
 
 	// Start background workers
 	services.StartIncomingScanner(cfg)
+	
+	// Start completed requests cleanup worker (doesn't require qBittorrent)
+	services.StartCompletedRequestsCleanupWorker()
 
 	// Start Automation Service
 	ctx, cancel := context.WithCancel(context.Background())
