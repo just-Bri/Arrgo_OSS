@@ -5,6 +5,7 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"Arrgo/services"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -179,7 +180,7 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	movieChan := make(chan models.Movie, len(moviesToImport))
 
 	// Start workers
-	for i := 0; i < services.DefaultWorkerCount; i++ {
+	for range services.DefaultWorkerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -482,4 +483,152 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Warn("NUKE operation completed successfully", "user", user.Username)
 
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// GetMovieAlternativesHandler returns alternative matches for a movie
+func GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	movieID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	alternatives, err := services.GetMovieAlternatives(cfg, movieID)
+	if err != nil {
+		slog.Error("Error getting movie alternatives", "movie_id", movieID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alternatives)
+}
+
+// GetShowAlternativesHandler returns alternative matches for a show
+func GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	showID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	alternatives, err := services.GetShowAlternatives(cfg, showID)
+	if err != nil {
+		slog.Error("Error getting show alternatives", "show_id", showID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alternatives)
+}
+
+// RematchMovieHandler updates a movie with a new TMDB ID
+func RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	movieID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		TMDBID string `json:"tmdb_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.TMDBID == "" {
+		http.Error(w, "tmdb_id is required", http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.RematchMovie(cfg, movieID, req.TMDBID); err != nil {
+		slog.Error("Error rematching movie", "movie_id", movieID, "tmdb_id", req.TMDBID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// RematchShowHandler updates a show with a new TVDB ID
+func RematchShowHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	showID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		TVDBID string `json:"tvdb_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.TVDBID == "" {
+		http.Error(w, "tvdb_id is required", http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.RematchShow(cfg, showID, req.TVDBID); err != nil {
+		slog.Error("Error rematching show", "show_id", showID, "tvdb_id", req.TVDBID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }

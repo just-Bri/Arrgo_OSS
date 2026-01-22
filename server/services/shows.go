@@ -47,7 +47,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 	var wg sync.WaitGroup
 
 	// Start workers
-	for i := 0; i < DefaultWorkerCount; i++ {
+	for range DefaultWorkerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -291,7 +291,7 @@ func scanEpisodesFromShowFolder(showID int, showPath string) {
 		quality := DetectQuality(episodePath)
 
 		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
-		
+
 		// Try to link torrent hash if file is in incoming folder
 		cfg := config.Load()
 		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
@@ -356,7 +356,7 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		quality := DetectQuality(episodePath)
 
 		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
-		
+
 		// Try to link torrent hash if file is in incoming folder
 		cfg := config.Load()
 		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {

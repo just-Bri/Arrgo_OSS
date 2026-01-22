@@ -69,6 +69,16 @@
                 </div>
             </div>
 
+            {{if .IsAdmin}}
+                {{if gt .Movie.ID 0}}
+                    <div style="margin-top: 25px;">
+                        <button onclick="showAlternatives({{.Movie.ID}}, 'movie')" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                            Fix Mismatch
+                        </button>
+                    </div>
+                {{end}}
+            {{end}}
+
             {{if or (eq .Movie.Status "External") (eq .Movie.Status "search_result")}}
                 <div style="margin-top: 25px;">
                     <button onclick="submitRequest({
@@ -83,6 +93,22 @@
                     </button>
                 </div>
             {{end}}
+        </div>
+    </div>
+</div>
+
+<!-- Alternatives Modal -->
+<div id="alternatives-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto;">
+    <div style="max-width: 800px; margin: 50px auto; background: var(--container-bg); border-radius: 8px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: var(--text-color);">Select Correct Match</h2>
+            <button onclick="closeAlternativesModal()" style="background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+        </div>
+        <div id="alternatives-list" style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="text-align: center; padding: 20px; color: var(--muted-text);">
+                <div class="spinner" style="margin: 0 auto;"></div>
+                <p>Loading alternatives...</p>
+            </div>
         </div>
     </div>
 </div>
@@ -176,5 +202,95 @@ async function downloadSubtitles(btn, type, id) {
         alert('An error occurred during download.');
     }
 }
+
+async function showAlternatives(id, type) {
+    const modal = document.getElementById('alternatives-modal');
+    const list = document.getElementById('alternatives-list');
+    
+    modal.style.display = 'block';
+    list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);"><div class="spinner" style="margin: 0 auto;"></div><p>Loading alternatives...</p></div>';
+    
+    try {
+        const endpoint = type === 'movie' ? '/api/movies/alternatives' : '/api/shows/alternatives';
+        const response = await fetch(`${endpoint}?id=${id}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch alternatives');
+        }
+        
+        const alternatives = await response.json();
+        
+        if (alternatives.length === 0) {
+            list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);">No alternatives found.</div>';
+            return;
+        }
+        
+        list.innerHTML = alternatives.map((alt, index) => {
+            const posterUrl = alt.poster_path 
+                ? (alt.poster_path.startsWith('http') ? alt.poster_path : `/images/tmdb/${alt.poster_path}`)
+                : '';
+            const genres = alt.genres ? alt.genres.join(', ') : '';
+            
+            return `
+                <div style="display: flex; gap: 15px; padding: 15px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s;" 
+                     onmouseover="this.style.borderColor='var(--accent-color)'; this.style.transform='translateX(5px)'" 
+                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateX(0)'"
+                     onclick="selectAlternative(${id}, '${type}', '${alt.id}')">
+                    ${posterUrl ? `<img src="${posterUrl}" alt="${alt.title}" style="width: 80px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">` : '<div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>'}
+                    <div style="flex: 1; min-width: 0;">
+                        <h3 style="margin: 0 0 8px 0; color: var(--text-color); font-size: 18px;">${alt.title} ${alt.year ? `(${alt.year})` : ''}</h3>
+                        ${genres ? `<div style="margin-bottom: 8px;"><span style="color: var(--muted-text); font-size: 12px;">${genres}</span></div>` : ''}
+                        ${alt.overview ? `<p style="margin: 0; color: var(--text-color); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${alt.overview}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading alternatives:', error);
+        list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger-color);">Error loading alternatives. Please try again.</div>';
+    }
+}
+
+function closeAlternativesModal() {
+    document.getElementById('alternatives-modal').style.display = 'none';
+}
+
+async function selectAlternative(id, type, newId) {
+    if (!confirm('Are you sure you want to rematch this item?')) {
+        return;
+    }
+    
+    const endpoint = type === 'movie' ? '/api/movies/rematch' : '/api/shows/rematch';
+    const idField = type === 'movie' ? 'tmdb_id' : 'tvdb_id';
+    
+    try {
+        const response = await fetch(`${endpoint}?id=${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ [idField]: newId })
+        });
+        
+        if (response.ok) {
+            alert('Match updated successfully!');
+            closeAlternativesModal();
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert('Failed to update match: ' + error);
+        }
+    } catch (error) {
+        console.error('Rematch failed:', error);
+        alert('An error occurred while updating the match.');
+    }
+}
+
+// Close modal when clicking outside
+document.getElementById('alternatives-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeAlternativesModal();
+    }
+});
 </script>
 {{end}}

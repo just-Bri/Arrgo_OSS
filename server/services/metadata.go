@@ -765,3 +765,204 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 	}
 	slog.Info("Background metadata fetching complete")
 }
+
+// GetMovieAlternatives searches TMDB for alternative matches for a movie
+// Returns up to 10 results
+func GetMovieAlternatives(cfg *config.Config, movieID int) ([]SearchResult, error) {
+	var m models.Movie
+	var tmdbID sql.NullString
+	query := `SELECT id, title, year, tmdb_id FROM movies WHERE id = $1`
+	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.TMDBAPIKey == "" {
+		return nil, fmt.Errorf("TMDB_API_KEY is not set")
+	}
+
+	// Clean the title before searching
+	cleanedTitle := cleanTitleTags(m.Title)
+	slog.Info("Searching TMDB for alternatives", "title", cleanedTitle, "original_title", m.Title, "year", m.Year)
+	
+	throttle()
+	params := map[string]string{
+		"api_key":  cfg.TMDBAPIKey,
+		"query":    cleanedTitle,
+		"language": "en-US",
+	}
+	if m.Year > 0 {
+		params["year"] = fmt.Sprintf("%d", m.Year)
+	}
+	searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", params)
+
+	resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
+	if err != nil {
+		return nil, err
+	}
+
+	var searchResults TMDBMovieSearchResponse
+	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
+		return nil, err
+	}
+
+	// Limit to 10 results
+	maxResults := 10
+	if len(searchResults.Results) > maxResults {
+		searchResults.Results = searchResults.Results[:maxResults]
+	}
+
+	results := make([]SearchResult, 0, len(searchResults.Results))
+	for _, r := range searchResults.Results {
+		year := 0
+		if len(r.ReleaseDate) >= 4 {
+			year, _ = strconv.Atoi(r.ReleaseDate[:4])
+		}
+
+		var genres []string
+		for _, id := range r.GenreIDs {
+			if name, ok := tmdbGenres[id]; ok {
+				genres = append(genres, name)
+			}
+		}
+
+		results = append(results, SearchResult{
+			ID:         fmt.Sprintf("%d", r.ID),
+			Title:      r.Title,
+			Year:       year,
+			MediaType:  "movie",
+			PosterPath: r.PosterPath,
+			Overview:   r.Overview,
+			Genres:     genres,
+		})
+	}
+
+	return results, nil
+}
+
+// GetShowAlternatives searches TVDB for alternative matches for a show
+// Returns up to 10 results
+func GetShowAlternatives(cfg *config.Config, showID int) ([]SearchResult, error) {
+	var s models.Show
+	var tvdbID sql.NullString
+	query := `SELECT id, title, year, tvdb_id FROM shows WHERE id = $1`
+	err := database.DB.QueryRow(query, showID).Scan(&s.ID, &s.Title, &s.Year, &tvdbID)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.TVDBAPIKey == "" {
+		return nil, fmt.Errorf("TVDB_API_KEY is not set")
+	}
+
+	// Clean the title before searching
+	cleanedTitle := cleanTitleTags(s.Title)
+	slog.Info("Searching TVDB for alternatives", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
+	
+	results, err := SearchTVDB(cfg, cleanedTitle)
+	if err != nil {
+		return nil, err
+	}
+
+	// Limit to 10 results
+	maxResults := 10
+	if len(results) > maxResults {
+		results = results[:maxResults]
+	}
+
+	return results, nil
+}
+
+// RematchMovie updates a movie with a new TMDB ID and fetches full metadata
+func RematchMovie(cfg *config.Config, movieID int, newTMDBID string) error {
+	// Fetch full details for the new TMDB ID
+	details, err := GetTMDBMovieDetails(cfg, newTMDBID)
+	if err != nil {
+		return err
+	}
+
+	// Get genre names
+	var genres []string
+	if len(details.Genres) > 0 {
+		for _, g := range details.Genres {
+			genres = append(genres, g.Name)
+		}
+	}
+	genreString := strings.Join(genres, ", ")
+
+	// Store the raw JSON from TMDB
+	rawMetadata, _ := json.Marshal(details)
+
+	// Update DB with official metadata
+	updateQuery := `
+		UPDATE movies
+		SET title = $1, year = $2, tmdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, genres = $7, status = 'matched', raw_metadata = $8, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $9
+	`
+	matchedYear := 0
+	if len(details.ReleaseDate) >= 4 {
+		if year, err := strconv.Atoi(details.ReleaseDate[:4]); err == nil {
+			matchedYear = year
+		}
+	}
+
+	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, movieID)
+	if err != nil {
+		slog.Error("Error updating DB for movie rematch", "movie_id", movieID, "error", err)
+		return err
+	}
+
+	slog.Info("Movie rematched successfully", "movie_id", movieID, "new_tmdb_id", newTMDBID)
+	return nil
+}
+
+// RematchShow updates a show with a new TVDB ID and fetches full metadata
+func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
+	// Fetch full details for the new TVDB ID
+	details, err := GetTVDBShowDetails(cfg, newTVDBID)
+	if err != nil {
+		return err
+	}
+
+	// Extract IMDB and TMDB IDs from remote IDs
+	var finalIMDBID, finalTMDBID string
+	for _, rid := range details.RemoteIDs {
+		if rid.Type == 2 { // IMDB
+			finalIMDBID = rid.ID
+		} else if rid.Type == 3 { // TMDB
+			finalTMDBID = rid.ID
+		}
+	}
+
+	var genres []string
+	for _, g := range details.Genres {
+		genres = append(genres, g.Name)
+	}
+	genreString := strings.Join(genres, ", ")
+	rawMetadata, _ := json.Marshal(details)
+
+	// Update DB with official metadata
+	updateQuery := `
+		UPDATE shows
+		SET title = $1, year = $2, tvdb_id = $3, tmdb_id = $4, imdb_id = $5, overview = $6, poster_path = $7, genres = $8, status = 'matched', raw_metadata = $9, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $10
+	`
+	matchedYear := 0
+	if len(details.FirstAired) >= 4 {
+		if year, err := strconv.Atoi(details.FirstAired[:4]); err == nil {
+			matchedYear = year
+		}
+	}
+
+	_, err = database.DB.Exec(updateQuery, details.Name, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, showID)
+	if err != nil {
+		slog.Error("Error updating DB for show rematch", "show_id", showID, "error", err)
+		return err
+	}
+
+	// Sync episode titles from TVDB
+	go SyncShowEpisodes(cfg, showID)
+
+	slog.Info("Show rematched successfully", "show_id", showID, "new_tvdb_id", newTVDBID)
+	return nil
+}

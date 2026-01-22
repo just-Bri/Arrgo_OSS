@@ -37,11 +37,16 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	// Clean up missing files first
 	PurgeMissingMovies()
 
-	taskChan := make(chan string, TaskChannelBufferSize)
+	type movieTask struct {
+		root string
+		name string
+	}
+
+	taskChan := make(chan movieTask, TaskChannelBufferSize)
 	var wg sync.WaitGroup
 
 	// Start workers
-	for i := 0; i < DefaultWorkerCount; i++ {
+	for range DefaultWorkerCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -49,11 +54,11 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 				select {
 				case <-ctx.Done():
 					return
-				case path, ok := <-taskChan:
+				case task, ok := <-taskChan:
 					if !ok {
 						return
 					}
-					processMovieFile(cfg, path)
+					processMovieDir(cfg, task.root, task.name)
 				}
 			}
 		}()
@@ -76,27 +81,27 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 			continue
 		}
 		slog.Debug("Walking path", "path", p)
-		filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				slog.Error("Error walking path", "path", path, "error", err)
-				return nil
-			}
 
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			slog.Error("Error reading directory", "path", p, "error", err)
+			continue
+		}
+
+		stopped := false
+		for _, entry := range entries {
 			select {
 			case <-ctx.Done():
-				return context.Canceled
+				stopped = true
 			default:
+				if entry.IsDir() {
+					taskChan <- movieTask{root: p, name: entry.Name()}
+				}
 			}
-
-			if d.IsDir() {
-				return nil
+			if stopped {
+				break
 			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if MovieExtensions[ext] {
-				taskChan <- path
-			}
-			return nil
-		})
+		}
 	}
 
 	close(taskChan)
@@ -111,37 +116,75 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	return nil
 }
 
-func processMovieFile(cfg *config.Config, path string) {
-	filename := filepath.Base(path)
-	nameOnly := strings.TrimSuffix(filename, filepath.Ext(filename))
-	title, year, tmdbID, tvdbID, imdbID := ParseMediaName(nameOnly)
+// processMovieDir processes a movie folder and finds the main movie file
+func processMovieDir(cfg *config.Config, root string, folderName string) {
+	folderPath := filepath.Join(root, folderName)
 
-	// If filename doesn't have year, try parent directory
-	if year == 0 && tmdbID == "" && tvdbID == "" && imdbID == "" {
-		parentDir := filepath.Base(filepath.Dir(path))
-		// Check if parentDir is not just one of the root scan paths
-		if parentDir != "." && parentDir != filepath.Base(cfg.MoviesPath) &&
-			parentDir != filepath.Base(cfg.IncomingMoviesPath) {
-			title, year, tmdbID, tvdbID, imdbID = ParseMediaName(parentDir)
+	// Lock this folder to prevent concurrent processing by multiple workers
+	unlock := lockPath(folderPath)
+	defer unlock()
+
+	// Skip common extra/subdirectory names (case-insensitive, with common variations)
+	folderNameLower := strings.ToLower(strings.TrimSpace(folderName))
+	skipDirs := map[string]bool{
+		"sps": true, "sp": true, "extras": true, "extra": true,
+		"bonus": true, "bonuses": true, "menus": true, "menu": true,
+		"trailers": true, "trailer": true, "samples": true, "sample": true,
+		"scenes": true, "scene": true, "deleted": true, "deleted scenes": true,
+		"featurettes": true, "featurette": true, "behind": true, "behind the scenes": true,
+		"specials": true, "special": true, "bonus content": true,
+	}
+
+	// Check if folder name matches skip patterns (exact match or contains pattern)
+	if skipDirs[folderNameLower] {
+		slog.Debug("Skipping extra folder", "folder", folderName)
+		return
+	}
+
+	// Also check if folder name is very short (likely not a movie title)
+	// "SPs" is 3 chars, so we need to be careful - check if it's in skip list or very short
+	if len(folderNameLower) <= 3 {
+		// Double-check it's not a known skip pattern
+		if skipDirs[folderNameLower] || folderNameLower == "sps" || folderNameLower == "sp" {
+			slog.Debug("Skipping short folder name (likely extra)", "folder", folderName)
+			return
 		}
 	}
 
-	info, err := os.Stat(path)
+	// Parse folder name for movie info
+	title, year, tmdbID, _, imdbID := ParseMediaName(folderName)
+
+	// If parsed title is empty or very short after cleaning, skip it
+	// Also check if parsed title matches skip patterns (in case ParseMediaName didn't clean it properly)
+	parsedTitleLower := strings.ToLower(strings.TrimSpace(title))
+	if title == "" || len(parsedTitleLower) <= 2 || skipDirs[parsedTitleLower] {
+		slog.Debug("Skipping folder with empty/short/skip title after parsing", "folder", folderName, "parsed_title", title)
+		return
+	}
+
+	// Find the main movie file in this folder
+	mainMovieFile := findMainMovieFile(folderPath, folderName)
+	if mainMovieFile == "" {
+		// No movie file found, skip this folder
+		return
+	}
+
+	info, err := os.Stat(mainMovieFile)
 	if err != nil {
 		return
 	}
 	size := info.Size()
-	quality := DetectQuality(path)
+	quality := DetectQuality(mainMovieFile)
 
 	// Look for local poster
-	posterPath := findLocalPoster(filepath.Dir(path))
+	posterPath := findLocalPoster(folderPath)
 
 	movie := models.Movie{
 		Title:      title,
 		Year:       year,
 		TMDBID:     tmdbID,
 		IMDBID:     imdbID,
-		Path:       path,
+		Path:       mainMovieFile,
 		Quality:    quality,
 		Size:       size,
 		PosterPath: posterPath,
@@ -152,14 +195,141 @@ func processMovieFile(cfg *config.Config, path string) {
 		slog.Error("Error upserting movie", "title", title, "error", err)
 	} else {
 		// Try to link torrent hash if file is in incoming folder
-		if strings.HasPrefix(path, cfg.IncomingMoviesPath) {
+		if strings.HasPrefix(mainMovieFile, cfg.IncomingMoviesPath) {
 			if qb, err := NewQBittorrentClient(cfg); err == nil {
-				LinkTorrentHashToFile(cfg, qb, path, "movie")
+				LinkTorrentHashToFile(cfg, qb, mainMovieFile, "movie")
 			}
 		}
 		// Fetch metadata immediately
 		MatchMovie(cfg, id)
 	}
+}
+
+// findMainMovieFile finds the main movie file in a folder, skipping extras
+func findMainMovieFile(folderPath string, folderName string) string {
+	var candidates []struct {
+		path string
+		size int64
+	}
+
+	// Common patterns for extra files to skip
+	skipPatterns := []string{
+		"cm", "pv", "iv", "tvsp", "menu", "trailer", "sample",
+		"deleted", "behind", "featurette", "interview", "promo",
+		"promotional", "teaser", "preview", "intro", "outro",
+		"credit", "credits", "opening", "ending",
+	}
+
+	// Walk the folder (but skip subdirectories that are clearly extras)
+	err := filepath.WalkDir(folderPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		// Skip subdirectories (like SPs, Extras, etc.)
+		if d.IsDir() && path != folderPath {
+			subDirName := strings.ToLower(filepath.Base(path))
+			skipDirs := map[string]bool{
+				"sps": true, "sp": true, "extras": true, "extra": true,
+				"bonus": true, "bonuses": true, "menus": true, "menu": true,
+				"trailers": true, "trailer": true, "samples": true, "sample": true,
+			}
+			if skipDirs[subDirName] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if !MovieExtensions[ext] {
+			return nil
+		}
+
+		// Check if this looks like an extra file
+		filename := strings.ToLower(filepath.Base(path))
+		isExtra := false
+		for _, pattern := range skipPatterns {
+			if strings.Contains(filename, pattern) {
+				isExtra = true
+				break
+			}
+		}
+
+		// Also check if filename contains folder name (more likely to be main movie)
+		containsFolderName := strings.Contains(strings.ToLower(filename), strings.ToLower(folderName))
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil
+		}
+
+		// Prefer files that contain the folder name, or if none found, use largest
+		candidates = append(candidates, struct {
+			path string
+			size int64
+		}{
+			path: path,
+			size: info.Size(),
+		})
+
+		// If we found a file that contains the folder name and isn't an extra, prefer it
+		if containsFolderName && !isExtra {
+			// This is likely the main movie, but continue to check for better matches
+			return nil
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return ""
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	// Find the best candidate:
+	// 1. Files that contain folder name and aren't extras
+	// 2. Largest file if no folder name match
+	var bestCandidate string
+	var bestSize int64
+	var foundFolderMatch bool
+
+	for _, cand := range candidates {
+		filename := strings.ToLower(filepath.Base(cand.path))
+		containsFolderName := strings.Contains(filename, strings.ToLower(folderName))
+
+		// Check if it's an extra
+		isExtra := false
+		for _, pattern := range skipPatterns {
+			if strings.Contains(filename, pattern) {
+				isExtra = true
+				break
+			}
+		}
+
+		// Prefer files that match folder name and aren't extras
+		if containsFolderName && !isExtra {
+			if !foundFolderMatch || cand.size > bestSize {
+				bestCandidate = cand.path
+				bestSize = cand.size
+				foundFolderMatch = true
+			}
+		} else if !foundFolderMatch && !isExtra {
+			// If no folder match yet, prefer largest non-extra file
+			if bestCandidate == "" || cand.size > bestSize {
+				bestCandidate = cand.path
+				bestSize = cand.size
+			}
+		}
+	}
+
+	return bestCandidate
 }
 
 func upsertMovie(movie models.Movie) (int, error) {
