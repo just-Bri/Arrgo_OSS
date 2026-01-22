@@ -471,8 +471,42 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 			return fmt.Errorf("no matches found on TMDB for %s", m.Title)
 		}
 
-		// Take the first result
-		matchedTMDBID = fmt.Sprintf("%d", searchResults.Results[0].ID)
+		// Select the best matching result
+		// Prefer exact title matches, then matches that contain the search title
+		cleanedTitleLower := strings.ToLower(cleanedTitle)
+		bestMatch := searchResults.Results[0]
+		bestScore := 0
+		
+		for _, result := range searchResults.Results {
+			resultTitleLower := strings.ToLower(result.Title)
+			score := 0
+			
+			// Exact match gets highest score
+			if resultTitleLower == cleanedTitleLower {
+				score = 100
+			} else if strings.Contains(resultTitleLower, cleanedTitleLower) {
+				// Contains match gets medium score
+				score = 50
+			} else if strings.Contains(cleanedTitleLower, resultTitleLower) {
+				// Search title contains result title (partial match)
+				score = 25
+			}
+			
+			// Bonus points if year matches (when year is provided)
+			if m.Year > 0 && len(result.ReleaseDate) >= 4 {
+				if year, err := strconv.Atoi(result.ReleaseDate[:4]); err == nil && year == m.Year {
+					score += 10
+				}
+			}
+			
+			if score > bestScore {
+				bestScore = score
+				bestMatch = result
+			}
+		}
+		
+		matchedTMDBID = fmt.Sprintf("%d", bestMatch.ID)
+		slog.Debug("Selected TMDB result", "tmdb_id", matchedTMDBID, "title", bestMatch.Title, "score", bestScore)
 	}
 
 	slog.Info("Using TMDB ID, fetching full details", "tmdb_id", matchedTMDBID)

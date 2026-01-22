@@ -228,15 +228,29 @@ func ParseMediaName(name string) (string, int, string, string, string) {
 	seasonEpRegex := regexp.MustCompile(`(?i)\s*[-_.]?\s*(S\d+E\d+|S\d+)\b`)
 	name = seasonEpRegex.ReplaceAllString(name, "")
 
-	// 3. Match "Title (Year)" first if possible
+	// 3. Extract year from anywhere in the string (not just at the end)
+	// First try to match "Title (Year)" at the end for clean names
 	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)
 	yearMatches := re.FindStringSubmatch(strings.TrimSpace(name))
 
 	title := name
 	year := 0
 	if len(yearMatches) == 3 {
+		// Year is at the end
 		title = strings.TrimSpace(yearMatches[1])
 		year, _ = strconv.Atoi(yearMatches[2])
+	} else {
+		// Try to find year pattern anywhere in the string (e.g., "Title (Year) 1080p")
+		yearRegex := regexp.MustCompile(`\((\d{4})\)`)
+		yearMatch := yearRegex.FindStringSubmatch(name)
+		if len(yearMatch) == 2 {
+			year, _ = strconv.Atoi(yearMatch[1])
+			// Extract title part before the year
+			parts := yearRegex.Split(name, 2)
+			if len(parts) > 0 {
+				title = strings.TrimSpace(parts[0])
+			}
+		}
 	}
 
 	// 4. Clean tags from the title
