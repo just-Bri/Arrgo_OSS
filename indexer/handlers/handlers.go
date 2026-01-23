@@ -127,6 +127,10 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 				res, err = idx.SearchShows(ctx, query, 0, 0)
 			}
 		default: // "movie", "solid" (general search) or empty
+			// For movie searches, only use YTS indexer
+			if idx.GetName() != "YTS" {
+				continue
+			}
 			res, err = idx.SearchMovies(ctx, query)
 		}
 
