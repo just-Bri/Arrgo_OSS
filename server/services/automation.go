@@ -97,25 +97,43 @@ func (s *AutomationService) Start(ctx context.Context) {
 }
 
 // waitForQBittorrent waits for qBittorrent to be available with retries
+// This accounts for VPN containers that need time to establish VPN connection before qBittorrent web UI is available
 func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
-	maxRetries := 10
+	maxRetries := 30 // Increased from 10 to allow up to 2.5 minutes for VPN to connect
 	retryDelay := 5 * time.Second
+	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
-		if err := s.qb.Login(ctx); err == nil {
+		err := s.qb.Login(ctx)
+		if err == nil {
+			slog.Info("qBittorrent is now available", "attempt", i+1)
 			return nil
 		}
+		
+		lastErr = err
+		
+		// Log the actual error for debugging
 		if i < maxRetries-1 {
-			slog.Debug("qBittorrent not ready yet, retrying", "attempt", i+1, "max_retries", maxRetries, "retry_delay", retryDelay)
+			slog.Debug("qBittorrent not ready yet, retrying", 
+				"attempt", i+1, 
+				"max_retries", maxRetries, 
+				"retry_delay", retryDelay,
+				"error", err)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(retryDelay):
 				// Continue retrying
 			}
+		} else {
+			// Log final error with more detail
+			slog.Error("qBittorrent connection failed after all retries", 
+				"attempts", maxRetries, 
+				"error", err,
+				"url", s.cfg.QBittorrentURL)
 		}
 	}
-	return fmt.Errorf("qBittorrent not available after %d retries", maxRetries)
+	return fmt.Errorf("qBittorrent not available after %d retries: %w", maxRetries, lastErr)
 }
 
 // TriggerImmediateProcessing triggers immediate processing of approved requests

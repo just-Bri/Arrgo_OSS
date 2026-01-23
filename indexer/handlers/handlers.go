@@ -44,9 +44,9 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
-	searchType := r.URL.Query().Get("type")   // "movie", "show", or "solid"
-	seasons := r.URL.Query().Get("seasons")   // Comma-separated season numbers for shows
-	format := r.URL.Query().Get("format")     // "json" or "html" (default)
+	searchType := r.URL.Query().Get("type") // "movie", "show", or "solid"
+	seasons := r.URL.Query().Get("seasons") // Comma-separated season numbers for shows
+	format := r.URL.Query().Get("format")   // "json" or "html" (default)
 
 	if query == "" {
 		if format == "json" {
