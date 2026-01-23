@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/justbri/arrgo/shared/config"
 	"github.com/justbri/arrgo/shared/format"
@@ -90,7 +91,11 @@ func (x *X1337Indexer) fetchViaBypass(ctx context.Context, targetURL string) (st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := sharedhttp.DefaultClient
+	// Use a longer timeout client for Flaresolverr requests (can take up to 60s + buffer)
+	// Flaresolverr maxTimeout is 60000ms, so we need at least 90s to account for network overhead
+	client := &http.Client{
+		Timeout: 90 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call bypass service: %w", err)
