@@ -2,8 +2,6 @@ services:
   arrgo-app:
     build:
       context: .
-      args:
-        - BUILD_VERSION=2
     container_name: arrgo-app
     ports:
       - "5003:5003"
