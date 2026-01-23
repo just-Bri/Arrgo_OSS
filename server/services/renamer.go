@@ -228,6 +228,11 @@ func ParseMediaName(name string) (string, int, string, string, string) {
 	seasonEpRegex := regexp.MustCompile(`(?i)\s*[-_.]?\s*(S\d+E\d+|S\d+)\b`)
 	name = seasonEpRegex.ReplaceAllString(name, "")
 
+	// 2b. Remove "Season X" or "Season XX" patterns (case-insensitive)
+	// This handles folder names like "Fargo Season 1" -> "Fargo"
+	seasonTextRegex := regexp.MustCompile(`(?i)\s*[-_.]?\s*Season\s+\d+\b`)
+	name = seasonTextRegex.ReplaceAllString(name, "")
+
 	// 3. Extract year from anywhere in the string (not just at the end)
 	// First try to match "Title (Year)" at the end for clean names
 	re := regexp.MustCompile(`^(.*?)\s*\((\d{4})\)$`)

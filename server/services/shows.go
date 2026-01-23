@@ -354,12 +354,19 @@ func scanSeasons(showID int, showPath string) {
 	}
 
 	// Third pass: if still no season folders found, check if episodes are directly in show folder
-	// Extract season number from show folder name if possible (e.g., "[S02]" in folder name)
+	// Extract season number from show folder name if possible (e.g., "[S02]" or "Season 1" in folder name)
 	if !foundSeasonFolders {
 		showDirName := filepath.Base(showPath)
+		
+		// Try altSeasonRegex first (matches [S02], S02, Season02, etc.)
 		matches := altSeasonRegex.FindStringSubmatch(showDirName)
+		if len(matches) < 2 {
+			// Try explicit "Season X" pattern (handles "Fargo Season 1")
+			matches = seasonRegex.FindStringSubmatch(showDirName)
+		}
+		
 		if len(matches) >= 2 {
-			// Show folder itself contains season info (e.g., "Show Name [S02]")
+			// Show folder itself contains season info (e.g., "Show Name [S02]" or "Show Name Season 1")
 			seasonNum, _ := strconv.Atoi(matches[1])
 			seasonID, err := upsertSeason(showID, seasonNum)
 			if err == nil {
