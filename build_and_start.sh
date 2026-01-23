@@ -12,7 +12,6 @@ docker compose down
 docker rmi arrgo-arrgo 2>/dev/null || true
 docker rmi arrgo-indexer 2>/dev/null || true
 docker rmi arrgo-qbittorrent 2>/dev/null || true
-docker rmi arrgo-db 2>/dev/null || true
 docker compose build --no-cache
 
 # Start the services
