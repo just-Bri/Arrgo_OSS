@@ -416,16 +416,13 @@ func StartSeedingCleanupWorker(cfg *config.Config, qb *QBittorrentClient) {
 		ticker := time.NewTicker(1 * time.Hour) // Check every 1 hour
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				slog.Debug("Running seeding cleanup check")
-				count, err := CheckAndCleanupSeedingTorrents(context.Background(), cfg, qb)
-				if err != nil {
-					slog.Error("Error during seeding cleanup", "error", err)
-				} else if count > 0 {
-					slog.Info("Seeding cleanup completed", "torrents_cleaned", count)
-				}
+		for range ticker.C {
+			slog.Debug("Running seeding cleanup check")
+			count, err := CheckAndCleanupSeedingTorrents(context.Background(), cfg, qb)
+			if err != nil {
+				slog.Error("Error during seeding cleanup", "error", err)
+			} else if count > 0 {
+				slog.Info("Seeding cleanup completed", "torrents_cleaned", count)
 			}
 		}
 	}()
