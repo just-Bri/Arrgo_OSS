@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 )
 
@@ -63,41 +64,71 @@ func (y *YTSIndexer) GetName() string {
 }
 
 func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchResult, error) {
-	apiURL := fmt.Sprintf("https://yts.mx/api/v2/list_movies.json?query_term=%s&sort_by=seeds", url.QueryEscape(query))
-	
-	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
-	if err != nil {
-		return nil, err
+	// YTS API endpoints - try primary first, then fallback
+	baseURLs := []string{
+		"https://yts.torrentbay.st", // Primary
+		"https://yts.bz",             // Fallback
 	}
 
-	var ytsResp YTSResponse
-	if err := DecodeJSONResponse(resp, &ytsResp); err != nil {
-		return nil, err
-	}
+	queryParam := fmt.Sprintf("query_term=%s&sort_by=seeds", url.QueryEscape(query))
+	var lastErr error
 
-	results := []SearchResult{}
-	for _, movie := range ytsResp.Data.Movies {
-		for _, torrent := range movie.Torrents {
-			// Construct magnet link (YTS usually provides a hash, we can build the magnet link)
-			// tr are trackers
-			magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969&tr=udp://glotorrents.pw:6969/announce&tr=udp://tracker.opentrackr.org:1337/announce", 
-				torrent.Hash, url.QueryEscape(movie.TitleLong))
-			
-			results = append(results, SearchResult{
-				Title:      fmt.Sprintf("%s (%s) [%s]", movie.Title, torrent.Quality, torrent.VideoCodec),
-				Size:       torrent.Size,
-				Seeds:      torrent.Seeds,
-				Peers:      torrent.Peers,
-				MagnetLink: magnet,
-				InfoHash:   torrent.Hash,
-				Source:     "YTS",
-				Resolution: torrent.Quality,
-				Quality:    torrent.Type,
-			})
+	for i, baseURL := range baseURLs {
+		apiURL := fmt.Sprintf("%s/api/v2/list_movies.json?%s", baseURL, queryParam)
+		
+		resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
+		if err != nil {
+			lastErr = err
+			if i < len(baseURLs)-1 {
+				slog.Debug("YTS primary endpoint failed, trying fallback", "url", baseURL, "error", err)
+				continue // Try next URL
+			}
+			return nil, fmt.Errorf("failed to fetch results from all YTS endpoints: %w", err)
 		}
+
+		var ytsResp YTSResponse
+		if err := DecodeJSONResponse(resp, &ytsResp); err != nil {
+			resp.Body.Close()
+			lastErr = err
+			if i < len(baseURLs)-1 {
+				slog.Debug("YTS primary endpoint response invalid, trying fallback", "url", baseURL, "error", err)
+				continue // Try next URL
+			}
+			return nil, fmt.Errorf("failed to decode response from all YTS endpoints: %w", err)
+		}
+		resp.Body.Close()
+
+		// Success - process results
+		results := []SearchResult{}
+		for _, movie := range ytsResp.Data.Movies {
+			for _, torrent := range movie.Torrents {
+				// Construct magnet link (YTS usually provides a hash, we can build the magnet link)
+				// tr are trackers
+				magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969&tr=udp://glotorrents.pw:6969/announce&tr=udp://tracker.opentrackr.org:1337/announce", 
+					torrent.Hash, url.QueryEscape(movie.TitleLong))
+				
+				results = append(results, SearchResult{
+					Title:      fmt.Sprintf("%s (%s) [%s]", movie.Title, torrent.Quality, torrent.VideoCodec),
+					Size:       torrent.Size,
+					Seeds:      torrent.Seeds,
+					Peers:      torrent.Peers,
+					MagnetLink: magnet,
+					InfoHash:   torrent.Hash,
+					Source:     "YTS",
+					Resolution: torrent.Quality,
+					Quality:    torrent.Type,
+				})
+			}
+		}
+
+		if i > 0 {
+			slog.Info("YTS fallback endpoint succeeded", "url", baseURL, "results", len(results))
+		}
+
+		return results, nil
 	}
 
-	return results, nil
+	return nil, lastErr
 }
 
 func (y *YTSIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
