@@ -124,6 +124,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
       - 1.1.1.1
+    dns_search: []
     networks:
       - arrgo-network
     restart: unless-stopped
