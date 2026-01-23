@@ -27,7 +27,9 @@ services:
       - QBITTORRENT_USER=${QBITTORRENT_USER:-admin}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
       - INDEXER_URL=http://arrgo-indexer:5004
-      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://flaresolverr:8191}
+      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       arrgo-db:
         condition: service_healthy
@@ -35,8 +37,8 @@ services:
         condition: service_started
       arrgo_qbittorrentvpn:
         condition: service_started
-      flaresolverr:
-        condition: service_started
+      # flaresolverr dependency removed - using existing Flaresolverr instance
+      # If you want to run Flaresolverr in this stack, uncomment the dependency above
     volumes:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
@@ -115,21 +117,9 @@ services:
     environment:
       - PORT=5004
       - ENV=development
-      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://flaresolverr:8191}
+      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    networks:
-      - arrgo-network
-    restart: unless-stopped
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    ports:
-      - "8191:8191"
-    environment:
-      - LOG_LEVEL=info
-      - TZ=America/Los_Angeles
     networks:
       - arrgo-network
     restart: unless-stopped
