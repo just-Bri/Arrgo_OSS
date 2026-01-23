@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	sharedhttp "github.com/justbri/arrgo/shared/http"
 	"github.com/justbri/arrgo/shared/format"
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 // FormatBytes formats bytes into human-readable format (KB, MB, GB, etc.)

@@ -11,7 +11,7 @@ var store *sessions.CookieStore
 
 func InitSessionStore(cfg *config.Config) {
 	store = sessions.NewCookieStore([]byte(cfg.SessionSecret))
-	
+
 	secure := false
 	if cfg.Environment == "production" {
 		secure = true
@@ -33,4 +33,3 @@ func GetSession(r *http.Request) (*sessions.Session, error) {
 func SaveSession(w http.ResponseWriter, r *http.Request, session *sessions.Session) error {
 	return session.Save(r, w)
 }
-

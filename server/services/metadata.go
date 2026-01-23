@@ -476,11 +476,11 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 		cleanedTitleLower := strings.ToLower(cleanedTitle)
 		bestMatch := searchResults.Results[0]
 		bestScore := 0
-		
+
 		for _, result := range searchResults.Results {
 			resultTitleLower := strings.ToLower(result.Title)
 			score := 0
-			
+
 			// Exact match gets highest score
 			if resultTitleLower == cleanedTitleLower {
 				score = 100
@@ -491,20 +491,20 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 				// Search title contains result title (partial match)
 				score = 25
 			}
-			
+
 			// Bonus points if year matches (when year is provided)
 			if m.Year > 0 && len(result.ReleaseDate) >= 4 {
 				if year, err := strconv.Atoi(result.ReleaseDate[:4]); err == nil && year == m.Year {
 					score += 10
 				}
 			}
-			
+
 			if score > bestScore {
 				bestScore = score
 				bestMatch = result
 			}
 		}
-		
+
 		matchedTMDBID = fmt.Sprintf("%d", bestMatch.ID)
 		slog.Debug("Selected TMDB result", "tmdb_id", matchedTMDBID, "title", bestMatch.Title, "score", bestScore)
 	}
@@ -818,7 +818,7 @@ func GetMovieAlternatives(cfg *config.Config, movieID int) ([]SearchResult, erro
 	// Clean the title before searching
 	cleanedTitle := cleanTitleTags(m.Title)
 	slog.Info("Searching TMDB for alternatives", "title", cleanedTitle, "original_title", m.Title, "year", m.Year)
-	
+
 	throttle()
 	params := map[string]string{
 		"api_key":  cfg.TMDBAPIKey,
@@ -892,7 +892,7 @@ func GetShowAlternatives(cfg *config.Config, showID int) ([]SearchResult, error)
 	// Clean the title before searching
 	cleanedTitle := cleanTitleTags(s.Title)
 	slog.Info("Searching TVDB for alternatives", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
-	
+
 	results, err := SearchTVDB(cfg, cleanedTitle)
 	if err != nil {
 		return nil, err

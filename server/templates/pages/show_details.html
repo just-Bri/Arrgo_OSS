@@ -51,7 +51,7 @@
             {{if .IsAdmin}}
                 {{if gt .Show.ID 0}}
                     <div style="margin-top: 25px;">
-                        <button onclick="showAlternatives({{.Show.ID}}, 'show')" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        <button class="show-alternatives-btn" data-id="{{.Show.ID}}" data-type="show" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
                             Fix Mismatch
                         </button>
                     </div>
@@ -71,8 +71,8 @@
                             {{$isRequested := containsInt $.LibraryStatus.RequestedSeasons .SeasonNumber}}
                             {{$isDisabled := or $allInLibrary $isRequested}}
                             
-                            <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid {{if $isRequested}}var(--accent-color){{else}}var(--border-color){{end}}; cursor: {{if $isDisabled}}not-allowed{{else}}pointer{{end}}; opacity: {{if $isDisabled}}0.6{{else}}1{{end}}; font-size: 14px; position: relative;">
-                                <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $isDisabled}}disabled{{end}} style="cursor: {{if $isDisabled}}not-allowed{{else}}pointer{{end}};">
+                            <label class="season-checkbox-label{{if $isRequested}} season-requested{{end}}{{if $isDisabled}} season-disabled{{end}}" style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; font-size: 14px; position: relative;">
+                                <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $isDisabled}}disabled{{end}} class="season-checkbox-input">
                                 <span style="color: var(--text-color);">S{{.SeasonNumber}}</span>
                                 {{if $isRequested}}
                                     <span style="position: absolute; top: -8px; right: -5px; background: var(--accent-color); color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: bold;">REQ</span>
@@ -80,12 +80,23 @@
                             </label>
                         {{end}}
                     </div>
-                    <button id="request-btn" onclick="submitSeasonRequest()" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                    <button id="request-btn" class="submit-season-request-btn" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
                         Request Selected
                     </button>
                 </div>
             {{end}}
         </div>
+    </div>
+
+    <!-- Hidden element with show data for JavaScript -->
+    <div id="show-data" 
+         data-title="{{js .Show.Title}}"
+         data-media-type="show"
+         data-id="{{.Show.TVDBID}}"
+         data-year="{{.Show.Year}}"
+         data-poster-path="{{.Show.PosterPath}}"
+         data-overview="{{js .Show.Overview}}"
+         style="display: none;">
     </div>
 
     {{if .Seasons}}
@@ -94,7 +105,7 @@
         
         {{range .Seasons}}
         <div style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
-            <div style="background: var(--bg-color); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleSeason('season-{{.SeasonNumber}}')">
+            <div class="toggle-season-btn" data-season-id="season-{{.SeasonNumber}}" style="background: var(--bg-color); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
                 <h3 style="margin: 0; color: var(--text-color); font-size: 16px;">Season {{.SeasonNumber}}</h3>
                 <span style="color: var(--muted-text); font-size: 12px;">{{len .Episodes}} Ep &darr;</span>
             </div>
@@ -128,7 +139,7 @@
                                         <div style="display: flex; align-items: center; gap: 5px;" id="subtitle-status-episode-{{.ID}}">
                                             <span style="color: var(--danger-color); font-size: 12px;">&#10006;</span>
                                             {{if $.IsAdmin}}
-                                                <button onclick="downloadSubtitles(this, 'episode', {{.ID}})" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; display: flex; align-items: center; gap: 3px;">
+                                                <button class="download-subtitles-btn" data-type="episode" data-id="{{.ID}}" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; display: flex; align-items: center; gap: 3px;">
                                                     <span>Fix</span>
                                                 </button>
                                             {{end}}
@@ -154,7 +165,7 @@
     <div style="max-width: 800px; margin: 50px auto; background: var(--container-bg); border-radius: 8px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2 style="margin: 0; color: var(--text-color);">Select Correct Match</h2>
-            <button onclick="closeAlternativesModal()" style="background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+            <button class="close-alternatives-modal-btn" style="background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
         </div>
         <div id="alternatives-list" style="display: flex; flex-direction: column; gap: 15px;">
             <div style="text-align: center; padding: 20px; color: var(--muted-text);">
@@ -177,6 +188,29 @@
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+.season-checkbox-label {
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    opacity: 1;
+}
+
+.season-checkbox-label.season-requested {
+    border-color: var(--accent-color);
+}
+
+.season-checkbox-label.season-disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.season-checkbox-input {
+    cursor: pointer;
+}
+
+.season-checkbox-input:disabled {
+    cursor: not-allowed;
 }
 
 @media (min-width: 769px) {
@@ -218,13 +252,14 @@ async function submitSeasonRequest() {
         return;
     }
 
+    const showData = document.getElementById('show-data');
     const item = {
-        title: '{{js .Show.Title}}',
-        media_type: 'show',
-        id: '{{.Show.TVDBID}}',
-        year: {{.Show.Year}},
-        poster_path: '{{.Show.PosterPath}}',
-        overview: '{{js .Show.Overview}}'
+        title: showData.dataset.title,
+        media_type: showData.dataset.mediaType,
+        id: showData.dataset.id,
+        year: parseInt(showData.dataset.year) || 0,
+        poster_path: showData.dataset.posterPath,
+        overview: showData.dataset.overview
     };
 
     try {
@@ -322,10 +357,9 @@ async function showAlternatives(id, type) {
             const genres = alt.genres ? alt.genres.join(', ') : '';
             
             return `
-                <div style="display: flex; gap: 15px; padding: 15px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s;" 
+                <div class="select-alternative-btn" data-original-id="${id}" data-type="${type}" data-new-id="${alt.id}" style="display: flex; gap: 15px; padding: 15px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s;" 
                      onmouseover="this.style.borderColor='var(--accent-color)'; this.style.transform='translateX(5px)'" 
-                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateX(0)'"
-                     onclick="selectAlternative(${id}, '${type}', '${alt.id}')">
+                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateX(0)'">
                     ${posterUrl ? `<img src="${posterUrl}" alt="${alt.title}" style="width: 80px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">` : '<div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>'}
                     <div style="flex: 1; min-width: 0;">
                         <h3 style="margin: 0 0 8px 0; color: var(--text-color); font-size: 18px;">${alt.title} ${alt.year ? `(${alt.year})` : ''}</h3>
@@ -380,6 +414,54 @@ async function selectAlternative(id, type, newId) {
 document.getElementById('alternatives-modal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeAlternativesModal();
+    }
+});
+
+// Event listeners for buttons with data attributes
+// Show alternatives buttons
+document.querySelectorAll('.show-alternatives-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        showAlternatives(parseInt(this.dataset.id), this.dataset.type);
+    });
+});
+
+// Submit season request button
+document.querySelectorAll('.submit-season-request-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        submitSeasonRequest();
+    });
+});
+
+// Toggle season buttons
+document.querySelectorAll('.toggle-season-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        toggleSeason(this.dataset.seasonId);
+    });
+});
+
+// Download subtitles buttons
+document.querySelectorAll('.download-subtitles-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        downloadSubtitles(this, this.dataset.type, parseInt(this.dataset.id));
+    });
+});
+
+// Close alternatives modal button
+document.querySelectorAll('.close-alternatives-modal-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        closeAlternativesModal();
+    });
+});
+
+// Select alternative buttons (dynamically created, use event delegation)
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.select-alternative-btn');
+    if (btn) {
+        selectAlternative(
+            parseInt(btn.dataset.originalId),
+            btn.dataset.type,
+            btn.dataset.newId
+        );
     }
 });
 </script>

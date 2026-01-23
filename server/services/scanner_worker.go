@@ -25,12 +25,12 @@ func StartIncomingScanner(cfg *config.Config) {
 
 			// Run the scan
 			slog.Info("Running scheduled incoming media scan")
-			
+
 			// Scan movies
 			if err := ScanMovies(context.Background(), cfg, true); err != nil {
 				slog.Error("Error scanning movies", "error", err)
 			}
-			
+
 			// Scan shows
 			if err := ScanShows(context.Background(), cfg, true); err != nil {
 				slog.Error("Error scanning shows", "error", err)

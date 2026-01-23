@@ -385,13 +385,14 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 			normalizedHash := strings.ToLower(torrent.Hash)
 
 			// Link to movie or episode
-			if mediaType == "movie" {
+			switch mediaType {
+			case "movie":
 				database.DB.Exec(`
 					UPDATE movies 
 					SET torrent_hash = $1 
 					WHERE path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
 					normalizedHash, filePath)
-			} else if mediaType == "show" {
+			case "show":
 				database.DB.Exec(`
 					UPDATE episodes 
 					SET torrent_hash = $1 

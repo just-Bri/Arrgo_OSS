@@ -9,12 +9,12 @@ import (
 
 type SolidTorrentsResponse struct {
 	Results []struct {
-		Title      string   `json:"title"`
-		Size       int64    `json:"size"`
-		Seeds      int      `json:"seeds"`
-		Leechers   int      `json:"leeches"`
-		Magnet     string   `json:"magnet"`
-		InfoHash   string   `json:"infohash"`
+		Title    string `json:"title"`
+		Size     int64  `json:"size"`
+		Seeds    int    `json:"seeds"`
+		Leechers int    `json:"leeches"`
+		Magnet   string `json:"magnet"`
+		InfoHash string `json:"infohash"`
 	} `json:"results"`
 }
 

@@ -57,7 +57,7 @@
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <span style="color: var(--danger-color);">Missing</span>
                                 {{if .IsAdmin}}
-                                    <button onclick="downloadSubtitles(this, 'movie', {{.Movie.ID}})" style="padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px;">
+                                    <button class="download-subtitles-btn" data-type="movie" data-id="{{.Movie.ID}}" style="padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px;">
                                         <span>Download Now</span>
                                     </button>
                                 {{end}}
@@ -72,7 +72,7 @@
             {{if .IsAdmin}}
                 {{if gt .Movie.ID 0}}
                     <div style="margin-top: 25px;">
-                        <button onclick="showAlternatives({{.Movie.ID}}, 'movie')" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        <button class="show-alternatives-btn" data-id="{{.Movie.ID}}" data-type="movie" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
                             Fix Mismatch
                         </button>
                     </div>
@@ -81,14 +81,14 @@
 
             {{if or (eq .Movie.Status "External") (eq .Movie.Status "search_result")}}
                 <div style="margin-top: 25px;">
-                    <button onclick="submitRequest({
-                        title: '{{js .Movie.Title}}',
-                        media_type: 'movie',
-                        id: '{{.Movie.TMDBID}}',
-                        year: {{.Movie.Year}},
-                        poster_path: '{{.Movie.PosterPath}}',
-                        overview: '{{js .Movie.Overview}}'
-                    })" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                    <button class="submit-request-btn" 
+                            data-title="{{js .Movie.Title}}"
+                            data-media-type="movie"
+                            data-id="{{.Movie.TMDBID}}"
+                            data-year="{{.Movie.Year}}"
+                            data-poster-path="{{.Movie.PosterPath}}"
+                            data-overview="{{js .Movie.Overview}}"
+                            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
                         Request Movie
                     </button>
                 </div>
@@ -291,6 +291,35 @@ document.getElementById('alternatives-modal').addEventListener('click', function
     if (e.target === this) {
         closeAlternativesModal();
     }
+});
+
+// Event listeners for buttons with data attributes
+// Download subtitles buttons
+document.querySelectorAll('.download-subtitles-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        downloadSubtitles(this, this.dataset.type, parseInt(this.dataset.id));
+    });
+});
+
+// Show alternatives buttons
+document.querySelectorAll('.show-alternatives-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        showAlternatives(parseInt(this.dataset.id), this.dataset.type);
+    });
+});
+
+// Submit request buttons
+document.querySelectorAll('.submit-request-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        submitRequest({
+            title: this.dataset.title,
+            media_type: this.dataset.mediaType,
+            id: this.dataset.id,
+            year: parseInt(this.dataset.year) || 0,
+            poster_path: this.dataset.posterPath,
+            overview: this.dataset.overview
+        });
+    });
 });
 </script>
 {{end}}

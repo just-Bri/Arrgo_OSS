@@ -152,11 +152,11 @@ func (q *QBittorrentClient) AddTorrentFile(ctx context.Context, torrentData []by
 	}
 
 	addURL := fmt.Sprintf("%s/api/v2/torrents/add", q.cfg.QBittorrentURL)
-	
+
 	// Create multipart form data
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	
+
 	// Add torrent file
 	part, err := writer.CreateFormFile("torrents", "torrent.torrent")
 	if err != nil {
@@ -165,26 +165,26 @@ func (q *QBittorrentClient) AddTorrentFile(ctx context.Context, torrentData []by
 	if _, err := part.Write(torrentData); err != nil {
 		return fmt.Errorf("failed to write torrent data: %w", err)
 	}
-	
+
 	// Add category if specified
 	if category != "" {
 		if err := writer.WriteField("category", category); err != nil {
 			return fmt.Errorf("failed to write category: %w", err)
 		}
 	}
-	
+
 	// Add save path if specified
 	if savePath != "" {
 		if err := writer.WriteField("savepath", savePath); err != nil {
 			return fmt.Errorf("failed to write savepath: %w", err)
 		}
 	}
-	
+
 	// Skip hash checking for faster start
 	if err := writer.WriteField("skip_checking", "false"); err != nil {
 		return fmt.Errorf("failed to write skip_checking: %w", err)
 	}
-	
+
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("failed to close writer: %w", err)
 	}
@@ -251,9 +251,9 @@ type TorrentStatus struct {
 	State         string  `json:"state"`
 	Eta           int     `json:"eta"`
 	DownloadSpeed int     `json:"dlspeed"`
-	Ratio         float64 `json:"ratio"`         // Share ratio
-	SeedingTime   int64   `json:"seeding_time"`  // Seeding time in seconds
-	SavePath      string  `json:"save_path"`     // Save path for the torrent
+	Ratio         float64 `json:"ratio"`        // Share ratio
+	SeedingTime   int64   `json:"seeding_time"` // Seeding time in seconds
+	SavePath      string  `json:"save_path"`    // Save path for the torrent
 }
 
 func (q *QBittorrentClient) GetTorrents(ctx context.Context, filter string) ([]TorrentStatus, error) {

@@ -112,7 +112,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 		// For shows, we check if the requested seasons are already in library or already requested
 		requestedSeasons := strings.Split(req.Seasons, ",")
 		var duplicateSeasons []string
-		
+
 		for _, rs := range requestedSeasons {
 			rs = strings.TrimSpace(rs)
 			sn, err := strconv.Atoi(rs)

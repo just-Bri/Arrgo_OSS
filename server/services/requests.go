@@ -157,16 +157,16 @@ func CleanupCompletedRequests() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	
+
 	count, err := result.RowsAffected()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if count > 0 {
 		slog.Info("Cleaned up completed requests", "count", count)
 	}
-	
+
 	return int(count), nil
 }
 

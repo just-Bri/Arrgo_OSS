@@ -37,7 +37,7 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 	// Check if any torrent's save path matches the show directory
 	for _, torrent := range torrents {
 		normalizedHash := strings.ToLower(torrent.Hash)
-		
+
 		// Check if this torrent's save path matches or contains the show directory
 		// Torrents can save to:
 		// 1. The exact show directory: /data/incoming/shows/ShowName
@@ -45,10 +45,10 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 		// 3. The show directory itself matches the torrent save path
 		torrentSavePath := filepath.Clean(torrent.SavePath)
 		showPathClean := filepath.Clean(showPath)
-		
-		pathMatches := torrentSavePath == showPathClean || 
+
+		pathMatches := torrentSavePath == showPathClean ||
 			strings.HasPrefix(showPathClean+string(filepath.Separator), torrentSavePath+string(filepath.Separator))
-		
+
 		if pathMatches {
 			// Look up the request via downloads table
 			var requestTVDBID sql.NullString
@@ -61,10 +61,10 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 				AND r.tvdb_id IS NOT NULL 
 				AND r.tvdb_id != ''
 				LIMIT 1`, normalizedHash).Scan(&requestTVDBID)
-			
+
 			if err == nil && requestTVDBID.Valid {
-				slog.Info("Found request TVDB ID from torrent hash", 
-					"show_path", showPath, 
+				slog.Info("Found request TVDB ID from torrent hash",
+					"show_path", showPath,
 					"torrent_hash", normalizedHash,
 					"torrent_save_path", torrentSavePath,
 					"tvdb_id", requestTVDBID.String)
@@ -89,13 +89,13 @@ func findRequestTVDBIDFromEpisodes(showID int) string {
 		AND e.torrent_hash IS NOT NULL 
 		AND e.torrent_hash != ''
 		LIMIT 1`, showID).Scan(&episodeHash)
-	
+
 	if err != nil || !episodeHash.Valid {
 		return ""
 	}
-	
+
 	normalizedHash := strings.ToLower(episodeHash.String)
-	
+
 	// Look up the request via downloads table
 	var requestTVDBID sql.NullString
 	err = database.DB.QueryRow(`
@@ -107,11 +107,11 @@ func findRequestTVDBIDFromEpisodes(showID int) string {
 		AND r.tvdb_id IS NOT NULL 
 		AND r.tvdb_id != ''
 		LIMIT 1`, normalizedHash).Scan(&requestTVDBID)
-	
+
 	if err == nil && requestTVDBID.Valid {
 		return requestTVDBID.String
 	}
-	
+
 	return ""
 }
 
@@ -252,7 +252,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	MatchShow(cfg, showID)
 
 	scanSeasons(showID, showPath)
-	
+
 	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
 	// This is a fallback in case the initial check didn't find a match
 	if strings.HasPrefix(showPath, cfg.IncomingShowsPath) {
@@ -263,7 +263,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			// Try to find TVDB ID from episode torrent hashes
 			episodeTVDBID := findRequestTVDBIDFromEpisodes(showID)
 			if episodeTVDBID != "" {
-				slog.Info("Found request TVDB ID from episode torrent hashes", 
+				slog.Info("Found request TVDB ID from episode torrent hashes",
 					"show_id", showID,
 					"show_path", showPath,
 					"tvdb_id", episodeTVDBID)
@@ -357,14 +357,14 @@ func scanSeasons(showID int, showPath string) {
 	// Extract season number from show folder name if possible (e.g., "[S02]" or "Season 1" in folder name)
 	if !foundSeasonFolders {
 		showDirName := filepath.Base(showPath)
-		
+
 		// Try altSeasonRegex first (matches [S02], S02, Season02, etc.)
 		matches := altSeasonRegex.FindStringSubmatch(showDirName)
 		if len(matches) < 2 {
 			// Try explicit "Season X" pattern (handles "Fargo Season 1")
 			matches = seasonRegex.FindStringSubmatch(showDirName)
 		}
-		
+
 		if len(matches) >= 2 {
 			// Show folder itself contains season info (e.g., "Show Name [S02]" or "Show Name Season 1")
 			seasonNum, _ := strconv.Atoi(matches[1])

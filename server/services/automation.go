@@ -907,19 +907,19 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 	zeroSeedCount := 0
 	titleMismatchCount := 0
 	requestedTitleLower := strings.ToLower(requestedTitle)
-	
+
 	for _, r := range results {
 		// Filter by seeds
 		if r.Seeds == 0 {
 			zeroSeedCount++
 			continue
 		}
-		
+
 		// For movies, filter out results that don't match the requested title
 		if mediaType == "movie" && requestedTitle != "" {
 			resultTitleLower := strings.ToLower(r.Title)
 			titleMatches := false
-			
+
 			// Strategy 1: Check if result title starts with requested title
 			// This handles "Dave (2003)" matching "Dave"
 			if strings.HasPrefix(resultTitleLower, requestedTitleLower) {
@@ -930,29 +930,29 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 				// But NOT additional words like "Chappelle"
 				if remaining == "" {
 					titleMatches = true
-				} else if strings.HasPrefix(remaining, "(") || 
-				          strings.HasPrefix(remaining, "[") ||
-				          strings.HasPrefix(remaining, "19") || 
-				          strings.HasPrefix(remaining, "20") {
+				} else if strings.HasPrefix(remaining, "(") ||
+					strings.HasPrefix(remaining, "[") ||
+					strings.HasPrefix(remaining, "19") ||
+					strings.HasPrefix(remaining, "20") {
 					// Check if it's just a year/quality, not another word
 					// Years are 4 digits, quality tags are usually short
 					remainingClean := strings.Trim(remaining, "()[]")
 					if len(remainingClean) <= 6 || // Short enough for year/quality
-					   strings.HasPrefix(remainingClean, "1080") ||
-					   strings.HasPrefix(remainingClean, "720") ||
-					   strings.HasPrefix(remainingClean, "480") ||
-					   strings.HasPrefix(remainingClean, "bluray") ||
-					   strings.HasPrefix(remainingClean, "dvd") {
+						strings.HasPrefix(remainingClean, "1080") ||
+						strings.HasPrefix(remainingClean, "720") ||
+						strings.HasPrefix(remainingClean, "480") ||
+						strings.HasPrefix(remainingClean, "bluray") ||
+						strings.HasPrefix(remainingClean, "dvd") {
 						titleMatches = true
 					}
 				}
 			}
-			
+
 			// Strategy 2: Check for exact match (case-insensitive)
 			if !titleMatches && resultTitleLower == requestedTitleLower {
 				titleMatches = true
 			}
-			
+
 			// Strategy 3: Check if requested title appears as a complete word AND
 			// there are no other significant words (to avoid "Dave Chappelle" matching "Dave")
 			if !titleMatches {
@@ -962,22 +962,22 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 				for _, w := range requestedWords {
 					requestedWordSet[strings.Trim(w, ".,!?()[]{}")] = true
 				}
-				
+
 				// Check if all significant words in result are in requested title
 				allWordsMatch := true
 				foundRequestedTitle := false
 				for _, word := range words {
 					wordClean := strings.Trim(word, ".,!?()[]{}")
 					// Skip very short words, years, quality tags
-					if len(wordClean) <= 2 || 
-					   strings.HasPrefix(wordClean, "1080") ||
-					   strings.HasPrefix(wordClean, "720") ||
-					   strings.HasPrefix(wordClean, "480") ||
-					   (len(wordClean) == 4 && strings.HasPrefix(wordClean, "19")) ||
-					   (len(wordClean) == 4 && strings.HasPrefix(wordClean, "20")) {
+					if len(wordClean) <= 2 ||
+						strings.HasPrefix(wordClean, "1080") ||
+						strings.HasPrefix(wordClean, "720") ||
+						strings.HasPrefix(wordClean, "480") ||
+						(len(wordClean) == 4 && strings.HasPrefix(wordClean, "19")) ||
+						(len(wordClean) == 4 && strings.HasPrefix(wordClean, "20")) {
 						continue
 					}
-					
+
 					if requestedWordSet[wordClean] {
 						foundRequestedTitle = true
 					} else {
@@ -986,28 +986,28 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 						break
 					}
 				}
-				
+
 				if foundRequestedTitle && allWordsMatch {
 					titleMatches = true
 				}
 			}
-			
+
 			if !titleMatches {
 				titleMismatchCount++
-				slog.Debug("Filtered out result due to title mismatch", 
-					"requested", requestedTitle, 
+				slog.Debug("Filtered out result due to title mismatch",
+					"requested", requestedTitle,
 					"result", r.Title)
 				continue
 			}
 		}
-		
+
 		filtered = append(filtered, r)
 	}
 
 	if len(filtered) == 0 {
 		if zeroSeedCount > 0 || titleMismatchCount > 0 {
-			slog.Warn("All results filtered out", 
-				"total_results", len(results), 
+			slog.Warn("All results filtered out",
+				"total_results", len(results),
 				"zero_seed_count", zeroSeedCount,
 				"title_mismatch_count", titleMismatchCount)
 		}
@@ -1019,9 +1019,9 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		return nil
 	}
 
-	slog.Debug("Filtered results", 
-		"total_results", len(results), 
-		"filtered_count", len(filtered), 
+	slog.Debug("Filtered results",
+		"total_results", len(results),
+		"filtered_count", len(filtered),
 		"zero_seed_count", zeroSeedCount,
 		"title_mismatch_count", titleMismatchCount)
 
@@ -1062,7 +1062,7 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		if mediaType == "movie" && requestedTitle != "" {
 			requestedTitleLower := strings.ToLower(requestedTitle)
 			resultTitleLower := strings.ToLower(r.Title)
-			
+
 			// Exact title match gets highest bonus
 			if resultTitleLower == requestedTitleLower {
 				score += 2000
@@ -1070,7 +1070,7 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 				// Title contains requested title
 				score += 1000
 			}
-			
+
 			// Year matching bonus
 			if requestedYear > 0 {
 				yearStr := fmt.Sprintf("%d", requestedYear)

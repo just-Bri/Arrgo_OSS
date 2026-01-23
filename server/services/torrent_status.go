@@ -32,11 +32,11 @@ func IsTorrentStillDownloading(ctx context.Context, cfg *config.Config, torrentH
 			state := strings.ToLower(torrent.State)
 			downloadingStates := []string{
 				"downloading",
-				"metadl",      // downloading metadata
-				"stalleddl",   // stalled downloading
-				"queueddl",    // queued for download
-				"checkingdl",  // checking download
-				"pauseddl",    // paused downloading
+				"metadl",     // downloading metadata
+				"stalleddl",  // stalled downloading
+				"queueddl",   // queued for download
+				"checkingdl", // checking download
+				"pauseddl",   // paused downloading
 			}
 
 			for _, dlState := range downloadingStates {

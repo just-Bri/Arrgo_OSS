@@ -175,7 +175,7 @@ func ExtractStatusesFromShows(shows []models.Show) []string {
 // Items that have been imported but are still seeding will still show in incoming
 func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmin bool) (libraryMovies []models.Movie, incomingMovies []models.Movie) {
 	ctx := context.Background()
-	
+
 	for _, m := range allMovies {
 		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
 		if isIncoming {
@@ -186,7 +186,7 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 				// Check if it has a torrent hash and if it's still downloading
 				var torrentHash sql.NullString
 				database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", m.ID).Scan(&torrentHash)
-				
+
 				// Show if no torrent hash OR torrent is not downloading (seeding)
 				if !torrentHash.Valid || torrentHash.String == "" || !services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String) {
 					incomingMovies = append(incomingMovies, m)
@@ -204,7 +204,7 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 // Episodes that have been imported but are still seeding will still show in incoming
 func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin bool) (libraryShows []models.Show, incomingShows []models.Show) {
 	ctx := context.Background()
-	
+
 	for _, s := range allShows {
 		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
 		if isIncoming {

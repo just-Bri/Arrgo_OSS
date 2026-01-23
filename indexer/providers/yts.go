@@ -67,7 +67,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 	// YTS API endpoints - try primary first, then fallback
 	baseURLs := []string{
 		"https://yts.torrentbay.st", // Primary
-		"https://yts.bz",             // Fallback
+		"https://yts.bz",            // Fallback
 	}
 
 	queryParam := fmt.Sprintf("query_term=%s&sort_by=seeds", url.QueryEscape(query))
@@ -75,7 +75,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 
 	for i, baseURL := range baseURLs {
 		apiURL := fmt.Sprintf("%s/api/v2/list_movies.json?%s", baseURL, queryParam)
-		
+
 		resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 		if err != nil {
 			lastErr = err
@@ -104,9 +104,9 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 			for _, torrent := range movie.Torrents {
 				// Construct magnet link (YTS usually provides a hash, we can build the magnet link)
 				// tr are trackers
-				magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969&tr=udp://glotorrents.pw:6969/announce&tr=udp://tracker.opentrackr.org:1337/announce", 
+				magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969&tr=udp://glotorrents.pw:6969/announce&tr=udp://tracker.opentrackr.org:1337/announce",
 					torrent.Hash, url.QueryEscape(movie.TitleLong))
-				
+
 				results = append(results, SearchResult{
 					Title:      fmt.Sprintf("%s (%s) [%s]", movie.Title, torrent.Quality, torrent.VideoCodec),
 					Size:       torrent.Size,
