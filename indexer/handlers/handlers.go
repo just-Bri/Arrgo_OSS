@@ -61,24 +61,16 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	results, errs := performSearch(r.Context(), query, searchType, seasons)
 
-	// Log all errors, not just when results are empty
+	// Log all errors, but don't fail the request - return empty results instead
+	// This allows the caller to handle "no results" gracefully rather than treating it as a fatal error
 	if len(errs) > 0 {
 		for _, err := range errs {
-			slog.Error("Indexer search error", "error", err, "query", query, "type", searchType)
+			slog.Warn("Indexer search error (returning empty results)", "error", err, "query", query, "type", searchType)
 		}
 	}
 
-	if len(results) == 0 && len(errs) > 0 {
-		if format == "json" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": errs[0].Error()})
-		} else {
-			http.Error(w, errs[0].Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
+	// Return empty results with 200 OK status instead of 500 error
+	// This is more appropriate for a search API - "no results" is not a server error
 	if format == "json" {
 		writeJSONResponse(w, results)
 		return

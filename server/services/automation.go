@@ -98,42 +98,73 @@ func (s *AutomationService) Start(ctx context.Context) {
 
 // waitForQBittorrent waits for qBittorrent to be available with retries
 // This accounts for VPN containers that need time to establish VPN connection before qBittorrent web UI is available
+// Phase 1: Check every 30 seconds for 10 minutes (20 attempts) - allows time for VPN setup
+// Phase 2: If still not ready, check every 5 minutes indefinitely until ready
 func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
-	maxRetries := 30 // Increased from 10 to allow up to 2.5 minutes for VPN to connect
-	retryDelay := 5 * time.Second
-	var lastErr error
+	// Phase 1: Frequent checks during initial startup (VPN setup period)
+	phase1Retries := 20                                          // 20 attempts
+	phase1Delay := 30 * time.Second                              // Every 30 seconds
+	phase1Duration := time.Duration(phase1Retries) * phase1Delay // 10 minutes total
 
-	for i := 0; i < maxRetries; i++ {
+	// Phase 2: Less frequent checks if still not ready
+	phase2Delay := 5 * time.Minute // Every 5 minutes
+
+	var attempt int
+
+	slog.Info("Starting qBittorrent readiness check",
+		"phase1_retries", phase1Retries,
+		"phase1_delay", phase1Delay,
+		"phase2_delay", phase2Delay)
+
+	// Phase 1: Check every 30 seconds for 10 minutes
+	for attempt = 0; attempt < phase1Retries; attempt++ {
 		err := s.qb.Login(ctx)
 		if err == nil {
-			slog.Info("qBittorrent is now available", "attempt", i+1)
+			slog.Info("qBittorrent is now available", "attempt", attempt+1, "phase", "1")
 			return nil
 		}
-		
-		lastErr = err
-		
-		// Log the actual error for debugging
-		if i < maxRetries-1 {
-			slog.Debug("qBittorrent not ready yet, retrying", 
-				"attempt", i+1, 
-				"max_retries", maxRetries, 
-				"retry_delay", retryDelay,
-				"error", err)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(retryDelay):
-				// Continue retrying
-			}
-		} else {
-			// Log final error with more detail
-			slog.Error("qBittorrent connection failed after all retries", 
-				"attempts", maxRetries, 
-				"error", err,
-				"url", s.cfg.QBittorrentURL)
+
+		slog.Debug("qBittorrent not ready yet (phase 1), retrying",
+			"attempt", attempt+1,
+			"max_phase1_retries", phase1Retries,
+			"retry_delay", phase1Delay,
+			"error", err)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(phase1Delay):
+			// Continue retrying
 		}
 	}
-	return fmt.Errorf("qBittorrent not available after %d retries: %w", maxRetries, lastErr)
+
+	// Phase 2: Check every 5 minutes until ready
+	slog.Info("qBittorrent still not ready after initial wait period, switching to periodic checks",
+		"phase1_duration", phase1Duration,
+		"phase2_delay", phase2Delay)
+
+	for {
+		err := s.qb.Login(ctx)
+		if err == nil {
+			slog.Info("qBittorrent is now available", "attempt", attempt+1, "phase", "2")
+			return nil
+		}
+
+		attempt++
+
+		slog.Info("qBittorrent not ready yet (phase 2), will retry",
+			"attempt", attempt+1,
+			"retry_delay", phase2Delay,
+			"error", err,
+			"url", s.cfg.QBittorrentURL)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(phase2Delay):
+			// Continue retrying
+		}
+	}
 }
 
 // TriggerImmediateProcessing triggers immediate processing of approved requests
@@ -515,7 +546,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			magnetPreview = magnetPreview[:100] + "..."
 		}
 		slog.Debug("InfoHash not in result, extracting from magnet link", "request_id", r.ID, "magnet_preview", magnetPreview)
-		
+
 		// Check if MagnetLink is actually a URL (not a magnet URI)
 		magnetLink := best.MagnetLink
 		if strings.HasPrefix(magnetLink, "http://") || strings.HasPrefix(magnetLink, "https://") {
@@ -531,7 +562,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 				slog.Debug("Successfully extracted magnet link from URL", "request_id", r.ID)
 			}
 		}
-		
+
 		// Try to extract from magnet link
 		infoHash = extractInfoHashFromMagnet(magnetLink)
 		if infoHash == "" {
@@ -953,7 +984,7 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 
 	// Check if this is a 1337x URL - these require bypass service and cannot use direct requests
 	is1337x := strings.Contains(url, "1337x.to")
-	
+
 	// Try using Cloudflare bypass service if available (for sites like 1337x.to)
 	bypassURL := sharedconfig.GetEnv("CLOUDFLARE_BYPASS_URL", "")
 	if bypassURL != "" {
@@ -996,7 +1027,7 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 
 		htmlContent = string(body)
 	}
-	
+
 	// If we still don't have content, return error
 	if htmlContent == "" {
 		return "", fmt.Errorf("failed to fetch HTML content from URL")
@@ -1059,12 +1090,12 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 func fetchViaBypass(ctx context.Context, bypassURL, targetURL string) (string, error) {
 	// Ensure no trailing slash
 	bypassURL = strings.TrimSuffix(bypassURL, "/")
-	
+
 	// Flaresolverr-compatible API format
 	// POST to /v1 with JSON body
 	requestBody := map[string]interface{}{
-		"cmd":       "request.get",
-		"url":       targetURL,
+		"cmd":        "request.get",
+		"url":        targetURL,
 		"maxTimeout": 60000,
 	}
 
@@ -1098,10 +1129,10 @@ func fetchViaBypass(ctx context.Context, bypassURL, targetURL string) (string, e
 
 	// Parse Flaresolverr response
 	var bypassResp struct {
-		Status string `json:"status"`
+		Status   string `json:"status"`
 		Solution struct {
-			URL      string `json:"url"`
-			Response string `json:"response"`
+			URL      string        `json:"url"`
+			Response string        `json:"response"`
 			Cookies  []interface{} `json:"cookies"`
 		} `json:"solution"`
 	}
