@@ -486,37 +486,71 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
 	}
 
-	searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
-		"q":      searchQuery,
-		"type":   searchType,
-		"format": "json",
-	})
+	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
+	variants := ExpandSearchQuery(searchQuery)
+	
+	// Track seen results by info hash to avoid duplicates
+	seenHashes := make(map[string]bool)
+	allResults := make([]TorrentSearchResult, 0)
 
-	// Add season parameter for show searches
-	if r.MediaType == "show" && r.Seasons != "" {
-		searchURL = sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
-			"q":       searchQuery,
-			"type":    searchType,
-			"seasons": r.Seasons,
-			"format":  "json",
+	// Search each variant and merge results
+	for _, variant := range variants {
+		searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
+			"q":      variant,
+			"type":   searchType,
+			"format": "json",
 		})
+
+		// Add season parameter for show searches
+		if r.MediaType == "show" && r.Seasons != "" {
+			searchURL = sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
+				"q":       variant,
+				"type":    searchType,
+				"seasons": r.Seasons,
+				"format":  "json",
+			})
+		}
+
+		slog.Info("Searching indexer for request", "request_id", r.ID, "title", r.Title, "variant", variant, "indexer_url", searchURL)
+		resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
+		if err != nil {
+			slog.Warn("Failed to call indexer for variant", "request_id", r.ID, "variant", variant, "error", err)
+			// Continue with next variant if one fails
+			continue
+		}
+		// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
+
+		var variantResults []TorrentSearchResult
+		if err := sharedhttp.DecodeJSONResponse(resp, &variantResults); err != nil {
+			slog.Warn("Failed to decode indexer response for variant", "request_id", r.ID, "variant", variant, "error", err)
+			// Continue with next variant if decoding fails
+			continue
+		}
+
+		// Merge results, avoiding duplicates by info hash
+		for _, result := range variantResults {
+			hash := strings.ToLower(result.InfoHash)
+			if hash == "" {
+				// If no info hash, try to extract from magnet link
+				hash = extractInfoHashFromMagnet(result.MagnetLink)
+				hash = strings.ToLower(hash)
+			}
+			
+			// Use title as fallback key if no hash available
+			key := hash
+			if key == "" {
+				key = strings.ToLower(result.Title)
+			}
+			
+			if !seenHashes[key] {
+				seenHashes[key] = true
+				allResults = append(allResults, result)
+			}
+		}
 	}
 
-	slog.Info("Searching indexer for request", "request_id", r.ID, "title", r.Title, "indexer_url", searchURL)
-	resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
-	if err != nil {
-		slog.Error("Failed to call indexer", "request_id", r.ID, "error", err, "indexer_url", searchURL)
-		return fmt.Errorf("failed to call indexer: %w", err)
-	}
-	// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
-
-	var results []TorrentSearchResult
-	if err := sharedhttp.DecodeJSONResponse(resp, &results); err != nil {
-		slog.Error("Failed to decode indexer response", "request_id", r.ID, "error", err)
-		return fmt.Errorf("failed to decode indexer response: %w", err)
-	}
-
-	slog.Info("Indexer search completed", "request_id", r.ID, "results_count", len(results))
+	results := allResults
+	slog.Info("Indexer search completed", "request_id", r.ID, "results_count", len(results), "variants_searched", len(variants))
 
 	if len(results) == 0 {
 		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title)

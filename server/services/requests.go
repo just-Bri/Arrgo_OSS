@@ -6,6 +6,7 @@ import (
 	"Arrgo/models"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -86,6 +87,8 @@ func GetRequests() ([]models.Request, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Decode unicode escape sequences in title (e.g., \u0026 -> &)
+		req.Title = decodeUnicodeEscapes(req.Title)
 		req.TMDBID = tmdbID.String
 		req.TVDBID = tvdbID.String
 		req.IMDBID = imdbID.String
@@ -109,6 +112,19 @@ func GetPendingRequestCounts() (int, int, error) {
 	}
 
 	return movieCount, showCount, nil
+}
+
+// decodeUnicodeEscapes decodes unicode escape sequences like \u0026 to their actual characters
+func decodeUnicodeEscapes(s string) string {
+	// Use json.Unmarshal to decode unicode escape sequences
+	// We need to wrap it in quotes to make it a valid JSON string
+	quoted := `"` + s + `"`
+	var decoded string
+	if err := json.Unmarshal([]byte(quoted), &decoded); err == nil {
+		return decoded
+	}
+	// If decoding fails, return original string
+	return s
 }
 
 func UpdateRequestStatus(id int, status string) error {

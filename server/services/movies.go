@@ -6,6 +6,7 @@ import (
 	"Arrgo/models"
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -439,13 +440,25 @@ func PurgeMissingMovies() {
 }
 
 func SearchMoviesLocal(query string) ([]models.Movie, error) {
-	dbQuery := `
+	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
+	variants := GetSearchVariantsForDB(query)
+	
+	// Build SQL query with OR conditions for each variant
+	var conditions []string
+	args := make([]interface{}, len(variants))
+	for i, variant := range variants {
+		conditions = append(conditions, fmt.Sprintf("(title ILIKE $%d OR overview ILIKE $%d OR genres ILIKE $%d)", i+1, i+1, i+1))
+		args[i] = variant
+	}
+	
+	dbQuery := fmt.Sprintf(`
 		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at
 		FROM movies
-		WHERE title ILIKE $1 OR overview ILIKE $1 OR genres ILIKE $1
+		WHERE %s
 		ORDER BY title ASC
-	`
-	rows, err := database.DB.Query(dbQuery, "%"+query+"%")
+	`, strings.Join(conditions, " OR "))
+	
+	rows, err := database.DB.Query(dbQuery, args...)
 	if err != nil {
 		return nil, err
 	}

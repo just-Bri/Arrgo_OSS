@@ -270,49 +270,67 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 		return nil, fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
-	throttle()
-	searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", map[string]string{
-		"api_key":  cfg.TMDBAPIKey,
-		"query":    query,
-		"language": "en-US",
-	})
+	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
+	variants := ExpandSearchQuery(query)
+	
+	// Track seen IDs to avoid duplicates
+	seenIDs := make(map[string]bool)
+	allResults := make([]SearchResult, 0)
 
-	resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
-	if err != nil {
-		return nil, err
-	}
-
-	var searchResults TMDBMovieSearchResponse
-	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
-		return nil, err
-	}
-
-	results := make([]SearchResult, 0, len(searchResults.Results))
-	for _, r := range searchResults.Results {
-		year := 0
-		if len(r.ReleaseDate) >= 4 {
-			year, _ = strconv.Atoi(r.ReleaseDate[:4])
-		}
-
-		var genres []string
-		for _, id := range r.GenreIDs {
-			if name, ok := tmdbGenres[id]; ok {
-				genres = append(genres, name)
-			}
-		}
-
-		results = append(results, SearchResult{
-			ID:         fmt.Sprintf("%d", r.ID),
-			Title:      r.Title,
-			Year:       year,
-			MediaType:  "movie",
-			PosterPath: r.PosterPath,
-			Overview:   r.Overview,
-			Genres:     genres,
+	// Search each variant and merge results
+	for _, variant := range variants {
+		throttle()
+		searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", map[string]string{
+			"api_key":  cfg.TMDBAPIKey,
+			"query":    variant,
+			"language": "en-US",
 		})
+
+		resp, err := sharedhttp.MakeRequest(context.Background(), searchURL, sharedhttp.LongTimeoutClient)
+		if err != nil {
+			// Continue with next variant if one fails
+			continue
+		}
+
+		var searchResults TMDBMovieSearchResponse
+		if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
+			// Continue with next variant if decoding fails
+			continue
+		}
+
+		for _, r := range searchResults.Results {
+			id := fmt.Sprintf("%d", r.ID)
+			// Skip if we've already seen this result
+			if seenIDs[id] {
+				continue
+			}
+			seenIDs[id] = true
+
+			year := 0
+			if len(r.ReleaseDate) >= 4 {
+				year, _ = strconv.Atoi(r.ReleaseDate[:4])
+			}
+
+			var genres []string
+			for _, genreID := range r.GenreIDs {
+				if name, ok := tmdbGenres[genreID]; ok {
+					genres = append(genres, name)
+				}
+			}
+
+			allResults = append(allResults, SearchResult{
+				ID:         id,
+				Title:      r.Title,
+				Year:       year,
+				MediaType:  "movie",
+				PosterPath: r.PosterPath,
+				Overview:   r.Overview,
+				Genres:     genres,
+			})
+		}
 	}
 
-	return results, nil
+	return allResults, nil
 }
 
 func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
@@ -325,46 +343,64 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 		return nil, err
 	}
 
-	throttle()
-	searchURL := sharedhttp.BuildQueryURL("https://api4.thetvdb.com/v4/search", map[string]string{
-		"query": query,
-		"type":  "series",
-		"lang":  "eng",
-	})
+	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
+	variants := ExpandSearchQuery(query)
+	
+	// Track seen IDs to avoid duplicates
+	seenIDs := make(map[string]bool)
+	allResults := make([]SearchResult, 0)
 
-	req, _ := http.NewRequest("GET", searchURL, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := sharedhttp.LongTimeoutClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("TVDB returned status %d", resp.StatusCode)
-	}
-
-	var searchResults TVDBSearchResponse
-	if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
-		return nil, err
-	}
-
-	results := make([]SearchResult, 0, len(searchResults.Data))
-	for _, r := range searchResults.Data {
-		year, _ := strconv.Atoi(r.Year)
-		results = append(results, SearchResult{
-			ID:         r.TVDBID,
-			Title:      r.Name,
-			Year:       year,
-			MediaType:  "show",
-			PosterPath: r.ImageURL,
-			Overview:   r.Overview,
-			Genres:     r.Genres,
+	// Search each variant and merge results
+	for _, variant := range variants {
+		throttle()
+		searchURL := sharedhttp.BuildQueryURL("https://api4.thetvdb.com/v4/search", map[string]string{
+			"query": variant,
+			"type":  "series",
+			"lang":  "eng",
 		})
+
+		req, _ := http.NewRequest("GET", searchURL, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := sharedhttp.LongTimeoutClient.Do(req)
+		if err != nil {
+			// Continue with next variant if one fails
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			// Continue with next variant if status is not OK
+			continue
+		}
+
+		var searchResults TVDBSearchResponse
+		if err := sharedhttp.DecodeJSONResponse(resp, &searchResults); err != nil {
+			// Continue with next variant if decoding fails
+			continue
+		}
+
+		for _, r := range searchResults.Data {
+			// Skip if we've already seen this result
+			if seenIDs[r.TVDBID] {
+				continue
+			}
+			seenIDs[r.TVDBID] = true
+
+			year, _ := strconv.Atoi(r.Year)
+			allResults = append(allResults, SearchResult{
+				ID:         r.TVDBID,
+				Title:      r.Name,
+				Year:       year,
+				MediaType:  "show",
+				PosterPath: r.ImageURL,
+				Overview:   r.Overview,
+				Genres:     r.Genres,
+			})
+		}
 	}
 
-	return results, nil
+	return allResults, nil
 }
 
 func getTVDBToken(apiKey string) (string, error) {
