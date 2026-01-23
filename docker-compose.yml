@@ -127,8 +127,6 @@ services:
       - 1.1.1.1
       - 1.0.0.1
     dns_search: []
-    # Use host's network for DNS resolution (fallback if DNS config doesn't work)
-    network_mode: bridge
     networks:
       - arrgo-network
     restart: unless-stopped
