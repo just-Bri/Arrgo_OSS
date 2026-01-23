@@ -933,18 +933,33 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 	var htmlContent string
 	var err error
 
+	// Check if this is a 1337x URL - these require bypass service and cannot use direct requests
+	is1337x := strings.Contains(url, "1337x.to")
+	
 	// Try using Cloudflare bypass service if available (for sites like 1337x.to)
 	bypassURL := sharedconfig.GetEnv("CLOUDFLARE_BYPASS_URL", "")
 	if bypassURL != "" {
+		slog.Debug("Fetching URL via bypass service", "url", url, "bypass_url", bypassURL)
 		htmlContent, err = fetchViaBypass(ctx, bypassURL, url)
 		if err != nil {
-			slog.Debug("Failed to fetch via bypass service, trying direct request", "error", err)
-			// Fall through to direct request
+			if is1337x {
+				// For 1337x, bypass service is required - don't fall back to direct request
+				slog.Error("Failed to fetch 1337x URL via bypass service (required)", "url", url, "error", err)
+				return "", fmt.Errorf("failed to fetch 1337x URL via bypass service (required): %w", err)
+			}
+			slog.Debug("Failed to fetch via bypass service, trying direct request", "url", url, "error", err)
+			// Fall through to direct request for non-1337x sites
+		} else {
+			slog.Debug("Successfully fetched URL via bypass service", "url", url)
 		}
+	} else if is1337x {
+		// 1337x requires bypass service - cannot proceed without it
+		slog.Error("CLOUDFLARE_BYPASS_URL not configured but required for 1337x URLs", "url", url)
+		return "", fmt.Errorf("CLOUDFLARE_BYPASS_URL not configured but required for 1337x URLs")
 	}
 
-	// If bypass failed or not available, try direct request
-	if htmlContent == "" {
+	// If bypass failed or not available, try direct request (only for non-1337x sites)
+	if htmlContent == "" && !is1337x {
 		resp, err := sharedhttp.MakeRequest(ctx, url, sharedhttp.DefaultClient)
 		if err != nil {
 			return "", fmt.Errorf("failed to fetch URL: %w", err)
@@ -962,6 +977,11 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 		}
 
 		htmlContent = string(body)
+	}
+	
+	// If we still don't have content, return error
+	if htmlContent == "" {
+		return "", fmt.Errorf("failed to fetch HTML content from URL")
 	}
 
 	// Try to find magnet link using regex first (faster)
