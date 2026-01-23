@@ -1,12 +1,12 @@
 services:
-  arrgo-app:
+  arrgo:
     build:
       context: .
-    container_name: arrgo-app
+    container_name: arrgo
     ports:
       - "5003:5003"
     environment:
-      - DATABASE_URL=postgres://arrgo:arrgo@arrgo-db:5432/arrgo?sslmode=disable
+      - DATABASE_URL=postgres://arrgo:arrgo@db:5432/arrgo?sslmode=disable
       - SESSION_SECRET=change-me-in-production
       - PORT=5003
       - ENV=development
@@ -23,19 +23,19 @@ services:
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
       - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
       - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
-      - QBITTORRENT_URL=http://arrgo_qbittorrentvpn:8080
+      - QBITTORRENT_URL=http://qbittorrent:8080
       - QBITTORRENT_USER=${QBITTORRENT_USER:-admin}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
-      - INDEXER_URL=http://arrgo-indexer:5004
+      - INDEXER_URL=http://indexer:5004
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      arrgo-db:
+      db:
         condition: service_healthy
-      arrgo-indexer:
+      indexer:
         condition: service_started
-      arrgo_qbittorrentvpn:
+      qbittorrent:
         condition: service_started
       # flaresolverr dependency removed - using existing Flaresolverr instance
       # If you want to run Flaresolverr in this stack, uncomment the dependency above
@@ -48,7 +48,7 @@ services:
       - arrgo-network
     restart: unless-stopped
 
-  arrgo-db:
+  db:
     image: postgres:16-alpine
     container_name: arrgo-db
     environment:
@@ -56,7 +56,7 @@ services:
       - POSTGRES_PASSWORD=arrgo
       - POSTGRES_DB=arrgo
     volumes:
-      - arrgo-db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     healthcheck:
@@ -68,9 +68,9 @@ services:
       - arrgo-network
     restart: unless-stopped
 
-  arrgo_qbittorrentvpn:
+  qbittorrent:
     image: binhex/arch-qbittorrentvpn:latest
-    container_name: arrgo_qbittorrentvpn
+    container_name: arrgo-qbittorrent
     cap_add:
       - NET_ADMIN
     devices:
@@ -107,7 +107,7 @@ services:
       net.unraid.docker.managed: qbittorrentvpn
       net.unraid.docker.webui: http://192.168.10.11:8080
 
-  arrgo-indexer:
+  indexer:
     build:
       context: .
       dockerfile: ./indexer/Dockerfile
@@ -134,5 +134,5 @@ networks:
     driver: bridge
 
 volumes:
-  arrgo-db-data:
+  db-data:
 

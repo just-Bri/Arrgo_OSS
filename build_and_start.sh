@@ -9,14 +9,14 @@ git pull origin main || true
 docker compose down
 
 # Nuke old image, build new one
-docker rmi arrgo-arrgo-app
-docker rmi arrgo-arrgo-indexer 
-docker rmi arrgo-arrgo_qbittorrentvpn
-docker rmi arrgo-arrgo-db
+docker rmi arrgo-arrgo 2>/dev/null || true
+docker rmi arrgo-indexer 2>/dev/null || true
+docker rmi arrgo-qbittorrent 2>/dev/null || true
+docker rmi arrgo-db 2>/dev/null || true
 docker compose build --no-cache
 
 # Start the services
 docker compose up -d
 
 # Show logs
-docker compose logs -f arrgo-app
+docker compose logs -f arrgo
