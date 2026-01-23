@@ -16,6 +16,8 @@ const (
 	// SeedingThresholdMinutes is the maximum seeding time in minutes (1440 = 24 hours)
 	SeedingThresholdMinutes = 1440
 	// SeedingThresholdRatio is the maximum seed ratio (2.0)
+	// At this ratio, torrents are always removed from qBittorrent
+	// Files are only deleted if they've been imported (moved out of incoming folder)
 	SeedingThresholdRatio = 2.0
 )
 
@@ -48,11 +50,11 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 				"meets_time", meetsTimeThreshold,
 				"meets_ratio", meetsRatioThreshold)
 
-			// Check if files are in incoming folders and have been imported
-			// IMPORTANT: Only remove torrent if files have been imported (moved out of incoming)
-			// If files are still in incoming and not imported, keep the torrent active
-			shouldDelete := false
+			// Always remove torrent from qBittorrent when threshold is met
+			// Files are only deleted if they've been imported (moved out of incoming folder)
+			// If files haven't been imported yet, we keep them but remove the torrent
 			var incomingPath string
+			var filesImported bool
 
 			// Check if this torrent is associated with a movie or episode that's been imported
 			var moviePath, episodePath string
@@ -62,13 +64,16 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 				AND m.status = 'ready'
 				LIMIT 1`, normalizedHash).Scan(&moviePath)
 			if err == nil && moviePath != "" {
-				// Movie has been imported (status = 'ready' and path not in incoming)
+				// Movie exists in database
 				if !strings.HasPrefix(moviePath, cfg.IncomingMoviesPath) {
-					shouldDelete = true
+					// Movie has been imported (moved out of incoming)
+					filesImported = true
 					incomingPath = cfg.IncomingMoviesPath
 				} else {
-					// Movie is in database but still in incoming - not imported yet, keep torrent
-					slog.Debug("Skipping torrent cleanup - movie not imported yet",
+					// Movie is in database but still in incoming - not imported yet
+					filesImported = false
+					incomingPath = cfg.IncomingMoviesPath
+					slog.Debug("Torrent will be removed but files kept - movie not imported yet",
 						"hash", normalizedHash,
 						"movie_path", moviePath)
 				}
@@ -84,18 +89,19 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 					FROM episodes e
 					JOIN seasons s ON e.season_id = s.id
 					WHERE LOWER(e.torrent_hash) = $1`, normalizedHash, incomingShowsPathPattern).Scan(&episodesInIncoming, &episodesImported)
-				
+
 				if err == nil && (episodesInIncoming > 0 || episodesImported > 0) {
 					if episodesInIncoming > 0 {
-						// Some or all episodes are still in incoming - not imported yet, keep torrent
-						slog.Debug("Skipping torrent cleanup - episodes still in incoming",
+						// Some or all episodes are still in incoming - not imported yet
+						filesImported = false
+						incomingPath = cfg.IncomingShowsPath
+						slog.Debug("Torrent will be removed but files kept - episodes still in incoming",
 							"hash", normalizedHash,
 							"episodes_in_incoming", episodesInIncoming,
 							"episodes_imported", episodesImported)
-						shouldDelete = false
 					} else if episodesImported > 0 {
 						// All episodes have been imported (not in incoming)
-						shouldDelete = true
+						filesImported = true
 						incomingPath = cfg.IncomingShowsPath
 						// Get one episode path for file cleanup check
 						database.DB.QueryRow(`
@@ -104,82 +110,91 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 							LIMIT 1`, normalizedHash).Scan(&episodePath)
 					}
 				} else {
-					// No database entries found - files haven't been scanned/imported yet
-					// Check if save path is in incoming - if so, don't remove torrent yet
+					// No database entries found - check if save path is in incoming
 					if strings.HasPrefix(torrent.SavePath, cfg.IncomingMoviesPath) ||
 						strings.HasPrefix(torrent.SavePath, cfg.IncomingShowsPath) {
 						// Files are in incoming but not in DB - haven't been imported yet
-						// Keep the torrent active until files are imported
-						slog.Debug("Skipping torrent cleanup - files in incoming but not imported yet",
+						filesImported = false
+						if strings.HasPrefix(torrent.SavePath, cfg.IncomingMoviesPath) {
+							incomingPath = cfg.IncomingMoviesPath
+						} else {
+							incomingPath = cfg.IncomingShowsPath
+						}
+						slog.Debug("Torrent will be removed but files kept - files in incoming but not in DB",
 							"hash", normalizedHash,
 							"save_path", torrent.SavePath)
-						shouldDelete = false
 					} else {
 						// Files are not in incoming and not in DB - might be orphaned or already moved
-						// Safe to remove torrent (files already moved or don't exist)
-						shouldDelete = true
+						// Assume imported (safe to delete if they exist)
+						filesImported = true
 					}
 				}
 			}
 
-			if shouldDelete {
-				// IMPORTANT: Only remove torrent from qBittorrent WITHOUT deleting files
-				// The files may still be needed for seeding. We'll manually clean up
-				// only the incoming folder files after verifying they've been moved.
-				if err := qb.DeleteTorrent(ctx, normalizedHash, false); err != nil {
-					slog.Error("Failed to remove torrent from qBittorrent",
-						"hash", normalizedHash,
-						"error", err)
-					continue
-				}
+			// Always remove torrent from qBittorrent when threshold is met
+			// Files are only deleted if they've been imported
+			// If files haven't been imported, we keep them but remove the torrent
+			// If files have been imported, we also delete the incoming files
+			if err := qb.DeleteTorrent(ctx, normalizedHash, false); err != nil {
+				slog.Error("Failed to remove torrent from qBittorrent",
+					"hash", normalizedHash,
+					"error", err)
+				continue
+			}
 
-				// Clean up files from incoming folder ONLY if:
-				// 1. Files are confirmed to be in incoming folder
-				// 2. Files have been imported (moved to final location, not just copied)
-				// 3. Torrent has been removed from qBittorrent (so files aren't actively being used)
-				if incomingPath != "" && torrent.SavePath != "" {
-					if strings.HasPrefix(torrent.SavePath, incomingPath) {
-						// Verify the files have actually been moved (not just copied)
-						// by checking that the final location exists and is different
-						fileMoved := false
-						if moviePath != "" && !strings.HasPrefix(moviePath, incomingPath) {
-							// Movie has been moved to final location
-							if _, err := os.Stat(moviePath); err == nil {
-								fileMoved = true
-							}
-						} else if episodePath != "" && !strings.HasPrefix(episodePath, incomingPath) {
-							// Episode has been moved to final location
-							if _, err := os.Stat(episodePath); err == nil {
-								fileMoved = true
-							}
+			slog.Info("Removed torrent from qBittorrent",
+				"hash", normalizedHash,
+				"ratio", torrent.Ratio,
+				"files_imported", filesImported)
+
+			// Clean up files from incoming folder ONLY if files have been imported
+			// If files haven't been imported yet, keep them (torrent is removed but files remain)
+			if filesImported && incomingPath != "" && torrent.SavePath != "" {
+				if strings.HasPrefix(torrent.SavePath, incomingPath) {
+					// Verify the files have actually been moved (not just copied)
+					// by checking that the final location exists and is different
+					fileMoved := false
+					if moviePath != "" && !strings.HasPrefix(moviePath, incomingPath) {
+						// Movie has been moved to final location
+						if _, err := os.Stat(moviePath); err == nil {
+							fileMoved = true
 						}
+					} else if episodePath != "" && !strings.HasPrefix(episodePath, incomingPath) {
+						// Episode has been moved to final location
+						if _, err := os.Stat(episodePath); err == nil {
+							fileMoved = true
+						}
+					}
 
-						// Only delete incoming files if we're certain they've been moved
-						if fileMoved {
-							if err := cleanupIncomingFiles(torrent.SavePath, incomingPath); err != nil {
-								slog.Error("Failed to cleanup incoming files",
-									"save_path", torrent.SavePath,
-									"incoming_path", incomingPath,
-									"error", err)
-							} else {
-								slog.Info("Cleaned up incoming files after verifying move",
-									"save_path", torrent.SavePath)
-							}
-						} else {
-							slog.Warn("Skipping incoming file cleanup - files may not have been moved yet",
+					// Only delete incoming files if we're certain they've been moved
+					if fileMoved {
+						if err := cleanupIncomingFiles(torrent.SavePath, incomingPath); err != nil {
+							slog.Error("Failed to cleanup incoming files",
 								"save_path", torrent.SavePath,
-								"movie_path", moviePath,
-								"episode_path", episodePath)
+								"incoming_path", incomingPath,
+								"error", err)
+						} else {
+							slog.Info("Cleaned up incoming files after verifying move",
+								"save_path", torrent.SavePath)
 						}
+					} else {
+						slog.Warn("Skipping incoming file cleanup - files may not have been moved yet",
+							"save_path", torrent.SavePath,
+							"movie_path", moviePath,
+							"episode_path", episodePath)
 					}
 				}
-
-				// Remove torrent_hash from database entries
-				database.DB.Exec("UPDATE movies SET torrent_hash = NULL WHERE LOWER(torrent_hash) = $1", normalizedHash)
-				database.DB.Exec("UPDATE episodes SET torrent_hash = NULL WHERE LOWER(torrent_hash) = $1", normalizedHash)
-
-				cleanedCount++
+			} else if !filesImported {
+				slog.Info("Keeping incoming files - torrent removed but files not imported yet",
+					"hash", normalizedHash,
+					"save_path", torrent.SavePath)
 			}
+
+			// Remove torrent_hash from database entries
+			database.DB.Exec("UPDATE movies SET torrent_hash = NULL WHERE LOWER(torrent_hash) = $1", normalizedHash)
+			database.DB.Exec("UPDATE episodes SET torrent_hash = NULL WHERE LOWER(torrent_hash) = $1", normalizedHash)
+
+			cleanedCount++
 		}
 	}
 
@@ -356,7 +371,7 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 
 	// Get the directory containing the file (torrents usually save to a directory)
 	fileDir := filepath.Dir(filePath)
-	
+
 	// Try to find a torrent with matching save path
 	ctx := context.Background()
 	torrents, err := qb.GetTorrentsDetailed(ctx, "")
@@ -368,7 +383,7 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 		// Check if torrent's save path matches or contains the file directory
 		if strings.HasPrefix(fileDir, torrent.SavePath) || strings.HasPrefix(torrent.SavePath, fileDir) {
 			normalizedHash := strings.ToLower(torrent.Hash)
-			
+
 			// Link to movie or episode
 			if mediaType == "movie" {
 				database.DB.Exec(`
@@ -383,7 +398,7 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 					WHERE file_path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
 					normalizedHash, filePath)
 			}
-			
+
 			slog.Debug("Linked torrent hash to file",
 				"hash", normalizedHash,
 				"file_path", filePath,
