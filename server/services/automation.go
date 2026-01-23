@@ -457,7 +457,7 @@ func (s *AutomationService) processSingleRequest(ctx context.Context, r models.R
 
 func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Request) error {
 
-	// 1. Build search query with season info for shows
+	// 1. Build search query with season info for shows, year for movies
 	searchType := r.MediaType
 	searchQuery := r.Title
 
@@ -480,6 +480,10 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 				}
 			}
 		}
+	} else if r.MediaType == "movie" && r.Year > 0 {
+		// For movies, include year in search query to improve matching
+		// Format: "Movie Title 2003"
+		searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
 	}
 
 	searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
@@ -529,8 +533,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		}
 	}
 
-	// 2. Choose best result - prioritize 1080p, match seasons, sort by seeds
-	best := selectBestResult(results, r.MediaType, r.Seasons)
+	// 2. Choose best result - prioritize 1080p, match seasons, sort by seeds, filter by title/year for movies
+	best := selectBestResult(results, r.MediaType, r.Seasons, r.Title, r.Year)
 	if best == nil {
 		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons)
 		return nil
@@ -875,8 +879,8 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 	}
 }
 
-// selectBestResult selects the best torrent result based on seeds, quality, season matching, and minimum requirements
-func selectBestResult(results []TorrentSearchResult, mediaType string, requestedSeasons string) *TorrentSearchResult {
+// selectBestResult selects the best torrent result based on seeds, quality, season matching, title/year matching, and minimum requirements
+func selectBestResult(results []TorrentSearchResult, mediaType string, requestedSeasons string, requestedTitle string, requestedYear int) *TorrentSearchResult {
 	if len(results) == 0 {
 		return nil
 	}
@@ -898,28 +902,128 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		}
 	}
 
-	// Filter by minimum seeds (at least 1 seed required)
+	// Filter by minimum seeds and title/year matching (for movies)
 	var filtered []TorrentSearchResult
 	zeroSeedCount := 0
+	titleMismatchCount := 0
+	requestedTitleLower := strings.ToLower(requestedTitle)
+	
 	for _, r := range results {
-		if r.Seeds > 0 {
-			filtered = append(filtered, r)
-		} else {
+		// Filter by seeds
+		if r.Seeds == 0 {
 			zeroSeedCount++
+			continue
 		}
+		
+		// For movies, filter out results that don't match the requested title
+		if mediaType == "movie" && requestedTitle != "" {
+			resultTitleLower := strings.ToLower(r.Title)
+			titleMatches := false
+			
+			// Strategy 1: Check if result title starts with requested title
+			// This handles "Dave (2003)" matching "Dave"
+			if strings.HasPrefix(resultTitleLower, requestedTitleLower) {
+				// Check what comes after - should be year, quality, or nothing
+				remaining := resultTitleLower[len(requestedTitleLower):]
+				remaining = strings.TrimSpace(remaining)
+				// Allow: empty, year (2003), parentheses with year ((2003)), quality tags
+				// But NOT additional words like "Chappelle"
+				if remaining == "" {
+					titleMatches = true
+				} else if strings.HasPrefix(remaining, "(") || 
+				          strings.HasPrefix(remaining, "[") ||
+				          strings.HasPrefix(remaining, "19") || 
+				          strings.HasPrefix(remaining, "20") {
+					// Check if it's just a year/quality, not another word
+					// Years are 4 digits, quality tags are usually short
+					remainingClean := strings.Trim(remaining, "()[]")
+					if len(remainingClean) <= 6 || // Short enough for year/quality
+					   strings.HasPrefix(remainingClean, "1080") ||
+					   strings.HasPrefix(remainingClean, "720") ||
+					   strings.HasPrefix(remainingClean, "480") ||
+					   strings.HasPrefix(remainingClean, "bluray") ||
+					   strings.HasPrefix(remainingClean, "dvd") {
+						titleMatches = true
+					}
+				}
+			}
+			
+			// Strategy 2: Check for exact match (case-insensitive)
+			if !titleMatches && resultTitleLower == requestedTitleLower {
+				titleMatches = true
+			}
+			
+			// Strategy 3: Check if requested title appears as a complete word AND
+			// there are no other significant words (to avoid "Dave Chappelle" matching "Dave")
+			if !titleMatches {
+				words := strings.Fields(resultTitleLower)
+				requestedWords := strings.Fields(requestedTitleLower)
+				requestedWordSet := make(map[string]bool)
+				for _, w := range requestedWords {
+					requestedWordSet[strings.Trim(w, ".,!?()[]{}")] = true
+				}
+				
+				// Check if all significant words in result are in requested title
+				allWordsMatch := true
+				foundRequestedTitle := false
+				for _, word := range words {
+					wordClean := strings.Trim(word, ".,!?()[]{}")
+					// Skip very short words, years, quality tags
+					if len(wordClean) <= 2 || 
+					   strings.HasPrefix(wordClean, "1080") ||
+					   strings.HasPrefix(wordClean, "720") ||
+					   strings.HasPrefix(wordClean, "480") ||
+					   (len(wordClean) == 4 && strings.HasPrefix(wordClean, "19")) ||
+					   (len(wordClean) == 4 && strings.HasPrefix(wordClean, "20")) {
+						continue
+					}
+					
+					if requestedWordSet[wordClean] {
+						foundRequestedTitle = true
+					} else {
+						// Found a significant word not in requested title
+						allWordsMatch = false
+						break
+					}
+				}
+				
+				if foundRequestedTitle && allWordsMatch {
+					titleMatches = true
+				}
+			}
+			
+			if !titleMatches {
+				titleMismatchCount++
+				slog.Debug("Filtered out result due to title mismatch", 
+					"requested", requestedTitle, 
+					"result", r.Title)
+				continue
+			}
+		}
+		
+		filtered = append(filtered, r)
 	}
 
 	if len(filtered) == 0 {
-		slog.Warn("All results filtered out due to zero seeds", "total_results", len(results), "zero_seed_count", zeroSeedCount)
+		if zeroSeedCount > 0 || titleMismatchCount > 0 {
+			slog.Warn("All results filtered out", 
+				"total_results", len(results), 
+				"zero_seed_count", zeroSeedCount,
+				"title_mismatch_count", titleMismatchCount)
+		}
 		// If all results have 0 seeds, still try to use the first one (might be a new torrent)
 		if len(results) > 0 {
-			slog.Info("Using first result despite zero seeds", "title", results[0].Title, "seeds", results[0].Seeds)
+			slog.Info("Using first result despite filters", "title", results[0].Title, "seeds", results[0].Seeds)
 			return &results[0]
 		}
 		return nil
 	}
 
-	slog.Debug("Filtered results", "total_results", len(results), "filtered_count", len(filtered), "zero_seed_count", zeroSeedCount)
+	slog.Debug("Filtered results", 
+		"total_results", len(results), 
+		"filtered_count", len(filtered), 
+		"zero_seed_count", zeroSeedCount,
+		"title_mismatch_count", titleMismatchCount)
 
 	// Score function: higher is better
 	scoreResult := func(r *TorrentSearchResult) int {
@@ -954,7 +1058,29 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 			}
 		}
 
-		// Seeds contribute to score (but less than quality/season match)
+		// Title and year matching bonus (for movies)
+		if mediaType == "movie" && requestedTitle != "" {
+			requestedTitleLower := strings.ToLower(requestedTitle)
+			resultTitleLower := strings.ToLower(r.Title)
+			
+			// Exact title match gets highest bonus
+			if resultTitleLower == requestedTitleLower {
+				score += 2000
+			} else if strings.Contains(resultTitleLower, requestedTitleLower) {
+				// Title contains requested title
+				score += 1000
+			}
+			
+			// Year matching bonus
+			if requestedYear > 0 {
+				yearStr := fmt.Sprintf("%d", requestedYear)
+				if strings.Contains(resultTitleLower, yearStr) {
+					score += 500 // Big bonus for year match
+				}
+			}
+		}
+
+		// Seeds contribute to score (but less than quality/season/title match)
 		score += r.Seeds
 
 		return score
