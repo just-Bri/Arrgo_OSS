@@ -15,7 +15,6 @@ import (
 
 	"github.com/justbri/arrgo/shared/config"
 	"github.com/justbri/arrgo/shared/format"
-	sharedhttp "github.com/justbri/arrgo/shared/http"
 	"golang.org/x/net/html"
 )
 
@@ -74,8 +73,8 @@ func (x *X1337Indexer) fetchViaBypass(ctx context.Context, targetURL string) (st
 	// Flaresolverr-compatible API format
 	// POST to /v1 with JSON body
 	requestBody := map[string]interface{}{
-		"cmd":       "request.get",
-		"url":       targetURL,
+		"cmd":        "request.get",
+		"url":        targetURL,
 		"maxTimeout": 60000,
 	}
 
@@ -109,10 +108,10 @@ func (x *X1337Indexer) fetchViaBypass(ctx context.Context, targetURL string) (st
 
 	// Parse Flaresolverr response
 	var bypassResp struct {
-		Status string `json:"status"`
+		Status   string `json:"status"`
 		Solution struct {
-			URL      string `json:"url"`
-			Response string `json:"response"`
+			URL      string        `json:"url"`
+			Response string        `json:"response"`
 			Cookies  []interface{} `json:"cookies"`
 		} `json:"solution"`
 	}
@@ -141,7 +140,7 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 	var findTorrentRows func(*html.Node) []*html.Node
 	findTorrentRows = func(n *html.Node) []*html.Node {
 		var rows []*html.Node
-		
+
 		if n.Type == html.ElementNode && n.Data == "tr" {
 			// Check if this row contains a link to /torrent/
 			hasTorrentLink := false
@@ -160,16 +159,16 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 				}
 			}
 			walk(n)
-			
+
 			if hasTorrentLink {
 				rows = append(rows, n)
 			}
 		}
-		
+
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			rows = append(rows, findTorrentRows(c)...)
 		}
-		
+
 		return rows
 	}
 
@@ -180,12 +179,12 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 		var title, link string
 		var seeders, leechers int
 		var size string
-		
+
 		cellIndex := 0
 		for c := row.FirstChild; c != nil; c = c.NextSibling {
 			if c.Type == html.ElementNode && c.Data == "td" {
 				text := strings.TrimSpace(x.getTextContent(c))
-				
+
 				// Try to find link in this cell
 				var findLink func(*html.Node)
 				findLink = func(node *html.Node) {
@@ -203,7 +202,7 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 					}
 				}
 				findLink(c)
-				
+
 				// Parse numeric values (seeders, leechers)
 				if cellIndex > 0 && text != "" {
 					// Try to parse as number (could be seeders or leechers)
@@ -214,20 +213,20 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 							leechers = val
 						}
 					}
-					
+
 					// Check if this looks like a size (contains MB, GB, etc.)
-					if strings.Contains(strings.ToUpper(text), "MB") || 
-					   strings.Contains(strings.ToUpper(text), "GB") ||
-					   strings.Contains(strings.ToUpper(text), "KB") ||
-					   strings.Contains(strings.ToUpper(text), "TB") {
+					if strings.Contains(strings.ToUpper(text), "MB") ||
+						strings.Contains(strings.ToUpper(text), "GB") ||
+						strings.Contains(strings.ToUpper(text), "KB") ||
+						strings.Contains(strings.ToUpper(text), "TB") {
 						size = text
 					}
 				}
-				
+
 				cellIndex++
 			}
 		}
-		
+
 		// Create result if we have title and link
 		if title != "" && link != "" {
 			// Build full URL if needed
@@ -235,10 +234,10 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 			if !strings.HasPrefix(link, "http") {
 				magnetLink = "https://1337x.to" + link
 			}
-			
+
 			sizeBytes := parseSize(size)
 			quality, resolution := extractQualityInfo(title)
-			
+
 			results = append(results, SearchResult{
 				Title:      title,
 				Size:       format.Bytes(sizeBytes),
