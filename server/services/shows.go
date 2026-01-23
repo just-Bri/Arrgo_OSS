@@ -18,6 +18,103 @@ import (
 
 var scanShowsMutex sync.Mutex
 
+// findRequestTVDBIDFromPath attempts to find a request TVDB ID by checking if any files
+// in the show directory have a torrent hash linked to a request.
+// This allows exact matching when scanning incoming shows that were requested.
+func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
+	// Try to find a torrent hash for files in this directory
+	qb, err := NewQBittorrentClient(cfg)
+	if err != nil {
+		return ""
+	}
+
+	ctx := context.Background()
+	torrents, err := qb.GetTorrentsDetailed(ctx, "")
+	if err != nil {
+		return ""
+	}
+
+	// Check if any torrent's save path matches the show directory
+	for _, torrent := range torrents {
+		normalizedHash := strings.ToLower(torrent.Hash)
+		
+		// Check if this torrent's save path matches or contains the show directory
+		// Torrents can save to:
+		// 1. The exact show directory: /data/incoming/shows/ShowName
+		// 2. A parent directory: /data/incoming/shows (with ShowName as subdirectory)
+		// 3. The show directory itself matches the torrent save path
+		torrentSavePath := filepath.Clean(torrent.SavePath)
+		showPathClean := filepath.Clean(showPath)
+		
+		pathMatches := torrentSavePath == showPathClean || 
+			strings.HasPrefix(showPathClean+string(filepath.Separator), torrentSavePath+string(filepath.Separator))
+		
+		if pathMatches {
+			// Look up the request via downloads table
+			var requestTVDBID sql.NullString
+			err := database.DB.QueryRow(`
+				SELECT r.tvdb_id 
+				FROM requests r 
+				JOIN downloads d ON r.id = d.request_id 
+				WHERE LOWER(d.torrent_hash) = $1 
+				AND r.media_type = 'show'
+				AND r.tvdb_id IS NOT NULL 
+				AND r.tvdb_id != ''
+				LIMIT 1`, normalizedHash).Scan(&requestTVDBID)
+			
+			if err == nil && requestTVDBID.Valid {
+				slog.Info("Found request TVDB ID from torrent hash", 
+					"show_path", showPath, 
+					"torrent_hash", normalizedHash,
+					"torrent_save_path", torrentSavePath,
+					"tvdb_id", requestTVDBID.String)
+				return requestTVDBID.String
+			}
+		}
+	}
+
+	return ""
+}
+
+// findRequestTVDBIDFromEpisodes attempts to find a request TVDB ID by checking if any episodes
+// in the show have a torrent hash linked to a request.
+func findRequestTVDBIDFromEpisodes(showID int) string {
+	// Find any episode with a torrent hash
+	var episodeHash sql.NullString
+	err := database.DB.QueryRow(`
+		SELECT e.torrent_hash 
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1 
+		AND e.torrent_hash IS NOT NULL 
+		AND e.torrent_hash != ''
+		LIMIT 1`, showID).Scan(&episodeHash)
+	
+	if err != nil || !episodeHash.Valid {
+		return ""
+	}
+	
+	normalizedHash := strings.ToLower(episodeHash.String)
+	
+	// Look up the request via downloads table
+	var requestTVDBID sql.NullString
+	err = database.DB.QueryRow(`
+		SELECT r.tvdb_id 
+		FROM requests r 
+		JOIN downloads d ON r.id = d.request_id 
+		WHERE LOWER(d.torrent_hash) = $1 
+		AND r.media_type = 'show'
+		AND r.tvdb_id IS NOT NULL 
+		AND r.tvdb_id != ''
+		LIMIT 1`, normalizedHash).Scan(&requestTVDBID)
+	
+	if err == nil && requestTVDBID.Valid {
+		return requestTVDBID.String
+	}
+	
+	return ""
+}
+
 func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error {
 	scanType := ScanShowLibrary
 	if onlyIncoming {
@@ -125,6 +222,16 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	// Look for local poster
 	posterPath := findLocalPoster(showPath)
 
+	// If this is an incoming show, try to find a request linked to torrent hash
+	// This allows us to use the exact TVDB ID from the request instead of fuzzy matching
+	if strings.HasPrefix(showPath, cfg.IncomingShowsPath) {
+		requestTVDBID := findRequestTVDBIDFromPath(cfg, showPath)
+		if requestTVDBID != "" {
+			slog.Info("Found request TVDB ID for incoming show", "path", showPath, "tvdb_id", requestTVDBID, "parsed_title", title)
+			tvdbID = requestTVDBID
+		}
+	}
+
 	slog.Debug("Processing show", "title", title, "year", year, "path", showPath)
 	showID, err := upsertShow(models.Show{
 		Title:      title,
@@ -145,6 +252,27 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	MatchShow(cfg, showID)
 
 	scanSeasons(showID, showPath)
+	
+	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
+	// This is a fallback in case the initial check didn't find a match
+	if strings.HasPrefix(showPath, cfg.IncomingShowsPath) {
+		// Check if show still doesn't have a TVDB ID
+		var currentTVDBID sql.NullString
+		err := database.DB.QueryRow("SELECT tvdb_id FROM shows WHERE id = $1", showID).Scan(&currentTVDBID)
+		if err == nil && (!currentTVDBID.Valid || currentTVDBID.String == "") {
+			// Try to find TVDB ID from episode torrent hashes
+			episodeTVDBID := findRequestTVDBIDFromEpisodes(showID)
+			if episodeTVDBID != "" {
+				slog.Info("Found request TVDB ID from episode torrent hashes", 
+					"show_id", showID,
+					"show_path", showPath,
+					"tvdb_id", episodeTVDBID)
+				// Update the show with the TVDB ID and re-match
+				database.DB.Exec("UPDATE shows SET tvdb_id = $1 WHERE id = $2", episodeTVDBID, showID)
+				MatchShow(cfg, showID)
+			}
+		}
+	}
 }
 
 func upsertShow(show models.Show) (int, error) {

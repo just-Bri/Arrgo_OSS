@@ -49,6 +49,8 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 				"meets_ratio", meetsRatioThreshold)
 
 			// Check if files are in incoming folders and have been imported
+			// IMPORTANT: Only remove torrent if files have been imported (moved out of incoming)
+			// If files are still in incoming and not imported, keep the torrent active
 			shouldDelete := false
 			var incomingPath string
 
@@ -64,31 +66,58 @@ func CheckAndCleanupSeedingTorrents(ctx context.Context, cfg *config.Config, qb 
 				if !strings.HasPrefix(moviePath, cfg.IncomingMoviesPath) {
 					shouldDelete = true
 					incomingPath = cfg.IncomingMoviesPath
+				} else {
+					// Movie is in database but still in incoming - not imported yet, keep torrent
+					slog.Debug("Skipping torrent cleanup - movie not imported yet",
+						"hash", normalizedHash,
+						"movie_path", moviePath)
 				}
 			} else {
-				// Check episodes
+				// Check episodes - need to check if ANY episodes are still in incoming
+				var episodesInIncoming int
+				var episodesImported int
+				incomingShowsPathPattern := cfg.IncomingShowsPath + "%"
 				err = database.DB.QueryRow(`
-					SELECT e.file_path FROM episodes e
-					WHERE LOWER(e.torrent_hash) = $1
-					LIMIT 1`, normalizedHash).Scan(&episodePath)
-				if err == nil && episodePath != "" {
-					// Check if episode has been imported (not in incoming)
-					if !strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
+					SELECT 
+						COUNT(CASE WHEN e.file_path LIKE $2 THEN 1 END) as in_incoming,
+						COUNT(CASE WHEN e.file_path NOT LIKE $2 THEN 1 END) as imported
+					FROM episodes e
+					JOIN seasons s ON e.season_id = s.id
+					WHERE LOWER(e.torrent_hash) = $1`, normalizedHash, incomingShowsPathPattern).Scan(&episodesInIncoming, &episodesImported)
+				
+				if err == nil && (episodesInIncoming > 0 || episodesImported > 0) {
+					if episodesInIncoming > 0 {
+						// Some or all episodes are still in incoming - not imported yet, keep torrent
+						slog.Debug("Skipping torrent cleanup - episodes still in incoming",
+							"hash", normalizedHash,
+							"episodes_in_incoming", episodesInIncoming,
+							"episodes_imported", episodesImported)
+						shouldDelete = false
+					} else if episodesImported > 0 {
+						// All episodes have been imported (not in incoming)
 						shouldDelete = true
 						incomingPath = cfg.IncomingShowsPath
+						// Get one episode path for file cleanup check
+						database.DB.QueryRow(`
+							SELECT e.file_path FROM episodes e
+							WHERE LOWER(e.torrent_hash) = $1
+							LIMIT 1`, normalizedHash).Scan(&episodePath)
 					}
 				} else {
-					// No database entry found, check if save path is in incoming
+					// No database entries found - files haven't been scanned/imported yet
+					// Check if save path is in incoming - if so, don't remove torrent yet
 					if strings.HasPrefix(torrent.SavePath, cfg.IncomingMoviesPath) ||
 						strings.HasPrefix(torrent.SavePath, cfg.IncomingShowsPath) {
-						// Files are in incoming, but not in DB - might be orphaned
-						// Only delete if we can verify files exist and are old enough
+						// Files are in incoming but not in DB - haven't been imported yet
+						// Keep the torrent active until files are imported
+						slog.Debug("Skipping torrent cleanup - files in incoming but not imported yet",
+							"hash", normalizedHash,
+							"save_path", torrent.SavePath)
+						shouldDelete = false
+					} else {
+						// Files are not in incoming and not in DB - might be orphaned or already moved
+						// Safe to remove torrent (files already moved or don't exist)
 						shouldDelete = true
-						if strings.HasPrefix(torrent.SavePath, cfg.IncomingMoviesPath) {
-							incomingPath = cfg.IncomingMoviesPath
-						} else {
-							incomingPath = cfg.IncomingShowsPath
-						}
 					}
 				}
 			}
