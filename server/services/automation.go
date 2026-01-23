@@ -1,11 +1,15 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +18,9 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 
+	sharedconfig "github.com/justbri/arrgo/shared/config"
 	sharedhttp "github.com/justbri/arrgo/shared/http"
+	"golang.org/x/net/html"
 )
 
 type AutomationService struct {
@@ -491,10 +497,27 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			magnetPreview = magnetPreview[:100] + "..."
 		}
 		slog.Debug("InfoHash not in result, extracting from magnet link", "request_id", r.ID, "magnet_preview", magnetPreview)
+		
+		// Check if MagnetLink is actually a URL (not a magnet URI)
+		magnetLink := best.MagnetLink
+		if strings.HasPrefix(magnetLink, "http://") || strings.HasPrefix(magnetLink, "https://") {
+			slog.Debug("MagnetLink is a URL, fetching magnet link from page", "request_id", r.ID, "url", magnetLink)
+			// Fetch the page and extract the magnet link
+			extractedMagnet, err := extractMagnetLinkFromURL(ctx, magnetLink)
+			if err != nil {
+				slog.Warn("Failed to extract magnet link from URL, trying direct extraction", "request_id", r.ID, "error", err)
+			} else if extractedMagnet != "" {
+				magnetLink = extractedMagnet
+				// Update best.MagnetLink so it's available for qBittorrent later
+				best.MagnetLink = extractedMagnet
+				slog.Debug("Successfully extracted magnet link from URL", "request_id", r.ID)
+			}
+		}
+		
 		// Try to extract from magnet link
-		infoHash = extractInfoHashFromMagnet(best.MagnetLink)
+		infoHash = extractInfoHashFromMagnet(magnetLink)
 		if infoHash == "" {
-			slog.Error("Could not extract info hash from magnet link", "request_id", r.ID, "magnet_link", best.MagnetLink)
+			slog.Error("Could not extract info hash from magnet link", "request_id", r.ID, "magnet_link", magnetLink)
 			return fmt.Errorf("could not extract info hash from magnet link")
 		}
 		slog.Debug("Extracted info hash from magnet", "request_id", r.ID, "info_hash", infoHash)
@@ -903,6 +926,153 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 
 	slog.Debug("Selected best result", "title", best.Title, "seeds", best.Seeds, "resolution", best.Resolution, "score", bestScore)
 	return best
+}
+
+// extractMagnetLinkFromURL fetches a torrent page URL and extracts the magnet link from the HTML
+func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
+	var htmlContent string
+	var err error
+
+	// Try using Cloudflare bypass service if available (for sites like 1337x.to)
+	bypassURL := sharedconfig.GetEnv("CLOUDFLARE_BYPASS_URL", "")
+	if bypassURL != "" {
+		htmlContent, err = fetchViaBypass(ctx, bypassURL, url)
+		if err != nil {
+			slog.Debug("Failed to fetch via bypass service, trying direct request", "error", err)
+			// Fall through to direct request
+		}
+	}
+
+	// If bypass failed or not available, try direct request
+	if htmlContent == "" {
+		resp, err := sharedhttp.MakeRequest(ctx, url, sharedhttp.DefaultClient)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch URL: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		// Read the HTML content
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %w", err)
+		}
+
+		htmlContent = string(body)
+	}
+
+	// Try to find magnet link using regex first (faster)
+	// Match magnet:? followed by URL-encoded or plain characters until quote, space, or HTML tag
+	// This handles both plain HTML and HTML entities
+	magnetRegex := regexp.MustCompile(`magnet:\?[^"'\s<>]+`)
+	matches := magnetRegex.FindString(htmlContent)
+	if matches != "" {
+		// Clean up any HTML entities that might have been included
+		matches = strings.ReplaceAll(matches, "&amp;", "&")
+		matches = strings.ReplaceAll(matches, "&quot;", "\"")
+		matches = strings.ReplaceAll(matches, "&#39;", "'")
+		return matches, nil
+	}
+
+	// Fallback: parse HTML to find magnet links in href attributes
+	// HTML parser automatically decodes entities, so this is more reliable
+	doc, err := html.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse HTML: %w", err)
+	}
+
+	var magnetLink string
+	var findMagnetLink func(*html.Node)
+	findMagnetLink = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" && strings.HasPrefix(attr.Val, "magnet:") {
+					magnetLink = attr.Val
+					return
+				}
+			}
+		}
+		// Also check data attributes and other common places
+		if n.Type == html.ElementNode {
+			for _, attr := range n.Attr {
+				if (attr.Key == "data-magnet" || attr.Key == "data-url") && strings.HasPrefix(attr.Val, "magnet:") {
+					magnetLink = attr.Val
+					return
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findMagnetLink(c)
+		}
+	}
+	findMagnetLink(doc)
+
+	if magnetLink == "" {
+		return "", fmt.Errorf("no magnet link found in page")
+	}
+
+	return magnetLink, nil
+}
+
+// fetchViaBypass uses the Cloudflare bypass service (Flaresolverr-compatible) to fetch a URL
+func fetchViaBypass(ctx context.Context, bypassURL, targetURL string) (string, error) {
+	// Ensure no trailing slash
+	bypassURL = strings.TrimSuffix(bypassURL, "/")
+	
+	// Flaresolverr-compatible API format
+	// POST to /v1 with JSON body
+	requestBody := map[string]interface{}{
+		"cmd":       "request.get",
+		"url":       targetURL,
+		"maxTimeout": 60000,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Make POST request to bypass service
+	req, err := http.NewRequestWithContext(ctx, "POST", bypassURL+"/v1", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := sharedhttp.DefaultClient
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call bypass service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("bypass service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse Flaresolverr response
+	var bypassResp struct {
+		Status string `json:"status"`
+		Solution struct {
+			URL      string `json:"url"`
+			Response string `json:"response"`
+			Cookies  []interface{} `json:"cookies"`
+		} `json:"solution"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&bypassResp); err != nil {
+		return "", fmt.Errorf("failed to decode bypass response: %w", err)
+	}
+
+	if bypassResp.Status != "ok" || bypassResp.Solution.Response == "" {
+		return "", fmt.Errorf("bypass service returned invalid response")
+	}
+
+	return bypassResp.Solution.Response, nil
 }
 
 // extractInfoHashFromMagnet extracts the info hash from a magnet link
