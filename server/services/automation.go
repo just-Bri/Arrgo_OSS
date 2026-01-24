@@ -82,6 +82,9 @@ func (s *AutomationService) Start(ctx context.Context) {
 		s.ProcessApprovedRequests(ctx)
 	}
 
+	// Check for missing subtitles on startup
+	go s.CheckMediaSubtitles(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,6 +96,60 @@ func (s *AutomationService) Start(ctx context.Context) {
 		case <-subtitleTicker.C:
 			s.ProcessSubtitleQueue(ctx)
 		}
+	}
+}
+
+func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
+	slog.Info("Checking all media for missing subtitles")
+
+	// 1. Check Movies
+	movieRows, err := database.DB.Query("SELECT id, path FROM movies")
+	if err != nil {
+		slog.Error("Error querying movies for subtitle check", "error", err)
+	} else {
+		defer movieRows.Close()
+		movieCount := 0
+		queuedCount := 0
+		for movieRows.Next() {
+			var id int
+			var path string
+			if err := movieRows.Scan(&id, &path); err == nil {
+				movieCount++
+				if !HasSubtitles(path) {
+					if err := QueueSubtitleDownload("movie", id); err != nil {
+						slog.Error("Failed to queue movie subtitle download", "movie_id", id, "error", err)
+					} else {
+						queuedCount++
+					}
+				}
+			}
+		}
+		slog.Info("Movie subtitle check completed", "total_movies", movieCount, "queued_subtitles", queuedCount)
+	}
+
+	// 2. Check Episodes
+	episodeRows, err := database.DB.Query("SELECT id, file_path FROM episodes")
+	if err != nil {
+		slog.Error("Error querying episodes for subtitle check", "error", err)
+	} else {
+		defer episodeRows.Close()
+		episodeCount := 0
+		queuedCount := 0
+		for episodeRows.Next() {
+			var id int
+			var path string
+			if err := episodeRows.Scan(&id, &path); err == nil {
+				episodeCount++
+				if !HasSubtitles(path) {
+					if err := QueueSubtitleDownload("episode", id); err != nil {
+						slog.Error("Failed to queue episode subtitle download", "episode_id", id, "error", err)
+					} else {
+						queuedCount++
+					}
+				}
+			}
+		}
+		slog.Info("Episode subtitle check completed", "total_episodes", episodeCount, "queued_subtitles", queuedCount)
 	}
 }
 
