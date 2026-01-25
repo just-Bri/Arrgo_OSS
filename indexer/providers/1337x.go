@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -56,15 +57,18 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 	searchPath := url.PathEscape(query)
 	searchURL := fmt.Sprintf("https://1337x.to/search/%s/1/", searchPath)
 
+	slog.Info("Fetching from 1337x", "query", query, "category", category, "url", searchURL)
 	// Use Cloudflare bypass service to fetch the page
 	htmlContent, err := x.fetchViaBypass(ctx, searchURL)
 	if err != nil {
+		slog.Warn("1337x request failed", "query", query, "category", category, "error", err)
 		// Graceful degradation - return empty results instead of error
 		return []SearchResult{}, nil
 	}
 
 	// Parse HTML and extract torrent results
 	results := x.parseSearchResults(htmlContent)
+	slog.Info("1337x request successful", "query", query, "category", category, "results", len(results))
 	return results, nil
 }
 

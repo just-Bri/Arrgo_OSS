@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/justbri/arrgo/shared/format"
 )
@@ -50,15 +51,20 @@ func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, categor
 		"sort":     "seeders",
 	})
 
+	slog.Info("Fetching from SolidTorrents", "query", query, "category", category)
 	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 	if err != nil {
+		slog.Warn("SolidTorrents request failed", "query", query, "category", category, "error", err)
 		return nil, err
 	}
 
 	var apiResp SolidTorrentsResponse
 	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
+		slog.Warn("SolidTorrents decode failed", "query", query, "category", category, "error", err)
 		return nil, err
 	}
+	
+	slog.Info("SolidTorrents request successful", "query", query, "category", category, "results", len(apiResp.Results))
 
 	var results []SearchResult
 	for _, r := range apiResp.Results {

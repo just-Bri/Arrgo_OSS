@@ -75,6 +75,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 
 	for i, baseURL := range baseURLs {
 		apiURL := fmt.Sprintf("%s/api/v2/list_movies.json?%s", baseURL, queryParam)
+		slog.Info("Fetching from YTS", "query", query, "endpoint", baseURL, "attempt", i+1, "total_endpoints", len(baseURLs))
 
 		resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 		if err != nil {
@@ -99,6 +100,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 		resp.Body.Close()
 
 		// Success - process results
+		slog.Info("YTS request successful", "endpoint", baseURL, "query", query)
 		results := []SearchResult{}
 		for _, movie := range ytsResp.Data.Movies {
 			for _, torrent := range movie.Torrents {

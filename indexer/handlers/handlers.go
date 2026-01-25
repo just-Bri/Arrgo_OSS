@@ -48,7 +48,16 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	seasons := r.URL.Query().Get("seasons") // Comma-separated season numbers for shows
 	format := r.URL.Query().Get("format")   // "json" or "html" (default)
 
+	// Log search request parameters
+	slog.Info("Search request received",
+		"query", query,
+		"type", searchType,
+		"seasons", seasons,
+		"format", format,
+		"remote_addr", r.RemoteAddr)
+
 	if query == "" {
+		slog.Warn("Search request missing query parameter")
 		if format == "json" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -60,6 +69,13 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results, errs := performSearch(r.Context(), query, searchType, seasons)
+	
+	// Log search results summary
+	slog.Info("Search completed",
+		"query", query,
+		"type", searchType,
+		"results_count", len(results),
+		"errors_count", len(errs))
 
 	// Log all errors, but don't fail the request - return empty results instead
 	// This allows the caller to handle "no results" gracefully rather than treating it as a fatal error
@@ -98,21 +114,28 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 	switch {
 	case searchType == "show" || searchType == "tv":
 		// For shows, use all indexers except YTS (which only supports movies)
+		slog.Info("Searching for show", "query", query, "seasons", seasons)
 		indexers := providers.GetIndexers()
 		for _, idx := range indexers {
 			if idx.GetName() == "YTS" {
+				slog.Debug("Skipping YTS indexer for show search")
 				continue
 			}
 
+			slog.Info("Searching indexer for show", "indexer", idx.GetName(), "query", query, "seasons", seasons)
 			var res []providers.SearchResult
 			var err error
 
 			// If multiple seasons requested, perform search for each
 			if len(seasonNums) > 0 {
 				for _, sn := range seasonNums {
+					slog.Debug("Searching for specific season", "indexer", idx.GetName(), "season", sn)
 					sRes, sErr := idx.SearchShows(ctx, query, sn, 0)
 					if sErr == nil {
 						res = append(res, sRes...)
+						slog.Debug("Season search completed", "indexer", idx.GetName(), "season", sn, "results", len(sRes))
+					} else {
+						slog.Warn("Season search failed", "indexer", idx.GetName(), "season", sn, "error", sErr)
 					}
 				}
 			} else {
@@ -120,9 +143,11 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 			}
 
 			if err != nil {
+				slog.Warn("Indexer search failed", "indexer", idx.GetName(), "error", err)
 				errs = append(errs, err)
 				continue
 			}
+			slog.Info("Indexer search completed", "indexer", idx.GetName(), "results", len(res))
 			results = append(results, res...)
 		}
 
@@ -132,6 +157,7 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 		// 2. Nyaa/1337x (fallback for older movies and anime)
 		// 3. SolidTorrents/TorrentGalaxy (last resort)
 		
+		slog.Info("Searching for movie", "query", query)
 		allIndexers := providers.GetIndexers()
 		
 		// Priority groups for movies
@@ -143,13 +169,17 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 		searchedIndexers := make(map[string]bool)
 		
 		// Priority 1: YTS
+		slog.Info("Searching priority 1 indexers", "query", query)
 		for _, idx := range allIndexers {
 			if contains(priority1, idx.GetName()) {
+				slog.Info("Searching indexer", "indexer", idx.GetName(), "priority", 1, "query", query)
 				res, err := idx.SearchMovies(ctx, query)
 				searchedIndexers[idx.GetName()] = true
 				if err != nil {
+					slog.Warn("Indexer search failed", "indexer", idx.GetName(), "priority", 1, "error", err)
 					errs = append(errs, err)
 				} else {
+					slog.Info("Indexer search completed", "indexer", idx.GetName(), "priority", 1, "results", len(res))
 					results = append(results, res...)
 				}
 			}
@@ -157,31 +187,43 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 		
 		// Priority 2: Nyaa, 1337x, TorrentGalaxy (only if YTS had no results or errors)
 		if len(results) == 0 {
+			slog.Info("No results from priority 1, searching priority 2 indexers", "query", query)
 			for _, idx := range allIndexers {
 				if !searchedIndexers[idx.GetName()] && contains(priority2, idx.GetName()) {
+					slog.Info("Searching indexer", "indexer", idx.GetName(), "priority", 2, "query", query)
 					res, err := idx.SearchMovies(ctx, query)
 					searchedIndexers[idx.GetName()] = true
 					if err != nil {
+						slog.Warn("Indexer search failed", "indexer", idx.GetName(), "priority", 2, "error", err)
 						errs = append(errs, err)
 					} else {
+						slog.Info("Indexer search completed", "indexer", idx.GetName(), "priority", 2, "results", len(res))
 						results = append(results, res...)
 					}
 				}
 			}
+		} else {
+			slog.Info("Skipping priority 2 indexers - found results in priority 1", "results_count", len(results))
 		}
 		
 		// Priority 3: SolidTorrents (only if no results from higher priority sources)
 		if len(results) == 0 {
+			slog.Info("No results from priority 2, searching priority 3 indexers", "query", query)
 			for _, idx := range allIndexers {
 				if !searchedIndexers[idx.GetName()] && contains(priority3, idx.GetName()) {
+					slog.Info("Searching indexer", "indexer", idx.GetName(), "priority", 3, "query", query)
 					res, err := idx.SearchMovies(ctx, query)
 					if err != nil {
+						slog.Warn("Indexer search failed", "indexer", idx.GetName(), "priority", 3, "error", err)
 						errs = append(errs, err)
 					} else {
+						slog.Info("Indexer search completed", "indexer", idx.GetName(), "priority", 3, "results", len(res))
 						results = append(results, res...)
 					}
 				}
 			}
+		} else {
+			slog.Info("Skipping priority 3 indexers - found results in higher priorities", "results_count", len(results))
 		}
 	}
 

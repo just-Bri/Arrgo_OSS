@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/justbri/arrgo/shared/format"
 )
@@ -58,8 +59,10 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 		"category": category,
 	})
 
+	slog.Info("Fetching from TorrentGalaxy", "query", query, "category", category)
 	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
 	if err != nil {
+		slog.Warn("TorrentGalaxy request failed", "query", query, "category", category, "error", err)
 		// Graceful degradation - return empty results instead of error
 		// This allows other indexers to still work
 		return []SearchResult{}, nil
@@ -67,13 +70,17 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 
 	var apiResp TorrentGalaxyResponse
 	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
+		slog.Warn("TorrentGalaxy decode failed", "query", query, "category", category, "error", err)
 		// If JSON decode fails, return empty results (graceful degradation)
 		return []SearchResult{}, nil
 	}
 
 	if apiResp.Status != "success" {
+		slog.Warn("TorrentGalaxy returned non-success status", "query", query, "category", category, "status", apiResp.Status)
 		return []SearchResult{}, nil
 	}
+	
+	slog.Info("TorrentGalaxy request successful", "query", query, "category", category, "results", len(apiResp.Results))
 
 	var results []SearchResult
 	for _, r := range apiResp.Results {
