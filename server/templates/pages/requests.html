@@ -16,8 +16,7 @@
             {{range .Requests}}
             <li
                 style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
-                <a href="{{if eq .MediaType "
-                    show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
+                <a href="{{if eq .MediaType "show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
                     style="text-decoration: none; flex-shrink: 0;">
                     {{if .PosterPath}}
                     {{if hasPrefix .PosterPath "http"}}
@@ -36,8 +35,7 @@
                 <div style="flex: 1; min-width: 0;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
                         <div style="min-width: 0;">
-                            <a href="{{if eq .MediaType "
-                                show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
+                            <a href="{{if eq .MediaType "show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
                                 style="text-decoration: none;">
                                 <div
                                     style="font-size: 16px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
