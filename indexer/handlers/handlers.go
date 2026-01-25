@@ -95,17 +95,17 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 		}
 	}
 
-	indexers := providers.GetIndexers()
-	for _, idx := range indexers {
-		var res []providers.SearchResult
-		var err error
-
-		switch {
-		case searchType == "show" || searchType == "tv":
-			// Skip indexers that only support movies
+	switch {
+	case searchType == "show" || searchType == "tv":
+		// For shows, use all indexers except YTS (which only supports movies)
+		indexers := providers.GetIndexers()
+		for _, idx := range indexers {
 			if idx.GetName() == "YTS" {
 				continue
 			}
+
+			var res []providers.SearchResult
+			var err error
 
 			// If multiple seasons requested, perform search for each
 			if len(seasonNums) > 0 {
@@ -118,22 +118,84 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 			} else {
 				res, err = idx.SearchShows(ctx, query, 0, 0)
 			}
-		default: // "movie", "solid" (general search) or empty
-			// For movie searches, only use YTS indexer
-			if idx.GetName() != "YTS" {
+
+			if err != nil {
+				errs = append(errs, err)
 				continue
 			}
-			res, err = idx.SearchMovies(ctx, query)
+			results = append(results, res...)
 		}
 
-		if err != nil {
-			errs = append(errs, err)
-			continue
+	default: // "movie", "solid" (general search) or empty
+		// For movie searches, use priority order:
+		// 1. YTS (highest quality, known good source)
+		// 2. Nyaa/1337x (fallback for older movies and anime)
+		// 3. SolidTorrents/TorrentGalaxy (last resort)
+		
+		allIndexers := providers.GetIndexers()
+		
+		// Priority groups for movies
+		priority1 := []string{"YTS"}                              // Highest priority
+		priority2 := []string{"Nyaa", "1337x"}                    // Fallback
+		priority3 := []string{"SolidTorrents", "TorrentGalaxy"}    // Last resort
+		
+		// Search in priority order
+		searchedIndexers := make(map[string]bool)
+		
+		// Priority 1: YTS
+		for _, idx := range allIndexers {
+			if contains(priority1, idx.GetName()) {
+				res, err := idx.SearchMovies(ctx, query)
+				searchedIndexers[idx.GetName()] = true
+				if err != nil {
+					errs = append(errs, err)
+				} else {
+					results = append(results, res...)
+				}
+			}
 		}
-		results = append(results, res...)
+		
+		// Priority 2: Nyaa, 1337x, TorrentGalaxy (only if YTS had no results or errors)
+		if len(results) == 0 {
+			for _, idx := range allIndexers {
+				if !searchedIndexers[idx.GetName()] && contains(priority2, idx.GetName()) {
+					res, err := idx.SearchMovies(ctx, query)
+					searchedIndexers[idx.GetName()] = true
+					if err != nil {
+						errs = append(errs, err)
+					} else {
+						results = append(results, res...)
+					}
+				}
+			}
+		}
+		
+		// Priority 3: SolidTorrents (only if no results from higher priority sources)
+		if len(results) == 0 {
+			for _, idx := range allIndexers {
+				if !searchedIndexers[idx.GetName()] && contains(priority3, idx.GetName()) {
+					res, err := idx.SearchMovies(ctx, query)
+					if err != nil {
+						errs = append(errs, err)
+					} else {
+						results = append(results, res...)
+					}
+				}
+			}
+		}
 	}
 
 	return results, errs
+}
+
+// contains checks if a string slice contains a specific string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 // writeJSONResponse writes search results as JSON

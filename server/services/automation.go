@@ -232,7 +232,7 @@ func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
 
 func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	var requests []models.Request
-	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons FROM requests WHERE status = 'approved'`
+	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons, retry_count, last_search_at FROM requests WHERE status = 'approved'`
 
 	slog.Debug("Checking for approved requests to process")
 	rows, err := database.DB.Query(query)
@@ -242,10 +242,12 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	now := time.Now()
 	for rows.Next() {
 		var r models.Request
 		var tmdbID, tvdbID, imdbID, seasons sql.NullString
-		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &tmdbID, &tvdbID, &imdbID, &seasons); err != nil {
+		var lastSearchAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &tmdbID, &tvdbID, &imdbID, &seasons, &r.RetryCount, &lastSearchAt); err != nil {
 			slog.Error("Error scanning request", "error", err)
 			continue
 		}
@@ -253,21 +255,66 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 		r.TVDBID = tvdbID.String
 		r.IMDBID = imdbID.String
 		r.Seasons = seasons.String
+		if lastSearchAt.Valid {
+			r.LastSearchAt = &lastSearchAt.Time
+		}
+
+		// If retries are exhausted but still marked as approved, mark as not_found
+		if r.RetryCount >= 54 {
+			slog.Warn("Request has exhausted retries but still marked as approved, marking as not_found", "request_id", r.ID, "retry_count", r.RetryCount)
+			database.DB.Exec("UPDATE requests SET status = 'not_found', updated_at = NOW() WHERE id = $1", r.ID)
+			continue
+		}
+
+		// Check if this request is ready for retry based on retry count
+		if !s.isReadyForRetry(r, now) {
+			slog.Debug("Request not ready for retry yet", "request_id", r.ID, "retry_count", r.RetryCount, "last_search_at", r.LastSearchAt)
+			continue
+		}
+
 		requests = append(requests, r)
 	}
 
 	if len(requests) == 0 {
-		slog.Debug("No approved requests found to process")
+		slog.Debug("No approved requests ready to process")
 		return
 	}
 
 	slog.Info("Found approved requests to process", "count", len(requests))
 	for _, r := range requests {
-		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons)
+		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
 		if err := s.processRequest(ctx, r); err != nil {
 			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}
 	}
+}
+
+// isReadyForRetry determines if a request is ready to be retried based on retry count and timing
+// Returns true if the request should be searched now
+func (s *AutomationService) isReadyForRetry(r models.Request, now time.Time) bool {
+	// First search attempt - always ready
+	if r.RetryCount == 0 && r.LastSearchAt == nil {
+		return true
+	}
+
+	if r.LastSearchAt == nil {
+		return true
+	}
+
+	timeSinceLastSearch := now.Sub(*r.LastSearchAt)
+
+	// First 24 retries: search every hour
+	if r.RetryCount < 24 {
+		return timeSinceLastSearch >= 1*time.Hour
+	}
+
+	// Retries 24-54 (30 more attempts): search every 24 hours
+	if r.RetryCount < 54 {
+		return timeSinceLastSearch >= 24*time.Hour
+	}
+
+	// After 54 retries (24 hourly + 30 daily), mark as not found
+	return false
 }
 
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
@@ -545,7 +592,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := ExpandSearchQuery(searchQuery)
-	
+
 	// Track seen results by info hash to avoid duplicates
 	seenHashes := make(map[string]bool)
 	allResults := make([]TorrentSearchResult, 0)
@@ -592,13 +639,13 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 				hash = extractInfoHashFromMagnet(result.MagnetLink)
 				hash = strings.ToLower(hash)
 			}
-			
+
 			// Use title as fallback key if no hash available
 			key := hash
 			if key == "" {
 				key = strings.ToLower(result.Title)
 			}
-			
+
 			if !seenHashes[key] {
 				seenHashes[key] = true
 				allResults = append(allResults, result)
@@ -610,10 +657,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	slog.Info("Indexer search completed", "request_id", r.ID, "results_count", len(results), "variants_searched", len(variants))
 
 	if len(results) == 0 {
-		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title)
-		// Update request to track retry attempts - add a retry_count column or use updated_at
-		// For now, increment a counter in a comment field or leave as-is for retry
-		// The request will be retried on next cycle (5 minutes)
+		slog.Info("No results found for request", "request_id", r.ID, "title", r.Title, "retry_count", r.RetryCount)
+		s.incrementRetryCount(r.ID, r.RetryCount)
 		return nil
 	}
 
@@ -627,7 +672,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	// 2. Choose best result - prioritize 1080p, match seasons, sort by seeds, filter by title/year for movies
 	best := selectBestResult(results, r.MediaType, r.Seasons, r.Title, r.Year)
 	if best == nil {
-		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons)
+		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons, "retry_count", r.RetryCount)
+		s.incrementRetryCount(r.ID, r.RetryCount)
 		return nil
 	}
 
@@ -685,8 +731,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	}
 	defer tx.Rollback()
 
-	// Update request status to downloading
-	_, err = tx.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
+	// Update request status to downloading and reset retry count (we found a torrent!)
+	_, err = tx.Exec("UPDATE requests SET status = 'downloading', retry_count = 0, last_search_at = NULL, updated_at = NOW() WHERE id = $1", r.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update request status: %w", err)
 	}
@@ -1562,4 +1608,36 @@ func addTrackersToMagnet(magnetLink string, infoHash string) string {
 	}
 
 	return enhancedLink
+}
+
+// incrementRetryCount increments the retry count and updates last_search_at for a request
+// If retries are exhausted (54 total: 24 hourly + 30 daily), sets status to 'not_found'
+func (s *AutomationService) incrementRetryCount(requestID int, currentRetryCount int) {
+	newRetryCount := currentRetryCount + 1
+
+	// After 54 retries (24 hourly + 30 daily), mark as not found
+	if newRetryCount >= 54 {
+		_, err := database.DB.Exec(`
+			UPDATE requests 
+			SET status = 'not_found', retry_count = $1, last_search_at = NOW(), updated_at = NOW() 
+			WHERE id = $2`,
+			newRetryCount, requestID)
+		if err != nil {
+			slog.Error("Failed to mark request as not_found", "request_id", requestID, "retry_count", newRetryCount, "error", err)
+		} else {
+			slog.Info("Request marked as not_found after exhausting retries", "request_id", requestID, "retry_count", newRetryCount)
+		}
+	} else {
+		// Increment retry count and update last_search_at
+		_, err := database.DB.Exec(`
+			UPDATE requests 
+			SET retry_count = $1, last_search_at = NOW(), updated_at = NOW() 
+			WHERE id = $2`,
+			newRetryCount, requestID)
+		if err != nil {
+			slog.Error("Failed to increment retry count", "request_id", requestID, "retry_count", newRetryCount, "error", err)
+		} else {
+			slog.Debug("Incremented retry count", "request_id", requestID, "retry_count", newRetryCount)
+		}
+	}
 }

@@ -197,6 +197,12 @@ func RunMigrations() error {
 		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='imdb_id') THEN
 			ALTER TABLE requests ADD COLUMN imdb_id VARCHAR(50);
 		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='retry_count') THEN
+			ALTER TABLE requests ADD COLUMN retry_count INTEGER DEFAULT 0;
+		END IF;
+		IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='requests' AND column_name='last_search_at') THEN
+			ALTER TABLE requests ADD COLUMN last_search_at TIMESTAMP;
+		END IF;
 	END $$;
 
 	CREATE TABLE IF NOT EXISTS downloads (

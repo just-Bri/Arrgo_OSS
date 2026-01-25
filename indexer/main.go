@@ -4,8 +4,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/justbri/arrgo/indexer/handlers"
+	"github.com/justbri/arrgo/indexer/providers"
 	"github.com/justbri/arrgo/shared/config"
 	sharedlogger "github.com/justbri/arrgo/shared/logger"
 	"github.com/justbri/arrgo/shared/middleware"
@@ -22,6 +24,9 @@ func main() {
 
 	// Setup routes
 	mux := setupRoutes()
+
+	// Start periodic cache cleanup for Nyaa RSS cache
+	go startCacheCleanup()
 
 	// Create server with shared configuration
 	srvConfig := server.DefaultConfig(":" + port)
@@ -47,5 +52,17 @@ func setupRoutes() *http.ServeMux {
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	return mux
+}
+
+// startCacheCleanup runs periodic cleanup of expired cache entries
+// Cleans up every 6 hours to prevent memory leaks
+func startCacheCleanup() {
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		providers.CleanupNyaaCache()
+		slog.Debug("Cleaned up expired Nyaa RSS cache entries")
+	}
 }
 

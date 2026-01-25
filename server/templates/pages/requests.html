@@ -12,55 +12,75 @@
     <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
         <h2 style="margin: 0 0 15px 0; font-size: 20px; color: var(--text-color);">Current Requests</h2>
         {{if .Requests}}
-            <ul style="list-style: none; padding: 0; margin: 0;">
-                {{range .Requests}}
-                <li style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
-                    <a href="{{if eq .MediaType "show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}" style="text-decoration: none; flex-shrink: 0;">
-                        {{if .PosterPath}}
-                            {{if hasPrefix .PosterPath "http"}}
-                                <img src="{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90" style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
-                                {{else}}
-                                <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90" style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
+        <ul style="list-style: none; padding: 0; margin: 0;">
+            {{range .Requests}}
+            <li
+                style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                <a href="{{if eq .MediaType "
+                    show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
+                    style="text-decoration: none; flex-shrink: 0;">
+                    {{if .PosterPath}}
+                    {{if hasPrefix .PosterPath "http"}}
+                    <img src="{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90"
+                        style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
+                    {{else}}
+                    <img src="/images/tmdb/{{.PosterPath}}" alt="{{.Title}}" loading="lazy" width="60" height="90"
+                        style="width: 60px; height: 90px; object-fit: cover; border-radius: 4px;">
+                    {{end}}
+                    {{else}}
+                    <div
+                        style="width: 60px; height: 90px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center;">
+                        No Poster</div>
+                    {{end}}
+                </a>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
+                        <div style="min-width: 0;">
+                            <a href="{{if eq .MediaType "
+                                show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}"
+                                style="text-decoration: none;">
+                                <div
+                                    style="font-size: 16px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                            </a>
+                            <div style="font-size: 12px; color: var(--muted-text); margin-top: 3px;">
+                                By: <strong>{{.Username}}</strong> | {{if eq .MediaType "show"}}Show{{else}}Movie{{end}}
+                            </div>
+                            {{if .Seasons}}
+                            <div
+                                style="font-size: 11px; color: var(--accent-color); margin-top: 5px; font-weight: 500;">
+                                Seasons: {{.Seasons}}
+                            </div>
                             {{end}}
-                        {{else}}
-                            <div style="width: 60px; height: 90px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 10px; text-align: center;">No Poster</div>
-                        {{end}}
-                    </a>
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
-                            <div style="min-width: 0;">
-                                <a href="{{if eq .MediaType "show"}}/shows/details?tvdb_id={{.TVDBID}}{{else}}/movies/details?tmdb_id={{.TMDBID}}{{end}}" style="text-decoration: none;">
-                                    <div style="font-size: 16px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
-                                </a>
-                                <div style="font-size: 12px; color: var(--muted-text); margin-top: 3px;">
-                                    By: <strong>{{.Username}}</strong> | {{if eq .MediaType "show"}}Show{{else}}Movie{{end}}
-                                </div>
-                                {{if .Seasons}}
-                                <div style="font-size: 11px; color: var(--accent-color); margin-top: 5px; font-weight: 500;">
-                                    Seasons: {{.Seasons}}
-                                </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                <span
+                                    style="background: var(--badge-bg); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: var(--badge-text); white-space: nowrap;">{{.Status}}</span>
+                                {{if eq .Status "not_found"}}
+                                <span style="font-size: 10px; color: #dc3545; font-weight: 500;">Not found after
+                                    {{.RetryCount}} retries</span>
+                                {{else if gt .RetryCount 0}}
+                                <span style="font-size: 10px; color: var(--muted-text);">Retry {{.RetryCount}}/54</span>
                                 {{end}}
                             </div>
-                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-                                <span style="background: var(--badge-bg); padding: 2px 8px; border-radius: 12px; font-size: 10px; color: var(--badge-text); white-space: nowrap;">{{.Status}}</span>
-                                
-                                {{if $.IsAdmin}}
-                                <div style="display: flex; gap: 5px;">
-                                    <button hx-post="/requests/delete?id={{.ID}}" 
-                                            hx-confirm="Are you sure you want to delete this request? This will also remove any active downloads and files."
-                                            hx-swap="none"
-                                            hx-on::after-request="location.reload()"
-                                            class="btn" style="padding: 2px 8px; font-size: 10px; background: #6c757d; border: none; color: white;">Delete</button>
-                                </div>
-                                {{end}}
+
+                            {{if $.IsAdmin}}
+                            <div style="display: flex; gap: 5px;">
+                                <button hx-post="/requests/delete?id={{.ID}}"
+                                    hx-confirm="Are you sure you want to delete this request? This will also remove any active downloads and files."
+                                    hx-swap="none" hx-on::after-request="location.reload()" class="btn"
+                                    style="padding: 2px 8px; font-size: 10px; background: #6c757d; border: none; color: white;">Delete</button>
                             </div>
+                            {{end}}
                         </div>
                     </div>
-                </li>
-                {{end}}
-            </ul>
+                </div>
+            </li>
+            {{end}}
+        </ul>
         {{else}}
-            <p style="color: var(--muted-text); font-size: 14px;">No active requests.</p>
+        <p style="color: var(--muted-text); font-size: 14px;">No active requests.</p>
         {{end}}
     </div>
 </div>
