@@ -46,6 +46,7 @@ func setupRoutes() *http.ServeMux {
 	// Routes
 	mux.HandleFunc("/", handlers.IndexHandler)
 	mux.HandleFunc("/search", handlers.SearchHandler)
+	mux.HandleFunc("/api", handlers.TorznabAPIHandler)
 
 	// Static files
 	fs := http.FileServer(http.Dir("static"))

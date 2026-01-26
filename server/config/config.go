@@ -24,7 +24,6 @@ type Config struct {
 	QBittorrentURL      string
 	QBittorrentUser     string
 	QBittorrentPass     string
-	IndexerURL          string
 	Debug               bool
 }
 
@@ -46,7 +45,6 @@ func Load() *Config {
 		QBittorrentURL:      config.GetEnv("QBITTORRENT_URL", "http://localhost:8080"),
 		QBittorrentUser:     config.GetEnv("QBITTORRENT_USER", ""),
 		QBittorrentPass:     config.GetEnv("QBITTORRENT_PASS", ""),
-		IndexerURL:          config.GetEnv("INDEXER_URL", "http://localhost:5004"),
 		Debug:               config.GetEnv("DEBUG", "false") == "true",
 	}
 

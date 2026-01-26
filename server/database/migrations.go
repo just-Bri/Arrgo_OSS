@@ -232,6 +232,29 @@ func RunMigrations() error {
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(media_type, media_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS indexers (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(255) NOT NULL,
+		type VARCHAR(50) NOT NULL, -- 'builtin' or 'torznab'
+		enabled BOOLEAN DEFAULT TRUE,
+		url VARCHAR(500), -- For Torznab indexers
+		api_key VARCHAR(255), -- For Torznab indexers
+		priority INTEGER DEFAULT 0, -- Lower number = higher priority
+		config JSONB, -- Additional configuration
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(name, type)
+	);
+
+	-- Insert default built-in indexers
+	INSERT INTO indexers (name, type, enabled, priority) VALUES
+		('YTS', 'builtin', TRUE, 1),
+		('Nyaa', 'builtin', TRUE, 2),
+		('1337x', 'builtin', TRUE, 3),
+		('TorrentGalaxy', 'builtin', TRUE, 4),
+		('SolidTorrents', 'builtin', TRUE, 5)
+	ON CONFLICT (name, type) DO NOTHING;
 	`
 	_, err = DB.Exec(requestsTableSQL)
 	if err != nil {

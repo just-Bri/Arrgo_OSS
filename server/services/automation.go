@@ -46,7 +46,9 @@ type TorrentSearchResult struct {
 	MagnetLink string `json:"magnet_link"`
 	InfoHash   string `json:"info_hash"`
 	Seeds      int    `json:"seeds"`
+	Peers      int    `json:"peers"`
 	Size       string `json:"size"`
+	Source     string `json:"source"`
 	Resolution string `json:"resolution"`
 	Quality    string `json:"quality"`
 }
@@ -597,42 +599,24 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	seenHashes := make(map[string]bool)
 	allResults := make([]TorrentSearchResult, 0)
 
-	// Search each variant and merge results
+	// Search each variant and merge results using the search service directly
 	for _, variant := range variants {
-		searchURL := sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
-			"q":      variant,
-			"type":   searchType,
-			"format": "json",
-		})
-
-		// Add season parameter for show searches
+		seasonsParam := ""
 		if r.MediaType == "show" && r.Seasons != "" {
-			searchURL = sharedhttp.BuildQueryURL(s.cfg.IndexerURL+"/search", map[string]string{
-				"q":       variant,
-				"type":    searchType,
-				"seasons": r.Seasons,
-				"format":  "json",
-			})
+			seasonsParam = r.Seasons
 		}
 
-		slog.Info("Searching indexer for request", "request_id", r.ID, "title", r.Title, "variant", variant, "indexer_url", searchURL)
-		resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.LongTimeoutClient)
+		slog.Info("Searching indexers for request", "request_id", r.ID, "title", r.Title, "variant", variant, "type", searchType)
+		
+		searchResults, err := SearchTorrents(ctx, variant, searchType, seasonsParam)
 		if err != nil {
-			slog.Warn("Failed to call indexer for variant", "request_id", r.ID, "variant", variant, "error", err)
+			slog.Warn("Failed to search indexers for variant", "request_id", r.ID, "variant", variant, "error", err)
 			// Continue with next variant if one fails
 			continue
 		}
-		// MakeRequest already checks status code and returns error on non-200, so resp is guaranteed to be OK here
 
-		var variantResults []TorrentSearchResult
-		if err := sharedhttp.DecodeJSONResponse(resp, &variantResults); err != nil {
-			slog.Warn("Failed to decode indexer response for variant", "request_id", r.ID, "variant", variant, "error", err)
-			// Continue with next variant if decoding fails
-			continue
-		}
-
-		// Merge results, avoiding duplicates by info hash
-		for _, result := range variantResults {
+		// Convert SearchResult to TorrentSearchResult
+		for _, result := range searchResults {
 			hash := strings.ToLower(result.InfoHash)
 			if hash == "" {
 				// If no info hash, try to extract from magnet link
@@ -648,7 +632,17 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 			if !seenHashes[key] {
 				seenHashes[key] = true
-				allResults = append(allResults, result)
+				allResults = append(allResults, TorrentSearchResult{
+					Title:      result.Title,
+					Size:       result.Size,
+					Seeds:      result.Seeds,
+					Peers:      result.Peers,
+					MagnetLink: result.MagnetLink,
+					InfoHash:   result.InfoHash,
+					Source:     result.Source,
+					Resolution: result.Resolution,
+					Quality:    result.Quality,
+				})
 			}
 		}
 	}

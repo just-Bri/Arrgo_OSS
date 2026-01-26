@@ -26,15 +26,13 @@ services:
       - QBITTORRENT_URL=${QBITTORRENT_URL:-http://qbittorrent:8080}
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
-      - INDEXER_URL=${INDEXER_URL:-http://indexer:5004}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+      - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
-      indexer:
-        condition: service_started
       qbittorrent:
         condition: service_started
       # flaresolverr dependency removed - using existing Flaresolverr instance
@@ -106,30 +104,6 @@ services:
     labels:
       net.unraid.docker.managed: qbittorrentvpn
       net.unraid.docker.webui: http://192.168.10.11:8080
-
-  indexer:
-    build:
-      context: .
-      dockerfile: ./indexer/Dockerfile
-    container_name: arrgo-indexer
-    ports:
-      - "5004:5004"
-    environment:
-      - PORT=5004
-      - ENV=development
-      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    # Use multiple DNS servers and ensure they're used
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-      - 1.1.1.1
-      - 1.0.0.1
-    dns_search: []
-    networks:
-      - arrgo-network
-    restart: unless-stopped
 
 networks:
   arrgo-network:
