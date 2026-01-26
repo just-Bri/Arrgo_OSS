@@ -644,7 +644,8 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		if err := rows.Scan(&epID); err != nil {
 			continue
 		}
-		if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, false); err != nil {
+		// Pass doCleanup flag to episodes so they clean up empty directories as they're moved
+		if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, doCleanup); err != nil {
 			slog.Error("Error renaming episode", "episode_id", epID, "error", err)
 		}
 	}
@@ -695,8 +696,9 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		}
 	}
 
-	// Cleanup old directory if it was in incoming (only if requested)
-	if doCleanup {
+	// Always cleanup empty directories in incoming if the show was in incoming
+	// This ensures empty directories are removed after episodes are moved/copied
+	if strings.HasPrefix(sh.Path, cfg.IncomingShowsPath) {
 		CleanupEmptyDirs(cfg.IncomingShowsPath)
 	}
 
