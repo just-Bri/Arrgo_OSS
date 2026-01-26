@@ -6,27 +6,27 @@ services:
     ports:
       - "5003:5003"
     environment:
-      - DATABASE_URL=postgres://arrgo:arrgo@db:5432/arrgo?sslmode=disable
-      - SESSION_SECRET=change-me-in-production
-      - PORT=5003
-      - ENV=development
-      - DEBUG=true
-      - PUID=99
-      - PGID=100
-      - GOLOG_LOG_LEVEL=debug
-      - MOVIES_PATH=/data/movies
-      - SHOWS_PATH=/data/shows
-      - INCOMING_MOVIES_PATH=/data/incoming/movies
-      - INCOMING_SHOWS_PATH=/data/incoming/shows
+      - DATABASE_URL=${DATABASE_URL:-postgres://arrgo:${POSTGRES_PASSWORD}@db:5432/arrgo?sslmode=disable}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - PORT=${PORT:-5003}
+      - ENV=${ENV:-development}
+      - DEBUG=${DEBUG:-true}
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-debug}
+      - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
+      - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
+      - INCOMING_MOVIES_PATH=${INCOMING_MOVIES_PATH:-/data/incoming/movies}
+      - INCOMING_SHOWS_PATH=${INCOMING_SHOWS_PATH:-/data/incoming/shows}
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TVDB_API_KEY=${TVDB_API_KEY}
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
       - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
       - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
-      - QBITTORRENT_URL=http://qbittorrent:8080
-      - QBITTORRENT_USER=${QBITTORRENT_USER:-admin}
-      - QBITTORRENT_PASS=${QBITTORRENT_PASS:-adminadmin}
-      - INDEXER_URL=http://indexer:5004
+      - QBITTORRENT_URL=${QBITTORRENT_URL:-http://qbittorrent:8080}
+      - QBITTORRENT_USER=${QBITTORRENT_USER}
+      - QBITTORRENT_PASS=${QBITTORRENT_PASS}
+      - INDEXER_URL=${INDEXER_URL:-http://indexer:5004}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -52,15 +52,15 @@ services:
     image: postgres:16-alpine
     container_name: arrgo-db
     environment:
-      - POSTGRES_USER=arrgo
-      - POSTGRES_PASSWORD=arrgo
-      - POSTGRES_DB=arrgo
+      - POSTGRES_USER=${POSTGRES_USER:-arrgo}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-arrgo}
     volumes:
       - db-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arrgo -d arrgo"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arrgo} -d ${POSTGRES_DB:-arrgo}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -81,8 +81,8 @@ services:
       - 6881:6881/udp # qBittorrent UDP
     environment:
       # VPN Provider - Private Internet Access (PIA)
-      - VPN_ENABLED=yes
-      - VPN_PROV=pia
+      - VPN_ENABLED=${VPN_ENABLED:-yes}
+      - VPN_PROV=${VPN_PROV:-pia}
       - VPN_USER=${PIA_USER}
       - VPN_PASS=${PIA_PASSWORD}
       # VPN Server selection (optional - leave empty for auto-select)

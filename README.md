@@ -52,30 +52,50 @@ The primary goal of Arrgo is to provide a modern, consolidated alternative to th
 
 ### Deployment
 
-To get started on your home server (like Unraid), clone the repository and run:
+To get started on your home server (like Unraid):
 
-```bash
-docker-compose up -d
-```
+1. Clone the repository
+2. Copy `.env.example` to `.env` and fill in your configuration values:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual values
+   ```
+3. Run Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
 
 The application will be available at `http://localhost:5003`.
 
 ### Environment Variables
 
-Configure the following variables in `docker-compose.yml`:
+Configure the following variables in your `.env` file (see `.env.example` for a complete list):
 
-- `DATABASE_URL`: Connection string for PostgreSQL.
-- `SESSION_SECRET`: Key used for secure session management.
-- `PORT`: The port the application will listen on (default: 5003).
-- `PUID/PGID`: User/Group ID for file permissions (e.g., 99/100 for Unraid).
-- `MOVIES_PATH`: Local path where your processed movies are stored.
-- `SHOWS_PATH`: Local path where your processed shows are stored.
-- `INCOMING_MOVIES_PATH`: Path where new, unprocessed movies are located.
-- `INCOMING_SHOWS_PATH`: Path where new, unprocessed shows are located.
+**Required:**
+- `SESSION_SECRET`: Key used for secure session management (generate a random secret).
+- `POSTGRES_PASSWORD`: Password for the PostgreSQL database.
 - `TMDB_API_KEY`: Your [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) (Required for metadata).
 - `TVDB_API_KEY`: Your [TheTVDB API Key](https://thetvdb.com/api-information) (Required for TV shows).
 - `OPENSUBTITLES_API_KEY`: Your [OpenSubtitles.com API Key](https://www.opensubtitles.com/en/consumers) (Required for subtitles).
-- `DEBUG`: Set to `true` for verbose logging.
+- `OPENSUBTITLES_USER`: Your OpenSubtitles username.
+- `OPENSUBTITLES_PASS`: Your OpenSubtitles password.
+- `QBITTORRENT_USER`: qBittorrent WebUI username.
+- `QBITTORRENT_PASS`: qBittorrent WebUI password.
+- `ADMIN_PASSWORD`: Initial admin account password (used for seeding).
+
+**Optional (with defaults):**
+- `PORT`: The port the application will listen on (default: 5003).
+- `PUID/PGID`: User/Group ID for file permissions (default: 99/100 for Unraid).
+- `MOVIES_PATH`: Local path where your processed movies are stored (default: `/data/movies`).
+- `SHOWS_PATH`: Local path where your processed shows are stored (default: `/data/shows`).
+- `INCOMING_MOVIES_PATH`: Path where new, unprocessed movies are located (default: `/data/incoming/movies`).
+- `INCOMING_SHOWS_PATH`: Path where new, unprocessed shows are located (default: `/data/incoming/shows`).
+- `DEBUG`: Set to `true` for verbose logging (default: `false`).
+
+**VPN Configuration (if using qBittorrent VPN container):**
+- `PIA_USER`: Private Internet Access username.
+- `PIA_PASSWORD`: Private Internet Access password.
+- `PIA_REMOTE`: Optional VPN server (leave empty for auto-select).
 
 ### 💡 Tips for Unraid Users
 

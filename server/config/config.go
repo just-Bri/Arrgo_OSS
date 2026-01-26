@@ -30,8 +30,8 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{
-		DatabaseURL:         config.GetEnv("DATABASE_URL", "postgres://arrgo:arrgo@localhost:5432/arrgo?sslmode=disable"),
-		SessionSecret:       config.GetEnv("SESSION_SECRET", "change-me-in-production"),
+		DatabaseURL:         config.GetEnv("DATABASE_URL", ""),
+		SessionSecret:       config.GetEnv("SESSION_SECRET", ""),
 		ServerPort:          config.GetEnv("PORT", "5003"),
 		Environment:         config.GetEnv("ENV", "development"),
 		MoviesPath:          config.GetEnv("MOVIES_PATH", "/mnt/movies"),
@@ -44,8 +44,8 @@ func Load() *Config {
 		OpenSubtitlesUser:   config.GetEnv("OPENSUBTITLES_USER", ""),
 		OpenSubtitlesPass:   config.GetEnv("OPENSUBTITLES_PASS", ""),
 		QBittorrentURL:      config.GetEnv("QBITTORRENT_URL", "http://localhost:8080"),
-		QBittorrentUser:     config.GetEnv("QBITTORRENT_USER", "admin"),
-		QBittorrentPass:     config.GetEnv("QBITTORRENT_PASS", "adminadmin"),
+		QBittorrentUser:     config.GetEnv("QBITTORRENT_USER", ""),
+		QBittorrentPass:     config.GetEnv("QBITTORRENT_PASS", ""),
 		IndexerURL:          config.GetEnv("INDEXER_URL", "http://localhost:5004"),
 		Debug:               config.GetEnv("DEBUG", "false") == "true",
 	}
@@ -60,11 +60,17 @@ func Load() *Config {
 
 // Validate checks critical configuration values
 func (c *Config) Validate() error {
-	if c.SessionSecret == "change-me-in-production" && c.Environment == "production" {
-		return fmt.Errorf("SESSION_SECRET must be changed in production")
+	if c.SessionSecret == "" {
+		return fmt.Errorf("SESSION_SECRET is required")
 	}
 	if c.DatabaseURL == "" {
 		return fmt.Errorf("DATABASE_URL is required")
+	}
+	if c.QBittorrentUser == "" {
+		return fmt.Errorf("QBITTORRENT_USER is required")
+	}
+	if c.QBittorrentPass == "" {
+		return fmt.Errorf("QBITTORRENT_PASS is required")
 	}
 	return nil
 }
