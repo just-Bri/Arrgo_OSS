@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"Arrgo/services/indexers"
 	"Arrgo/services"
+	"Arrgo/services/indexers"
+
 	"github.com/justbri/arrgo/shared/config"
 )
 
@@ -45,7 +46,7 @@ type TorznabCaps struct {
 }
 
 type SearchCapability struct {
-	Available      string `xml:"available,attr"`
+	Available       string `xml:"available,attr"`
 	SupportedParams string `xml:"supportedParams,attr"`
 }
 
@@ -107,7 +108,7 @@ func TorznabAPIHandler(w http.ResponseWriter, r *http.Request) {
 	// Get API key (optional for caps, but we'll check it for other functions)
 	apiKey := r.URL.Query().Get("apikey")
 	requiredAPIKey := config.GetEnv("TORZNAB_API_KEY", "")
-	
+
 	// Caps doesn't require auth, but other functions do
 	if function != "caps" && requiredAPIKey != "" && apiKey != requiredAPIKey {
 		writeTorznabError(w, "100", "Invalid API key")
@@ -154,7 +155,7 @@ func handleCaps(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
+
 	encoder := xml.NewEncoder(w)
 	encoder.Indent("", "  ")
 	if err := encoder.Encode(caps); err != nil {
@@ -169,7 +170,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	tvdbid := r.URL.Query().Get("tvdbid")
 	imdbid := r.URL.Query().Get("imdbid")
 	seasonStr := r.URL.Query().Get("season")
-	episodeStr := r.URL.Query().Get("ep")
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 	cat := r.URL.Query().Get("cat")
@@ -198,13 +198,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	if seasonStr != "" {
 		if s, err := strconv.Atoi(seasonStr); err == nil {
 			season = s
-		}
-	}
-
-	episode := 0
-	if episodeStr != "" {
-		if e, err := strconv.Atoi(episodeStr); err == nil {
-			episode = e
 		}
 	}
 
@@ -245,7 +238,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	if season > 0 {
 		seasonsParam = strconv.Itoa(season)
 	}
-	
+
 	results, err := services.SearchTorrents(ctx, searchQuery, searchType, seasonsParam)
 	if err != nil {
 		slog.Warn("Search failed", "error", err)
@@ -275,7 +268,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	
+
 	encoder := xml.NewEncoder(w)
 	encoder.Indent("", "  ")
 	if err := encoder.Encode(rss); err != nil {
@@ -363,10 +356,10 @@ func parseSizeToBytes(sizeStr string) string {
 	// Parse human-readable format (e.g., "1.5 GB", "500 MB")
 	sizeStr = strings.TrimSpace(sizeStr)
 	sizeStr = strings.ToUpper(sizeStr)
-	
+
 	var size float64
 	var unit string
-	
+
 	// Try to parse format like "1.5 GB" or "500MB"
 	parts := strings.Fields(sizeStr)
 	if len(parts) == 2 {
@@ -410,9 +403,9 @@ func determineCategory(source, resolution string) string {
 	// 5000 = TV
 	// 5040 = TV:HD
 	// 5045 = TV:UHD
-	
+
 	resLower := strings.ToLower(resolution)
-	
+
 	if strings.Contains(resLower, "4k") || strings.Contains(resLower, "2160p") || strings.Contains(resLower, "uhd") {
 		return "5045" // TV:UHD or could be movie, but defaulting to TV
 	}
@@ -422,12 +415,12 @@ func determineCategory(source, resolution string) string {
 	if strings.Contains(resLower, "720p") {
 		return "5040" // TV:HD
 	}
-	
+
 	// Default based on source
 	if source == "YTS" {
 		return "2000" // Movies
 	}
-	
+
 	return "5000" // TV (default)
 }
 
@@ -455,7 +448,7 @@ func filterByCategory(results []indexers.SearchResult, catStr string, searchType
 func writeTorznabError(w http.ResponseWriter, code, description string) {
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK) // Torznab errors still return 200 OK
-	
+
 	encoder := xml.NewEncoder(w)
 	encoder.Indent("", "  ")
 	err := TorznabError{
