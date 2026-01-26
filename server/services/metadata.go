@@ -465,7 +465,12 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 			WHERE id = $7
 		`
 		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
-		return err
+		if err != nil {
+			return err
+		}
+		// Update the request with proper metadata if this movie is linked to a request
+		updateRequestFromMatchedMovie(m.ID, m.Title, m.Year, existingTMDBID.String, existingIMDBID.String, existingOverview.String, existingPosterPath.String)
+		return nil
 	}
 
 	if cfg.TMDBAPIKey == "" {
@@ -583,8 +588,13 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
 		slog.Error("Error updating DB for movie", "title", m.Title, "error", err)
+		return err
 	}
-	return err
+
+	// Update the request with proper metadata if this movie is linked to a request via torrent hash
+	updateRequestFromMatchedMovie(m.ID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
+
+	return nil
 }
 
 func MatchShow(cfg *config.Config, showID int) error {
@@ -943,7 +953,46 @@ func GetShowAlternatives(cfg *config.Config, showID int) ([]SearchResult, error)
 	return results, nil
 }
 
-// RematchMovie updates a movie with a new TMDB ID and fetches full metadata
+// updateRequestFromMatchedMovie updates the request with proper metadata from a matched movie
+// This ensures requests show the correct title, poster, and other metadata instead of the raw filename
+func updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID string, imdbID string, overview string, posterPath string) {
+	// Get the torrent hash from the movie
+	var torrentHash sql.NullString
+	err := database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
+	if err != nil || !torrentHash.Valid || torrentHash.String == "" {
+		// No torrent hash linked, so no request to update
+		return
+	}
+
+	// Find the request_id via the downloads table
+	var requestID int
+	err = database.DB.QueryRow(`
+		SELECT request_id 
+		FROM downloads 
+		WHERE LOWER(torrent_hash) = LOWER($1) 
+		AND request_id IS NOT NULL
+		LIMIT 1
+	`, torrentHash.String).Scan(&requestID)
+	if err != nil {
+		// No request found for this torrent hash
+		return
+	}
+
+	// Update the request with proper metadata
+	updateQuery := `
+		UPDATE requests 
+		SET title = $1, year = $2, tmdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $7 AND media_type = 'movie'
+	`
+	_, err = database.DB.Exec(updateQuery, title, year, tmdbID, imdbID, overview, posterPath, requestID)
+	if err != nil {
+		slog.Error("Error updating request with matched movie metadata", "request_id", requestID, "movie_id", movieID, "error", err)
+		return
+	}
+
+	slog.Info("Updated request with matched movie metadata", "request_id", requestID, "movie_id", movieID, "title", title)
+}
+
 func RematchMovie(cfg *config.Config, movieID int, newTMDBID string) error {
 	// Fetch full details for the new TMDB ID
 	details, err := GetTMDBMovieDetails(cfg, newTMDBID)
@@ -981,6 +1030,9 @@ func RematchMovie(cfg *config.Config, movieID int, newTMDBID string) error {
 		slog.Error("Error updating DB for movie rematch", "movie_id", movieID, "error", err)
 		return err
 	}
+
+	// Update the request with proper metadata if this movie is linked to a request via torrent hash
+	updateRequestFromMatchedMovie(movieID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
 
 	slog.Info("Movie rematched successfully", "movie_id", movieID, "new_tmdb_id", newTMDBID)
 	return nil
