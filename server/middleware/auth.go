@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // redirectToLogin logs the reason and redirects to login page
@@ -33,6 +34,17 @@ func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, err := services.GetSession(r)
 		if err != nil {
+			// If the cookie exists but is invalid (e.g., encrypted with old secret), clear it
+			if strings.Contains(err.Error(), "securecookie: the value is not valid") {
+				cookie := &http.Cookie{
+					Name:     "arrgo-session",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+				}
+				http.SetCookie(w, cookie)
+			}
 			redirectToLogin(w, r, "No session found")
 			return
 		}

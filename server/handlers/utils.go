@@ -329,7 +329,7 @@ func ParseIDFromQuery(r *http.Request, param string) (int, error) {
 
 // SetupUserSession creates a session for a user after login/registration
 func SetupUserSession(w http.ResponseWriter, r *http.Request, user *models.User) error {
-	session, err := services.GetSession(r)
+	session, err := services.GetOrCreateSession(w, r)
 	if err != nil {
 		return fmt.Errorf("failed to get session: %w", err)
 	}
