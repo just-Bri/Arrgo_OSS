@@ -47,8 +47,9 @@ func GetOrCreateSession(w http.ResponseWriter, r *http.Request) (*sessions.Sessi
 				HttpOnly: true,
 			}
 			http.SetCookie(w, cookie)
-			// Return a new session
-			return store.New(r, "arrgo-session"), nil
+			// Return a new session, unpacking both values from store.New
+			newSession, newErr := store.New(r, "arrgo-session")
+			return newSession, newErr
 		}
 		return nil, err
 	}
