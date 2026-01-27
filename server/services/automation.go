@@ -511,8 +511,65 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 						WHERE LOWER(torrent_hash) = $3`,
 						existingTorrent.Progress, existingTorrent.State, normalizedHash)
 
-					// Try to determine which season this torrent is for by checking the title
+					// Try to determine which season(s) this torrent covers by checking the title
 					torrentTitle := strings.ToLower(existingTorrent.Name)
+					
+					// First, check if this is a multi-season torrent (e.g., "Season 1-4", "S01-S04", "S1-S4")
+					multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
+					multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(torrentTitle)
+					if len(multiSeasonMatch) == 3 {
+						// Found a multi-season range
+						startSeason, err1 := strconv.Atoi(multiSeasonMatch[1])
+						endSeason, err2 := strconv.Atoi(multiSeasonMatch[2])
+						if err1 == nil && err2 == nil && startSeason <= endSeason {
+							// Mark all seasons in the range as covered
+							for seasonNum := startSeason; seasonNum <= endSeason; seasonNum++ {
+								seasonStr := fmt.Sprintf("%d", seasonNum)
+								// Check if this season was requested
+								for _, reqSeason := range requestedSeasons {
+									if strings.TrimSpace(reqSeason) == seasonStr {
+										existingSeasons[seasonStr] = true
+										slog.Debug("Found multi-season torrent covering season",
+											"request_id", r.ID,
+											"season", seasonStr,
+											"torrent_title", existingTorrent.Name,
+											"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
+									}
+								}
+							}
+							continue // Skip individual season matching for multi-season torrents
+						}
+					}
+					
+					// Also check for patterns like "S01S02S03" or "S01 S02 S03"
+					allSeasonsRegex := regexp.MustCompile(`(?:s|season)\s*(\d+)`)
+					allSeasonsMatches := allSeasonsRegex.FindAllStringSubmatch(torrentTitle, -1)
+					if len(allSeasonsMatches) > 1 {
+						// Found multiple season numbers - check if they're all requested seasons
+						foundSeasons := make(map[int]bool)
+						for _, match := range allSeasonsMatches {
+							if seasonNum, err := strconv.Atoi(match[1]); err == nil {
+								foundSeasons[seasonNum] = true
+							}
+						}
+						// Mark all found seasons that are requested as covered
+						for _, seasonStr := range requestedSeasons {
+							seasonStr = strings.TrimSpace(seasonStr)
+							if seasonNum, err := strconv.Atoi(seasonStr); err == nil {
+								if foundSeasons[seasonNum] {
+									existingSeasons[seasonStr] = true
+									slog.Debug("Found multi-season torrent covering season",
+										"request_id", r.ID,
+										"season", seasonStr,
+										"torrent_title", existingTorrent.Name,
+										"all_seasons_in_torrent", foundSeasons)
+								}
+							}
+						}
+						continue // Skip individual season matching
+					}
+					
+					// Fallback: Check for individual season patterns
 					for _, seasonStr := range requestedSeasons {
 						seasonStr = strings.TrimSpace(seasonStr)
 						if seasonStr == "" {
@@ -712,6 +769,66 @@ func (s *AutomationService) processSingleRequest(ctx context.Context, r models.R
 }
 
 func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Request) error {
+	// Check if this season is already covered by an existing multi-season torrent
+	if r.MediaType == "show" && r.Seasons != "" {
+		rows, err := database.DB.Query(`
+			SELECT d.torrent_hash 
+			FROM downloads d
+			WHERE d.request_id = $1 
+			AND d.torrent_hash IS NOT NULL 
+			AND d.torrent_hash != ''`, r.ID)
+		if err == nil {
+			defer rows.Close()
+			currentSeasonStr := strings.TrimSpace(strings.Split(r.Seasons, ",")[0])
+			currentSeasonNum, _ := strconv.Atoi(currentSeasonStr)
+			
+			for rows.Next() {
+				var hash string
+				if err := rows.Scan(&hash); err == nil {
+					// Get the actual torrent name from qBittorrent (more accurate than DB title)
+					normalizedHash := strings.ToLower(hash)
+					existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+					if err != nil || existingTorrent == nil {
+						continue
+					}
+					torrentTitle := strings.ToLower(existingTorrent.Name)
+					
+					// Check if this is a multi-season torrent that covers the current season
+					multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
+					multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(torrentTitle)
+					if len(multiSeasonMatch) == 3 {
+						startSeason, err1 := strconv.Atoi(multiSeasonMatch[1])
+						endSeason, err2 := strconv.Atoi(multiSeasonMatch[2])
+						if err1 == nil && err2 == nil && startSeason <= endSeason {
+							if currentSeasonNum >= startSeason && currentSeasonNum <= endSeason {
+								slog.Info("Season already covered by multi-season torrent",
+									"request_id", r.ID,
+									"season", currentSeasonStr,
+									"torrent_title", existingTorrent.Name,
+									"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
+								return nil // Season already covered, skip processing
+							}
+						}
+					}
+					
+					// Also check for multiple season numbers in title (e.g., "S01S02S03" or "S01 S02 S03")
+					allSeasonsRegex := regexp.MustCompile(`(?:s|season)\s*(\d+)`)
+					allSeasonsMatches := allSeasonsRegex.FindAllStringSubmatch(torrentTitle, -1)
+					if len(allSeasonsMatches) > 1 {
+						for _, match := range allSeasonsMatches {
+							if seasonNum, err := strconv.Atoi(match[1]); err == nil && seasonNum == currentSeasonNum {
+								slog.Info("Season already covered by multi-season torrent",
+									"request_id", r.ID,
+									"season", currentSeasonStr,
+									"torrent_title", existingTorrent.Name)
+								return nil // Season already covered, skip processing
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// 1. Build search query with season info for shows, year for movies
 	searchType := r.MediaType
@@ -814,6 +931,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	}
 
 	// 2. Choose best result - prioritize quality (1080p > 4K > 720p > other), match seasons, sort by seeds, filter by title/year for movies
+	// Also prefer results with direct info hashes or magnet links to avoid URL extraction issues
 	best := selectBestResult(results, r.MediaType, r.Seasons, r.Title, r.Year)
 	if best == nil {
 		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons, "retry_count", r.RetryCount)
@@ -821,9 +939,9 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		return nil
 	}
 
-	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution, "info_hash", best.InfoHash, "has_magnet", best.MagnetLink != "")
+	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution, "info_hash", best.InfoHash, "has_magnet", best.MagnetLink != "", "source", best.Source)
 
-	// Extract or validate InfoHash
+	// Extract or validate InfoHash with fallback to next best result if extraction fails
 	infoHash := best.InfoHash
 	if infoHash == "" {
 		magnetPreview := best.MagnetLink
@@ -839,17 +957,50 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			// Fetch the page and extract the magnet link
 			extractedMagnet, err := extractMagnetLinkFromURL(ctx, magnetLink)
 			if err != nil {
-				slog.Warn("Failed to extract magnet link from URL, trying direct extraction", "request_id", r.ID, "error", err)
+				slog.Warn("Failed to extract magnet link from URL, will try fallback", "request_id", r.ID, "error", err, "source", best.Source)
+				// Try fallback: find next best result with direct magnet/info hash
+				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Title, r.Year)
+				if fallbackBest != nil {
+					slog.Info("Using fallback result with direct magnet/info hash", "request_id", r.ID, "fallback_title", fallbackBest.Title, "fallback_source", fallbackBest.Source)
+					best = fallbackBest
+					magnetLink = best.MagnetLink
+					if best.InfoHash != "" {
+						infoHash = best.InfoHash
+					} else if strings.HasPrefix(magnetLink, "magnet:") {
+						infoHash = extractInfoHashFromMagnet(magnetLink)
+					}
+				} else {
+					slog.Error("Could not extract info hash from magnet link and no fallback available", "request_id", r.ID, "magnet_link", magnetLink)
+					return fmt.Errorf("could not extract info hash from magnet link")
+				}
 			} else if extractedMagnet != "" {
 				magnetLink = extractedMagnet
 				// Update best.MagnetLink so it's available for qBittorrent later
 				best.MagnetLink = extractedMagnet
 				slog.Debug("Successfully extracted magnet link from URL", "request_id", r.ID)
+				infoHash = extractInfoHashFromMagnet(magnetLink)
+			} else {
+				// Extraction returned empty - try fallback
+				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Title, r.Year)
+				if fallbackBest != nil {
+					slog.Info("Using fallback result after empty extraction", "request_id", r.ID, "fallback_title", fallbackBest.Title, "fallback_source", fallbackBest.Source)
+					best = fallbackBest
+					magnetLink = best.MagnetLink
+					if best.InfoHash != "" {
+						infoHash = best.InfoHash
+					} else if strings.HasPrefix(magnetLink, "magnet:") {
+						infoHash = extractInfoHashFromMagnet(magnetLink)
+					}
+				} else {
+					slog.Error("Could not extract info hash from magnet link and no fallback available", "request_id", r.ID, "magnet_link", magnetLink)
+					return fmt.Errorf("could not extract info hash from magnet link")
+				}
 			}
+		} else {
+			// Direct magnet link - extract info hash
+			infoHash = extractInfoHashFromMagnet(magnetLink)
 		}
 
-		// Try to extract from magnet link
-		infoHash = extractInfoHashFromMagnet(magnetLink)
 		if infoHash == "" {
 			slog.Error("Could not extract info hash from magnet link", "request_id", r.ID, "magnet_link", magnetLink)
 			return fmt.Errorf("could not extract info hash from magnet link")
@@ -1366,6 +1517,14 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 			}
 		}
 
+		// Prefer results with direct info hash or magnet link (avoid URL extraction)
+		// This helps avoid issues with sites like 1337x that require page scraping
+		if r.InfoHash != "" {
+			score += 300 // Bonus for having info hash directly
+		} else if r.MagnetLink != "" && strings.HasPrefix(r.MagnetLink, "magnet:") {
+			score += 200 // Bonus for direct magnet link (not a URL)
+		}
+
 		// Seeds contribute to score (but less than quality/season/title match)
 		score += r.Seeds
 
@@ -1387,6 +1546,30 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 
 	slog.Debug("Selected best result", "title", best.Title, "seeds", best.Seeds, "resolution", best.Resolution, "score", bestScore)
 	return best
+}
+
+// findFallbackResult finds the next best result that has a direct info hash or magnet link
+// This is used when the best result requires URL extraction which fails
+func findFallbackResult(results []TorrentSearchResult, exclude *TorrentSearchResult, mediaType string, requestedSeasons string, requestedTitle string, requestedYear int) *TorrentSearchResult {
+	// Filter to only results with direct info hash or magnet link (not URLs)
+	var candidates []TorrentSearchResult
+	for _, r := range results {
+		// Skip the excluded result
+		if exclude != nil && r.Title == exclude.Title && r.Source == exclude.Source {
+			continue
+		}
+		// Only consider results with direct info hash or magnet link
+		if r.InfoHash != "" || (r.MagnetLink != "" && strings.HasPrefix(r.MagnetLink, "magnet:")) {
+			candidates = append(candidates, r)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Use selectBestResult logic but only on candidates
+	return selectBestResult(candidates, mediaType, requestedSeasons, requestedTitle, requestedYear)
 }
 
 // extractMagnetLinkFromURL fetches a torrent page URL and extracts the magnet link from the HTML
@@ -1445,6 +1628,13 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 		return "", fmt.Errorf("failed to fetch HTML content from URL")
 	}
 
+	// Log HTML snippet for debugging (first 500 chars)
+	htmlPreview := htmlContent
+	if len(htmlPreview) > 500 {
+		htmlPreview = htmlPreview[:500] + "..."
+	}
+	slog.Debug("Extracting magnet link from HTML", "url", targetURL, "html_preview", htmlPreview, "html_length", len(htmlContent))
+
 	// Try to find magnet link using regex first (faster)
 	// Match magnet:? followed by URL-encoded or plain characters until quote, space, or HTML tag
 	// This handles both plain HTML and HTML entities
@@ -1460,12 +1650,37 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 
 	// Also check for info hash patterns that we can construct into magnet links
 	// Look for 40-character hex strings (info hash) in various contexts
-	infoHashRegex := regexp.MustCompile(`[0-9a-fA-F]{40}`)
-	infoHashMatches := infoHashRegex.FindAllString(htmlContent, -1)
-	if len(infoHashMatches) > 0 {
-		// Use the first valid info hash we find
-		// Construct a basic magnet link (we'll add the title later if needed)
-		infoHash := strings.ToLower(infoHashMatches[0])
+	// Try multiple patterns: standalone hash, hash in magnet link format, hash in data attributes
+	infoHashPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`[0-9a-fA-F]{40}`),                                    // Standalone 40-char hex
+		regexp.MustCompile(`btih:([0-9a-fA-F]{40})`),                            // In magnet link format
+		regexp.MustCompile(`info hash[:\s]+([0-9a-fA-F]{40})`),                  // After "info hash:"
+		regexp.MustCompile(`hash[:\s]+([0-9a-fA-F]{40})`),                       // After "hash:"
+		regexp.MustCompile(`data-hash=["']([0-9a-fA-F]{40})["']`),               // In data-hash attribute
+		regexp.MustCompile(`data-info-hash=["']([0-9a-fA-F]{40})["']`),          // In data-info-hash attribute
+		regexp.MustCompile(`"([0-9a-fA-F]{40})"`),                               // Quoted hash
+		regexp.MustCompile(`'([0-9a-fA-F]{40})'`),                               // Single-quoted hash
+	}
+	
+	var infoHash string
+	for _, pattern := range infoHashPatterns {
+		matches := pattern.FindStringSubmatch(htmlContent)
+		if len(matches) > 0 {
+			// Use the captured group if available, otherwise the full match
+			if len(matches) > 1 {
+				infoHash = strings.ToLower(matches[1])
+			} else {
+				infoHash = strings.ToLower(matches[0])
+			}
+			// Validate it's actually 40 characters
+			if len(infoHash) == 40 {
+				break
+			}
+			infoHash = "" // Reset if invalid length
+		}
+	}
+	
+	if infoHash != "" {
 		// Extract title from page if possible for better magnet link
 		titleRegex := regexp.MustCompile(`<title[^>]*>([^<]+)</title>`)
 		titleMatch := titleRegex.FindStringSubmatch(htmlContent)
@@ -1544,6 +1759,16 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 	findMagnetLink(doc)
 
 	if magnetLink == "" {
+		// Debug: Check for any hash-like patterns in the HTML
+		hashPatterns := regexp.MustCompile(`[0-9a-fA-F]{32,40}`)
+		allHashes := hashPatterns.FindAllString(htmlContent, -1)
+		if len(allHashes) > 0 {
+			sampleCount := 3
+			if len(allHashes) < sampleCount {
+				sampleCount = len(allHashes)
+			}
+			slog.Debug("Found hash-like patterns in HTML but couldn't extract magnet link", "url", targetURL, "hash_count", len(allHashes), "sample_hashes", allHashes[:sampleCount])
+		}
 		return "", fmt.Errorf("no magnet link found in page")
 	}
 
