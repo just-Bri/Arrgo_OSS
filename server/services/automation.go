@@ -253,6 +253,8 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 			slog.Error("Error scanning request", "error", err)
 			continue
 		}
+		// Decode unicode escape sequences in title (e.g., \u0026 -> &)
+		r.Title = decodeUnicodeEscapes(r.Title)
 		r.TMDBID = tmdbID.String
 		r.TVDBID = tvdbID.String
 		r.IMDBID = imdbID.String
@@ -607,7 +609,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		}
 
 		slog.Info("Searching indexers for request", "request_id", r.ID, "title", r.Title, "variant", variant, "type", searchType)
-		
+
 		searchResults, err := SearchTorrents(ctx, variant, searchType, seasonsParam)
 		if err != nil {
 			slog.Warn("Failed to search indexers for variant", "request_id", r.ID, "variant", variant, "error", err)

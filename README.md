@@ -97,7 +97,16 @@ Configure the following variables in your `.env` file (see `.env.example` for a 
 - `PIA_PASSWORD`: Private Internet Access password.
 - `PIA_REMOTE`: Optional VPN server (leave empty for auto-select).
 
-**Important:** The qBittorrent container is configured for Private Internet Access (PIA) only. If you have any `.ovpn` files in the qBittorrent config directory (`/mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/`), they will override the PIA environment variables. Make sure to remove any ProtonVPN or other provider `.ovpn` files from that directory.
+**Important Setup Steps:**
+1. Download PIA OpenVPN configuration files:
+   ```bash
+   # Download the PIA OpenVPN configs
+   wget https://www.privateinternetaccess.com/openvpn/openvpn.zip
+   unzip openvpn.zip -d /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/
+   ```
+2. Remove any non-PIA `.ovpn` files (like ProtonVPN) from `/mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/`
+3. Ensure your `.env` file has `PIA_USER` and `PIA_PASSWORD` set correctly
+4. The container will use the PIA `.ovpn` files with your credentials to connect
 
 ### 💡 Tips for Unraid Users
 

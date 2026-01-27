@@ -78,13 +78,17 @@ services:
       - 6881:6881/udp # qBittorrent UDP
     environment:
       # VPN Provider - Private Internet Access (PIA) ONLY
-      # NOTE: If you have any .ovpn files in /config/openvpn/, they will override these settings
-      # Make sure to remove any ProtonVPN or other provider .ovpn files from the config directory
+      # IMPORTANT: You must manually download PIA OpenVPN config files:
+      # 1. Download from: https://www.privateinternetaccess.com/openvpn/openvpn.zip
+      # 2. Extract the .ovpn files to: /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/
+      # 3. The container will use these files with your PIA credentials below
       - VPN_ENABLED=${VPN_ENABLED:-yes}
       - VPN_PROV=${VPN_PROV:-pia}
+      - VPN_CLIENT=openvpn
       - VPN_USER=${PIA_USER}
       - VPN_PASS=${PIA_PASSWORD}
       # VPN Server selection (optional - leave empty for auto-select)
+      # You can specify a specific server .ovpn file name, or leave empty for auto
       - VPN_REMOTE=${PIA_REMOTE:-}  # e.g., "us-california.privacy.network" or leave empty for auto
       # Port forwarding (PIA supports port forwarding)
       - ENABLE_PRIVOXY=no
