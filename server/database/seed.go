@@ -3,8 +3,8 @@ package database
 import (
 	"fmt"
 
-	"golang.org/x/crypto/bcrypt"
 	"github.com/justbri/arrgo/shared/config"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func SeedAdminUser() error {
@@ -46,6 +46,36 @@ func SeedAdminUser() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to seed admin user: %w", err)
+	}
+
+	return nil
+}
+
+// SeedDefaultIndexers ensures default built-in indexers exist in the database
+func SeedDefaultIndexers() error {
+	defaultIndexers := []struct {
+		name        string
+		indexerType string
+		priority    int
+	}{
+		{"YTS", "builtin", 1},
+		{"Nyaa", "builtin", 2},
+		{"1337x", "builtin", 3},
+		{"TorrentGalaxy", "builtin", 4},
+		{"SolidTorrents", "builtin", 5},
+	}
+
+	for _, idx := range defaultIndexers {
+		// Use INSERT ... ON CONFLICT to avoid duplicates
+		_, err := DB.Exec(
+			`INSERT INTO indexers (name, type, enabled, priority) 
+			 VALUES ($1, $2, TRUE, $3)
+			 ON CONFLICT (name, type) DO UPDATE SET priority = EXCLUDED.priority`,
+			idx.name, idx.indexerType, idx.priority,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to seed indexer %s: %w", idx.name, err)
+		}
 	}
 
 	return nil

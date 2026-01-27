@@ -41,37 +41,37 @@ func setupRoutes() *http.ServeMux {
 
 	// Protected routes - using helper to reduce repetition
 	protectedRoutes := map[string]http.HandlerFunc{
-		"/dashboard":                  handlers.DashboardHandler,
-		"/admin":                      handlers.AdminHandler,
-		"/movies":                     handlers.MoviesHandler,
-		"/movies/details":             handlers.MovieDetailsHandler,
-		"/shows":                      handlers.ShowsHandler,
-		"/shows/details":              handlers.ShowDetailsHandler,
-		"/search":                     handlers.SearchHandler,
-		"/requests":                   handlers.RequestsHandler,
-		"/requests/create":            handlers.CreateRequestHandler,
-		"/requests/delete":            handlers.DeleteRequestHandler,
-		"/scan/movies":                handlers.ScanMoviesHandler,
-		"/scan/shows":                 handlers.ScanShowsHandler,
-		"/scan/incoming/movies":       handlers.ScanIncomingMoviesHandler,
-		"/scan/incoming/shows":        handlers.ScanIncomingShowsHandler,
-		"/scan/stop":                  handlers.StopScanHandler,
-		"/api/scan/status":            handlers.ScanStatusHandler,
-		"/import/movies/all":          handlers.ImportAllMoviesHandler,
-		"/import/shows/all":            handlers.ImportAllShowsHandler,
-		"/rename/movie":               handlers.RenameMovieHandler,
-		"/rename/show":                handlers.RenameShowHandler,
-		"/subtitles/download":         handlers.DownloadSubtitlesHandler,
-		"/admin/nuke":                 handlers.NukeLibraryHandler,
-		"/api/movies/alternatives":    handlers.GetMovieAlternativesHandler,
-		"/api/shows/alternatives":     handlers.GetShowAlternativesHandler,
-		"/api/movies/rematch":         handlers.RematchMovieHandler,
-		"/api/shows/rematch":          handlers.RematchShowHandler,
-		"/indexers":                   handlers.IndexersHandler,
-		"/indexers/toggle":            handlers.ToggleIndexerHandler,
-		"/indexers/add":              handlers.AddTorznabIndexerHandler,
-		"/indexers/delete":           handlers.DeleteIndexerHandler,
-		"/indexers/reorder":          handlers.ReorderIndexersHandler,
+		"/dashboard":               handlers.DashboardHandler,
+		"/admin":                   handlers.AdminHandler,
+		"/movies":                  handlers.MoviesHandler,
+		"/movies/details":          handlers.MovieDetailsHandler,
+		"/shows":                   handlers.ShowsHandler,
+		"/shows/details":           handlers.ShowDetailsHandler,
+		"/search":                  handlers.SearchHandler,
+		"/requests":                handlers.RequestsHandler,
+		"/requests/create":         handlers.CreateRequestHandler,
+		"/requests/delete":         handlers.DeleteRequestHandler,
+		"/scan/movies":             handlers.ScanMoviesHandler,
+		"/scan/shows":              handlers.ScanShowsHandler,
+		"/scan/incoming/movies":    handlers.ScanIncomingMoviesHandler,
+		"/scan/incoming/shows":     handlers.ScanIncomingShowsHandler,
+		"/scan/stop":               handlers.StopScanHandler,
+		"/api/scan/status":         handlers.ScanStatusHandler,
+		"/import/movies/all":       handlers.ImportAllMoviesHandler,
+		"/import/shows/all":        handlers.ImportAllShowsHandler,
+		"/rename/movie":            handlers.RenameMovieHandler,
+		"/rename/show":             handlers.RenameShowHandler,
+		"/subtitles/download":      handlers.DownloadSubtitlesHandler,
+		"/admin/nuke":              handlers.NukeLibraryHandler,
+		"/api/movies/alternatives": handlers.GetMovieAlternativesHandler,
+		"/api/shows/alternatives":  handlers.GetShowAlternativesHandler,
+		"/api/movies/rematch":      handlers.RematchMovieHandler,
+		"/api/shows/rematch":       handlers.RematchShowHandler,
+		"/indexers":                handlers.IndexersHandler,
+		"/indexers/toggle":         handlers.ToggleIndexerHandler,
+		"/indexers/add":            handlers.AddTorznabIndexerHandler,
+		"/indexers/delete":         handlers.DeleteIndexerHandler,
+		"/indexers/reorder":        handlers.ReorderIndexersHandler,
 	}
 
 	for path, handler := range protectedRoutes {
@@ -130,9 +130,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Seed default indexers
+	if err := database.SeedDefaultIndexers(); err != nil {
+		slog.Error("Failed to seed default indexers", "error", err)
+		os.Exit(1)
+	}
+
 	// Start background workers
 	services.StartIncomingScanner(cfg)
-	
+
 	// Start completed requests cleanup worker (doesn't require qBittorrent)
 	services.StartCompletedRequestsCleanupWorker()
 
@@ -157,7 +163,7 @@ func main() {
 		automation := services.NewAutomationService(cfg, qb)
 		services.SetGlobalAutomationService(automation)
 		go automation.Start(ctx)
-		
+
 		// Start seeding cleanup worker
 		services.StartSeedingCleanupWorker(cfg, qb)
 	}

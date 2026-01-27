@@ -3,6 +3,7 @@ package services
 import (
 	"Arrgo/database"
 	"Arrgo/models"
+	"database/sql"
 	"fmt"
 	"log/slog"
 )
@@ -12,7 +13,7 @@ func GetIndexers() ([]models.Indexer, error) {
 	var indexers []models.Indexer
 	query := `SELECT id, name, type, enabled, url, api_key, priority, config, created_at, updated_at 
 	          FROM indexers ORDER BY priority ASC, name ASC`
-	
+
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query indexers: %w", err)
@@ -21,18 +22,24 @@ func GetIndexers() ([]models.Indexer, error) {
 
 	for rows.Next() {
 		var idx models.Indexer
-		var configJSON *string
+		var url, apiKey, configJSON sql.NullString
 		err := rows.Scan(
 			&idx.ID, &idx.Name, &idx.Type, &idx.Enabled,
-			&idx.URL, &idx.APIKey, &idx.Priority, &configJSON,
+			&url, &apiKey, &idx.Priority, &configJSON,
 			&idx.CreatedAt, &idx.UpdatedAt,
 		)
 		if err != nil {
 			slog.Warn("Failed to scan indexer row", "error", err)
 			continue
 		}
-		if configJSON != nil {
-			idx.Config = *configJSON
+		if url.Valid {
+			idx.URL = url.String
+		}
+		if apiKey.Valid {
+			idx.APIKey = apiKey.String
+		}
+		if configJSON.Valid {
+			idx.Config = configJSON.String
 		}
 		indexers = append(indexers, idx)
 	}
@@ -60,24 +67,30 @@ func GetEnabledIndexers() ([]models.Indexer, error) {
 // GetIndexerByID returns a single indexer by ID
 func GetIndexerByID(id int) (*models.Indexer, error) {
 	var idx models.Indexer
-	var configJSON *string
-	
+	var url, apiKey, configJSON sql.NullString
+
 	query := `SELECT id, name, type, enabled, url, api_key, priority, config, created_at, updated_at 
 	          FROM indexers WHERE id = $1`
-	
+
 	err := database.DB.QueryRow(query, id).Scan(
 		&idx.ID, &idx.Name, &idx.Type, &idx.Enabled,
-		&idx.URL, &idx.APIKey, &idx.Priority, &configJSON,
+		&url, &apiKey, &idx.Priority, &configJSON,
 		&idx.CreatedAt, &idx.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get indexer: %w", err)
 	}
-	
-	if configJSON != nil {
-		idx.Config = *configJSON
+
+	if url.Valid {
+		idx.URL = url.String
 	}
-	
+	if apiKey.Valid {
+		idx.APIKey = apiKey.String
+	}
+	if configJSON.Valid {
+		idx.Config = configJSON.String
+	}
+
 	return &idx, nil
 }
 
@@ -106,7 +119,7 @@ func AddTorznabIndexer(name, url, apiKey string, priority int) (*models.Indexer,
 		"SELECT id FROM indexers WHERE name = $1 AND type = 'torznab'",
 		name,
 	).Scan(&existingID)
-	
+
 	if err == nil {
 		// Update existing
 		_, err = database.DB.Exec(
@@ -204,10 +217,10 @@ func GetIndexerStats() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"total":    totalCount,
-		"enabled":  enabledCount,
-		"builtin":  builtinCount,
-		"torznab":  torznabCount,
+		"total":   totalCount,
+		"enabled": enabledCount,
+		"builtin": builtinCount,
+		"torznab": torznabCount,
 	}, nil
 }
 
