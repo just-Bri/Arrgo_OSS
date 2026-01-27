@@ -110,9 +110,9 @@ func main() {
 	}
 	defer database.Close()
 
-	// Run migrations
-	if err := database.RunMigrations(); err != nil {
-		slog.Error("Failed to run migrations", "error", err)
+	// Initialize database schema
+	if err := database.InitSchema(); err != nil {
+		slog.Error("Failed to initialize database schema", "error", err)
 		os.Exit(1)
 	}
 

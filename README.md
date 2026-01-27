@@ -40,7 +40,7 @@ The primary goal of Arrgo is to provide a modern, consolidated alternative to th
 - `/services`: Core business logic and external integrations.
 - `/templates`: HTML templates using Go's `html/template` engine with HTMX enhancements.
 - `/static`: Static assets (CSS, JS, images).
-- `/database`: Connection management, migrations, and seeding logic.
+- `/database`: Connection management, schema initialization, and seeding logic.
 - `/config`: Application configuration handling.
 
 ## ⚙️ Getting Started
