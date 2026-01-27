@@ -26,13 +26,18 @@ func init() {
 	}
 }
 
+type IncomingShowWithSeasons struct {
+	models.Show
+	Seasons []int // Season numbers that are in incoming
+}
+
 type AdminPageData struct {
 	Username       string
 	IsAdmin        bool
 	CurrentPage    string
 	SearchQuery    string
 	IncomingMovies []models.Movie
-	IncomingShows  []models.Show
+	IncomingShows  []IncomingShowWithSeasons
 
 	ScanningIncomingMovies bool
 	ScanningIncomingShows  bool
@@ -67,7 +72,17 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error getting shows for admin", "error", err)
 		allShows = []models.Show{}
 	}
-	_, incomingShows := SeparateIncomingShows(allShows, cfg, true)
+	_, incomingShowsRaw := SeparateIncomingShows(allShows, cfg, true)
+
+	// Add season information to incoming shows
+	incomingShows := make([]IncomingShowWithSeasons, 0, len(incomingShowsRaw))
+	for _, show := range incomingShowsRaw {
+		seasons := getIncomingSeasonsForShow(show.ID, cfg.IncomingShowsPath)
+		incomingShows = append(incomingShows, IncomingShowWithSeasons{
+			Show:    show,
+			Seasons: seasons,
+		})
+	}
 
 	data := AdminPageData{
 		Username:       user.Username,

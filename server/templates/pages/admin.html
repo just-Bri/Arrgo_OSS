@@ -297,6 +297,11 @@
                                 </a>
                                 <div style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
                                     <span style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
+                                    {{if .Seasons}}
+                                    <span style="background: var(--accent-color); padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">
+                                        Seasons: {{range $i, $s := .Seasons}}{{if $i}}, {{end}}S{{printf "%02d" $s}}{{end}}
+                                    </span>
+                                    {{end}}
                                 </div>
                             </div>
                             {{if eq .Status "matched"}}

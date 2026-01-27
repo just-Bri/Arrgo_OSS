@@ -1311,20 +1311,55 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 				// Check if request was already completed to avoid duplicate processing
 				var currentStatus string
 				err = database.DB.QueryRow("SELECT status FROM requests WHERE id = $1", requestID).Scan(&currentStatus)
-				if err == nil && currentStatus != "completed" {
-					_, err = database.DB.Exec(`
-						UPDATE requests
-						SET status = 'completed', updated_at = NOW()
-						WHERE id = $1`,
-						requestID)
-					if err != nil {
-						slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash, "request_id", requestID)
+				if err == nil {
+					if currentStatus != "completed" {
+						_, err = database.DB.Exec(`
+							UPDATE requests
+							SET status = 'completed', updated_at = NOW()
+							WHERE id = $1`,
+							requestID)
+						if err != nil {
+							slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash, "request_id", requestID)
+						} else {
+							// Check if this request should be auto-imported
+							go func(reqID int, hash string) {
+								ctx := context.Background()
+								if err := s.checkAndAutoImport(ctx, reqID, hash); err != nil {
+									slog.Debug("Auto-import check failed or not applicable", "request_id", reqID, "error", err)
+								}
+							}(requestID, normalizedHash)
+						}
 					} else {
-						// Check if this request has a confirmed match and should be auto-imported
+						// Request is already completed - check if we should still try auto-import
+						// (in case it was completed before auto-import was added)
 						go func(reqID int, hash string) {
 							ctx := context.Background()
-							if err := s.checkAndAutoImport(ctx, reqID, hash); err != nil {
-								slog.Debug("Auto-import check failed or not applicable", "request_id", reqID, "error", err)
+							// Check if media is already imported
+							var importedCount int
+							var requestMediaType string
+							err := database.DB.QueryRow("SELECT media_type FROM requests WHERE id = $1", reqID).Scan(&requestMediaType)
+							if err == nil {
+								if requestMediaType == "show" {
+									database.DB.QueryRow(`
+										SELECT COUNT(*) FROM episodes e
+										JOIN seasons s ON e.season_id = s.id
+										WHERE LOWER(e.torrent_hash) = $1 
+										AND e.imported_at IS NOT NULL`,
+										hash).Scan(&importedCount)
+								} else if requestMediaType == "movie" {
+									database.DB.QueryRow(`
+										SELECT COUNT(*) FROM movies 
+										WHERE LOWER(torrent_hash) = $1 
+										AND imported_at IS NOT NULL`,
+										hash).Scan(&importedCount)
+								}
+								
+								// If nothing imported yet, try auto-import
+								if importedCount == 0 {
+									if err := s.checkAndAutoImport(ctx, reqID, hash); err != nil {
+										slog.Debug("Auto-import check for completed request failed", "request_id", reqID, "error", err)
+									}
+								}
 							}
 						}(requestID, normalizedHash)
 					}
@@ -2265,6 +2300,8 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 	}
 
 	// Check if we have a confirmed match (TVDB ID for shows, TMDB ID for movies)
+	// Note: Even if request doesn't have TVDB/TMDB ID, we can still auto-import if the scanned media has it
+	// This handles cases where the request was created before metadata was fetched
 	hasConfirmedMatch := false
 	if mediaType.String == "show" && tvdbID.Valid && tvdbID.String != "" {
 		hasConfirmedMatch = true
@@ -2272,8 +2309,12 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 		hasConfirmedMatch = true
 	}
 
+	// If request doesn't have TVDB/TMDB ID, we'll still try to import if scanned media has it
+	// This allows auto-import even if request metadata wasn't fully populated
 	if !hasConfirmedMatch {
-		return fmt.Errorf("request does not have confirmed match (no TVDB/TMDB ID)")
+		slog.Debug("Request doesn't have TVDB/TMDB ID, will check scanned media instead",
+			"request_id", requestID,
+			"media_type", mediaType.String)
 	}
 
 	slog.Info("Request has confirmed match, checking for auto-import",
@@ -2324,12 +2365,33 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 				"movie_id", movieID)
 			return nil
 		}
+		// Log what we found for debugging
+		var foundMovieID int
+		var foundTMDBID sql.NullString
+		err2 := database.DB.QueryRow(`
+			SELECT id, tmdb_id FROM movies 
+			WHERE LOWER(torrent_hash) = $1 
+			AND path LIKE $2 || '%'
+			LIMIT 1`,
+			torrentHash, cfg.IncomingMoviesPath).Scan(&foundMovieID, &foundTMDBID)
+		if err2 == nil {
+			slog.Debug("Found movie with torrent hash but missing TMDB ID",
+				"request_id", requestID,
+				"movie_id", foundMovieID,
+				"has_tmdb_id", foundTMDBID.Valid && foundTMDBID.String != "")
+		} else {
+			slog.Debug("No movie found with torrent hash",
+				"request_id", requestID,
+				"torrent_hash", torrentHash,
+				"incoming_path", cfg.IncomingMoviesPath)
+		}
 		return fmt.Errorf("no matched movie found for torrent hash")
 	} else if mediaType.String == "show" {
 		// For shows, we need to import all episodes from the torrent
 		// Get all episodes linked to this torrent hash
-		rows, err := database.DB.Query(`
-			SELECT e.id, e.season_id, s.show_id, sh.tvdb_id
+		// If request has TVDB ID, match by that; otherwise import any matched episodes
+		query := `
+			SELECT e.id, e.season_id, s.show_id, sh.tvdb_id, sh.title
 			FROM episodes e
 			JOIN seasons s ON e.season_id = s.id
 			JOIN shows sh ON s.show_id = sh.id
@@ -2337,8 +2399,9 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 			AND sh.tvdb_id IS NOT NULL 
 			AND sh.tvdb_id != ''
 			AND e.file_path LIKE $2 || '%'
-			AND e.imported_at IS NULL`,
-			torrentHash, cfg.IncomingShowsPath)
+			AND e.imported_at IS NULL`
+		
+		rows, err := database.DB.Query(query, torrentHash, cfg.IncomingShowsPath)
 		if err != nil {
 			return fmt.Errorf("failed to query episodes: %w", err)
 		}
@@ -2347,18 +2410,41 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 		var importedCount int
 		for rows.Next() {
 			var episodeID, seasonID, showID int
-			var showTVDBID string
-			if err := rows.Scan(&episodeID, &seasonID, &showID, &showTVDBID); err != nil {
+			var showTVDBID, showTitle string
+			if err := rows.Scan(&episodeID, &seasonID, &showID, &showTVDBID, &showTitle); err != nil {
 				continue
 			}
 
-			// Verify the show TVDB ID matches the request
-			if showTVDBID == tvdbID.String {
+			// If request has TVDB ID, verify it matches; otherwise check if show title matches request
+			shouldImport := false
+			if tvdbID.Valid && tvdbID.String != "" {
+				// Request has TVDB ID - must match
+				shouldImport = (showTVDBID == tvdbID.String)
+			} else {
+				// Request doesn't have TVDB ID - check if show title matches request title
+				var requestTitle string
+				err := database.DB.QueryRow("SELECT title FROM requests WHERE id = $1", requestID).Scan(&requestTitle)
+				if err == nil {
+					// Fuzzy match: check if request title is contained in show title or vice versa
+					requestTitleLower := strings.ToLower(requestTitle)
+					showTitleLower := strings.ToLower(showTitle)
+					shouldImport = strings.Contains(showTitleLower, requestTitleLower) || 
+						strings.Contains(requestTitleLower, showTitleLower) ||
+						strings.EqualFold(requestTitle, showTitle)
+				} else {
+					// If we can't get request title, import if show has TVDB ID (it's matched)
+					shouldImport = true
+				}
+			}
+
+			if shouldImport {
 				slog.Info("Found matched episode for auto-import",
 					"request_id", requestID,
 					"episode_id", episodeID,
 					"show_id", showID,
-					"tvdb_id", showTVDBID)
+					"show_title", showTitle,
+					"show_tvdb_id", showTVDBID,
+					"request_tvdb_id", tvdbID.String)
 				// Auto-import the episode
 				if err := RenameAndMoveEpisodeWithCleanup(cfg, episodeID, true); err != nil {
 					slog.Warn("Failed to auto-import episode",
@@ -2376,6 +2462,26 @@ func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID in
 				"request_id", requestID,
 				"episodes_imported", importedCount)
 			return nil
+		}
+		
+		// Log what we found for debugging
+		var episodeCount int
+		err2 := database.DB.QueryRow(`
+			SELECT COUNT(*) FROM episodes e
+			JOIN seasons s ON e.season_id = s.id
+			WHERE LOWER(e.torrent_hash) = $1 
+			AND e.file_path LIKE $2 || '%'`,
+			torrentHash, cfg.IncomingShowsPath).Scan(&episodeCount)
+		if err2 == nil && episodeCount > 0 {
+			slog.Debug("Found episodes with torrent hash but couldn't import",
+				"request_id", requestID,
+				"episode_count", episodeCount,
+				"request_has_tvdb_id", tvdbID.Valid && tvdbID.String != "")
+		} else {
+			slog.Debug("No episodes found with torrent hash",
+				"request_id", requestID,
+				"torrent_hash", torrentHash,
+				"incoming_path", cfg.IncomingShowsPath)
 		}
 		return fmt.Errorf("no matched episodes found for torrent hash")
 	}

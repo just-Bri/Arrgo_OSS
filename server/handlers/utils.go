@@ -275,6 +275,32 @@ func checkShowHasDownloadingEpisodes(ctx context.Context, showID int, incomingSh
 	return false
 }
 
+// getIncomingSeasonsForShow returns a list of season numbers that have episodes in the incoming folder
+func getIncomingSeasonsForShow(showID int, incomingShowsPath string) []int {
+	query := `
+		SELECT DISTINCT s.season_number
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1 
+		AND e.file_path LIKE $2 || '%'
+		ORDER BY s.season_number ASC
+	`
+	rows, err := database.DB.Query(query, showID, incomingShowsPath)
+	if err != nil {
+		return []int{}
+	}
+	defer rows.Close()
+
+	var seasons []int
+	for rows.Next() {
+		var seasonNum int
+		if err := rows.Scan(&seasonNum); err == nil {
+			seasons = append(seasons, seasonNum)
+		}
+	}
+	return seasons
+}
+
 // RequireAdmin checks if the current user is an admin, returns error if not
 func RequireAdmin(r *http.Request) (*models.User, error) {
 	user, err := GetCurrentUser(r)
