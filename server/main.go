@@ -67,11 +67,6 @@ func setupRoutes() *http.ServeMux {
 		"/api/shows/alternatives":  handlers.GetShowAlternativesHandler,
 		"/api/movies/rematch":      handlers.RematchMovieHandler,
 		"/api/shows/rematch":       handlers.RematchShowHandler,
-		"/indexers":                handlers.IndexersHandler,
-		"/indexers/toggle":         handlers.ToggleIndexerHandler,
-		"/indexers/add-builtin":    handlers.AddBuiltinIndexerHandler,
-		"/indexers/delete":         handlers.DeleteIndexerHandler,
-		"/indexers/reorder":        handlers.ReorderIndexersHandler,
 	}
 
 	for path, handler := range protectedRoutes {
@@ -124,12 +119,6 @@ func main() {
 	// Seed admin user
 	if err := database.SeedAdminUser(); err != nil {
 		slog.Error("Failed to seed admin user", "error", err)
-		os.Exit(1)
-	}
-
-	// Seed default indexers
-	if err := database.SeedDefaultIndexers(); err != nil {
-		slog.Error("Failed to seed default indexers", "error", err)
 		os.Exit(1)
 	}
 
