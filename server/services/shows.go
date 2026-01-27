@@ -233,24 +233,97 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	}
 
 	slog.Debug("Processing show", "title", title, "year", year, "path", showPath)
-	showID, err := upsertShow(models.Show{
-		Title:      title,
-		Year:       year,
-		TMDBID:     tmdbID,
-		TVDBID:     tvdbID,
-		IMDBID:     imdbID,
-		Path:       showPath,
-		PosterPath: posterPath,
-		Status:     "discovered",
-	})
-	if err != nil {
-		slog.Error("Error upserting show", "title", title, "error", err)
-		return
+	
+	// For incoming shows, check if a show with the same TVDB ID or title/year already exists
+	// This prevents creating duplicate show entries for different torrent folders
+	var showID int
+	if strings.HasPrefix(showPath, cfg.IncomingShowsPath) {
+		// First try to match by TVDB ID if available
+		if tvdbID != "" {
+			var existingID int
+			err := database.DB.QueryRow(`
+				SELECT id FROM shows 
+				WHERE tvdb_id = $1 
+				AND path LIKE $2 || '%'
+				LIMIT 1`,
+				tvdbID, cfg.IncomingShowsPath).Scan(&existingID)
+			if err == nil && existingID > 0 {
+				showID = existingID
+				slog.Debug("Reusing existing incoming show by TVDB ID",
+					"show_id", showID,
+					"tvdb_id", tvdbID,
+					"new_path", showPath)
+			}
+		}
+		
+		// If no match by TVDB ID, try matching by title and year
+		if showID == 0 && title != "" {
+			var existingID int
+			var existingYear sql.NullInt64
+			err := database.DB.QueryRow(`
+				SELECT id, year FROM shows 
+				WHERE LOWER(title) = LOWER($1)
+				AND path LIKE $2 || '%'
+				LIMIT 1`,
+				title, cfg.IncomingShowsPath).Scan(&existingID, &existingYear)
+			if err == nil && existingID > 0 {
+				// Match year if both have years and they match, or if neither has a year
+				yearMatch := (year == 0 && !existingYear.Valid) || 
+					(year != 0 && existingYear.Valid && year == int(existingYear.Int64))
+				if yearMatch {
+					showID = existingID
+					slog.Debug("Reusing existing incoming show by title/year",
+						"show_id", showID,
+						"title", title,
+						"year", year,
+						"new_path", showPath)
+				}
+			}
+		}
+	}
+	
+	// If no existing show found, create/update normally
+	if showID == 0 {
+		var err error
+		showID, err = upsertShow(models.Show{
+			Title:      title,
+			Year:       year,
+			TMDBID:     tmdbID,
+			TVDBID:     tvdbID,
+			IMDBID:     imdbID,
+			Path:       showPath,
+			PosterPath: posterPath,
+			Status:     "discovered",
+		})
+		if err != nil {
+			slog.Error("Error upserting show", "title", title, "error", err)
+			return
+		}
+	} else {
+		// Update existing show's metadata if needed (but keep the original path)
+		// We don't update the path because episodes can come from multiple folders
+		// But we do update TVDB/TMDB IDs if they're missing
+		_, err := database.DB.Exec(`
+			UPDATE shows 
+			SET tmdb_id = COALESCE(NULLIF($1, ''), tmdb_id),
+				tvdb_id = COALESCE(NULLIF($2, ''), tvdb_id),
+				imdb_id = COALESCE(NULLIF($3, ''), imdb_id),
+				poster_path = COALESCE(NULLIF($4, ''), poster_path),
+				updated_at = CURRENT_TIMESTAMP
+			WHERE id = $5`,
+			tmdbID, tvdbID, imdbID, posterPath, showID)
+		if err != nil {
+			slog.Warn("Failed to update existing show metadata", "show_id", showID, "error", err)
+		} else {
+			slog.Debug("Updated existing show metadata", "show_id", showID, "tvdb_id", tvdbID)
+		}
 	}
 
 	// Fetch metadata immediately
 	MatchShow(cfg, showID)
 
+	// Always scan the current path's seasons/episodes
+	// Even if we reused an existing show, we need to scan this new path
 	scanSeasons(showID, showPath)
 
 	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
