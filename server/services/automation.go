@@ -81,6 +81,9 @@ func (s *AutomationService) Start(ctx context.Context) {
 		slog.Error("Failed to connect to qBittorrent after retries, requests will be processed on next cycle", "error", err)
 	} else {
 		slog.Info("qBittorrent is available, processing all pending requests on startup")
+		// First, check and fix any "downloading" requests that don't actually have active torrents
+		s.ValidateDownloadingRequests(ctx)
+		// Then process all pending requests
 		s.ProcessPendingRequestsOnStartup(ctx)
 	}
 
@@ -230,6 +233,80 @@ func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
 func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
 	slog.Info("Triggering immediate processing of pending requests")
 	s.ProcessPendingRequests(ctx)
+}
+
+// ValidateDownloadingRequests checks requests marked as "downloading" and resets them to "pending" if they don't have active torrents
+func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
+	query := `SELECT id, title FROM requests WHERE status = 'downloading'`
+	
+	slog.Debug("Validating downloading requests on startup")
+	rows, err := database.DB.Query(query)
+	if err != nil {
+		slog.Error("Error querying downloading requests", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	var resetCount int
+	for rows.Next() {
+		var requestID int
+		var title string
+		if err := rows.Scan(&requestID, &title); err != nil {
+			slog.Error("Error scanning downloading request", "error", err)
+			continue
+		}
+
+		// Check if this request has an active torrent
+		var existingHash string
+		err := database.DB.QueryRow(`
+			SELECT torrent_hash 
+			FROM downloads 
+			WHERE request_id = $1 
+			AND torrent_hash IS NOT NULL 
+			AND torrent_hash != ''
+			ORDER BY created_at DESC 
+			LIMIT 1`, requestID).Scan(&existingHash)
+
+		if err != nil || existingHash == "" {
+			// No torrent hash in downloads table, reset to pending
+			slog.Warn("Downloading request has no torrent hash, resetting to pending", 
+				"request_id", requestID, 
+				"title", title)
+			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
+			resetCount++
+			continue
+		}
+
+		// Check if torrent exists in qBittorrent
+		normalizedHash := strings.ToLower(existingHash)
+		existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+		if err != nil || existingTorrent == nil {
+			// Torrent doesn't exist in qBittorrent, reset to pending
+			slog.Warn("Downloading request has no active torrent in qBittorrent, resetting to pending", 
+				"request_id", requestID, 
+				"title", title,
+				"torrent_hash", normalizedHash)
+			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
+			// Also clean up the downloads record
+			database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
+			resetCount++
+		} else {
+			// Torrent exists, update status based on progress
+			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
+				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", requestID)
+			}
+			// Update download status
+			database.DB.Exec(`
+				UPDATE downloads
+				SET progress = $1, status = $2, updated_at = NOW()
+				WHERE LOWER(torrent_hash) = $3`,
+				existingTorrent.Progress, existingTorrent.State, normalizedHash)
+		}
+	}
+
+	if resetCount > 0 {
+		slog.Info("Reset downloading requests to pending", "count", resetCount)
+	}
 }
 
 // ProcessPendingRequestsOnStartup processes all pending requests on startup, ignoring retry timing

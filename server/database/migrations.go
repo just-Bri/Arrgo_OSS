@@ -205,6 +205,9 @@ func RunMigrations() error {
 		END IF;
 	END $$;
 
+	-- Migrate existing 'approved' requests to 'pending' (removed approval process)
+	UPDATE requests SET status = 'pending' WHERE status = 'approved';
+
 	CREATE TABLE IF NOT EXISTS downloads (
 		id SERIAL PRIMARY KEY,
 		request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
