@@ -77,7 +77,9 @@ services:
       - 6881:6881 # qBittorrent TCP
       - 6881:6881/udp # qBittorrent UDP
     environment:
-      # VPN Provider - Private Internet Access (PIA)
+      # VPN Provider - Private Internet Access (PIA) ONLY
+      # NOTE: If you have any .ovpn files in /config/openvpn/, they will override these settings
+      # Make sure to remove any ProtonVPN or other provider .ovpn files from the config directory
       - VPN_ENABLED=${VPN_ENABLED:-yes}
       - VPN_PROV=${VPN_PROV:-pia}
       - VPN_USER=${PIA_USER}

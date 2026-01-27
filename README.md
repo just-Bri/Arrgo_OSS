@@ -92,10 +92,12 @@ Configure the following variables in your `.env` file (see `.env.example` for a 
 - `INCOMING_SHOWS_PATH`: Path where new, unprocessed shows are located (default: `/data/incoming/shows`).
 - `DEBUG`: Set to `true` for verbose logging (default: `false`).
 
-**VPN Configuration (if using qBittorrent VPN container):**
+**VPN Configuration (qBittorrent VPN container - PIA only):**
 - `PIA_USER`: Private Internet Access username.
 - `PIA_PASSWORD`: Private Internet Access password.
 - `PIA_REMOTE`: Optional VPN server (leave empty for auto-select).
+
+**Important:** The qBittorrent container is configured for Private Internet Access (PIA) only. If you have any `.ovpn` files in the qBittorrent config directory (`/mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/`), they will override the PIA environment variables. Make sure to remove any ProtonVPN or other provider `.ovpn` files from that directory.
 
 ### 💡 Tips for Unraid Users
 
