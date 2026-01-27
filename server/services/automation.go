@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -812,7 +813,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		}
 	}
 
-	// 2. Choose best result - prioritize 1080p, match seasons, sort by seeds, filter by title/year for movies
+	// 2. Choose best result - prioritize quality (1080p > 4K > 720p > other), match seasons, sort by seeds, filter by title/year for movies
 	best := selectBestResult(results, r.MediaType, r.Seasons, r.Title, r.Year)
 	if best == nil {
 		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons, "retry_count", r.RetryCount)
@@ -1309,14 +1310,19 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 	scoreResult := func(r *TorrentSearchResult) int {
 		score := 0
 		titleLower := strings.ToLower(r.Title)
+		resolutionLower := strings.ToLower(r.Resolution)
 
-		// Prioritize 1080p (highest priority)
-		if strings.Contains(titleLower, "1080") || strings.Contains(strings.ToLower(r.Resolution), "1080") {
-			score += 1000
-		} else if strings.Contains(titleLower, "720") || strings.Contains(strings.ToLower(r.Resolution), "720") {
-			score += 500
-		} else if strings.Contains(titleLower, "480") || strings.Contains(strings.ToLower(r.Resolution), "480") {
-			score += 100
+		// Quality priority: 1080p > 4K > 720p > anything else
+		// Check in order of preference (most specific first to avoid false matches)
+		if strings.Contains(titleLower, "1080") || strings.Contains(resolutionLower, "1080") {
+			score += 1200 // Highest priority: 1080p
+		} else if strings.Contains(titleLower, "2160") || strings.Contains(titleLower, "4k") || strings.Contains(titleLower, "uhd") ||
+			strings.Contains(resolutionLower, "2160") || strings.Contains(resolutionLower, "4k") || strings.Contains(resolutionLower, "uhd") {
+			score += 800 // Second priority: 4K (2160p, 4k, UHD)
+		} else if strings.Contains(titleLower, "720") || strings.Contains(resolutionLower, "720") {
+			score += 500 // Third priority: 720p
+		} else if strings.Contains(titleLower, "480") || strings.Contains(resolutionLower, "480") {
+			score += 100 // Lower priority: 480p
 		}
 
 		// Season matching bonus (for shows)
@@ -1384,38 +1390,38 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 }
 
 // extractMagnetLinkFromURL fetches a torrent page URL and extracts the magnet link from the HTML
-func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
+func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, error) {
 	var htmlContent string
 	var err error
 
 	// Check if this is a 1337x URL - these require bypass service and cannot use direct requests
-	is1337x := strings.Contains(url, "1337x.to")
+	is1337x := strings.Contains(targetURL, "1337x.to")
 
 	// Try using Cloudflare bypass service if available (for sites like 1337x.to)
 	bypassURL := sharedconfig.GetEnv("CLOUDFLARE_BYPASS_URL", "")
 	if bypassURL != "" {
-		slog.Debug("Fetching URL via bypass service", "url", url, "bypass_url", bypassURL)
-		htmlContent, err = fetchViaBypass(ctx, bypassURL, url)
+		slog.Debug("Fetching URL via bypass service", "url", targetURL, "bypass_url", bypassURL)
+		htmlContent, err = fetchViaBypass(ctx, bypassURL, targetURL)
 		if err != nil {
 			if is1337x {
 				// For 1337x, bypass service is required - don't fall back to direct request
-				slog.Error("Failed to fetch 1337x URL via bypass service (required)", "url", url, "error", err)
+				slog.Error("Failed to fetch 1337x URL via bypass service (required)", "url", targetURL, "error", err)
 				return "", fmt.Errorf("failed to fetch 1337x URL via bypass service (required): %w", err)
 			}
-			slog.Debug("Failed to fetch via bypass service, trying direct request", "url", url, "error", err)
+			slog.Debug("Failed to fetch via bypass service, trying direct request", "url", targetURL, "error", err)
 			// Fall through to direct request for non-1337x sites
 		} else {
-			slog.Debug("Successfully fetched URL via bypass service", "url", url)
+			slog.Debug("Successfully fetched URL via bypass service", "url", targetURL)
 		}
 	} else if is1337x {
 		// 1337x requires bypass service - cannot proceed without it
-		slog.Error("CLOUDFLARE_BYPASS_URL not configured but required for 1337x URLs", "url", url)
+		slog.Error("CLOUDFLARE_BYPASS_URL not configured but required for 1337x URLs", "url", targetURL)
 		return "", fmt.Errorf("CLOUDFLARE_BYPASS_URL not configured but required for 1337x URLs")
 	}
 
 	// If bypass failed or not available, try direct request (only for non-1337x sites)
 	if htmlContent == "" && !is1337x {
-		resp, err := sharedhttp.MakeRequest(ctx, url, sharedhttp.DefaultClient)
+		resp, err := sharedhttp.MakeRequest(ctx, targetURL, sharedhttp.DefaultClient)
 		if err != nil {
 			return "", fmt.Errorf("failed to fetch URL: %w", err)
 		}
@@ -1452,6 +1458,34 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 		return matches, nil
 	}
 
+	// Also check for info hash patterns that we can construct into magnet links
+	// Look for 40-character hex strings (info hash) in various contexts
+	infoHashRegex := regexp.MustCompile(`[0-9a-fA-F]{40}`)
+	infoHashMatches := infoHashRegex.FindAllString(htmlContent, -1)
+	if len(infoHashMatches) > 0 {
+		// Use the first valid info hash we find
+		// Construct a basic magnet link (we'll add the title later if needed)
+		infoHash := strings.ToLower(infoHashMatches[0])
+		// Extract title from page if possible for better magnet link
+		titleRegex := regexp.MustCompile(`<title[^>]*>([^<]+)</title>`)
+		titleMatch := titleRegex.FindStringSubmatch(htmlContent)
+		title := ""
+		if len(titleMatch) > 1 {
+			title = strings.TrimSpace(titleMatch[1])
+			// Clean up title - remove site name and extra info
+			title = strings.Split(title, " - ")[0]
+			title = strings.Split(title, " | ")[0]
+		}
+		
+		magnetLink := fmt.Sprintf("magnet:?xt=urn:btih:%s", infoHash)
+		if title != "" {
+			// URL encode the title
+			magnetLink += "&dn=" + strings.ReplaceAll(url.QueryEscape(title), "+", "%20")
+		}
+		slog.Debug("Constructed magnet link from info hash", "info_hash", infoHash, "title", title)
+		return magnetLink, nil
+	}
+
 	// Fallback: parse HTML to find magnet links in href attributes
 	// HTML parser automatically decodes entities, so this is more reliable
 	doc, err := html.Parse(strings.NewReader(htmlContent))
@@ -1462,23 +1496,47 @@ func extractMagnetLinkFromURL(ctx context.Context, url string) (string, error) {
 	var magnetLink string
 	var findMagnetLink func(*html.Node)
 	findMagnetLink = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, attr := range n.Attr {
-				if attr.Key == "href" && strings.HasPrefix(attr.Val, "magnet:") {
-					magnetLink = attr.Val
-					return
-				}
-			}
-		}
-		// Also check data attributes and other common places
 		if n.Type == html.ElementNode {
+			// Check <a> tags for href
+			if n.Data == "a" {
+				for _, attr := range n.Attr {
+					if attr.Key == "href" && strings.HasPrefix(attr.Val, "magnet:") {
+						magnetLink = attr.Val
+						return
+					}
+				}
+			}
+			
+			// Check button elements and other elements for data attributes
 			for _, attr := range n.Attr {
-				if (attr.Key == "data-magnet" || attr.Key == "data-url") && strings.HasPrefix(attr.Val, "magnet:") {
+				// Check data-magnet, data-url, data-href, etc.
+				if (attr.Key == "data-magnet" || attr.Key == "data-url" || attr.Key == "data-href" || 
+					attr.Key == "data-link" || attr.Key == "href") && strings.HasPrefix(attr.Val, "magnet:") {
 					magnetLink = attr.Val
 					return
 				}
+				
+				// Check onclick handlers for magnet links
+				if attr.Key == "onclick" && strings.Contains(attr.Val, "magnet:") {
+					// Extract magnet link from onclick handler
+					magnetMatch := magnetRegex.FindString(attr.Val)
+					if magnetMatch != "" {
+						magnetLink = magnetMatch
+						return
+					}
+				}
 			}
 		}
+		
+		// Also check text nodes for magnet links (in case they're in script tags or comments)
+		if n.Type == html.TextNode && strings.Contains(n.Data, "magnet:") {
+			magnetMatch := magnetRegex.FindString(n.Data)
+			if magnetMatch != "" {
+				magnetLink = magnetMatch
+				return
+			}
+		}
+		
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			findMagnetLink(c)
 		}
