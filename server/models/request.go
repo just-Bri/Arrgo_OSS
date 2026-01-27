@@ -15,7 +15,7 @@ type Request struct {
 	PosterPath   string     `json:"poster_path"`
 	Overview     string     `json:"overview"`
 	Seasons      string     `json:"seasons,omitempty"` // Comma-separated list of season numbers
-	Status       string     `json:"status"`            // "approved", "downloading", "completed", "cancelled", "not_found"
+	Status       string     `json:"status"`            // "pending", "downloading", "completed", "cancelled", "not_found"
 	RetryCount   int        `json:"retry_count"`
 	LastSearchAt *time.Time `json:"last_search_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`

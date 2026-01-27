@@ -185,9 +185,9 @@ func ApproveRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.UpdateRequestStatus(id, "approved"); err != nil {
-		slog.Error("Error approving request", "error", err, "request_id", id, "user", user.Username)
-		http.Error(w, "Failed to approve request", http.StatusInternalServerError)
+	if err := services.UpdateRequestStatus(id, "pending"); err != nil {
+		slog.Error("Error resetting request to pending", "error", err, "request_id", id, "user", user.Username)
+		http.Error(w, "Failed to reset request to pending", http.StatusInternalServerError)
 		return
 	}
 

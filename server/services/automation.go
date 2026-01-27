@@ -63,7 +63,7 @@ func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *Automation
 func (s *AutomationService) Start(ctx context.Context) {
 	slog.Info("Starting Automation Service")
 
-	// Check for approved requests every hour
+	// Check for pending requests every hour
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
@@ -80,8 +80,8 @@ func (s *AutomationService) Start(ctx context.Context) {
 	if err := s.waitForQBittorrent(ctx); err != nil {
 		slog.Error("Failed to connect to qBittorrent after retries, requests will be processed on next cycle", "error", err)
 	} else {
-		slog.Info("qBittorrent is available, processing approved requests on startup")
-		s.ProcessApprovedRequests(ctx)
+		slog.Info("qBittorrent is available, processing all pending requests on startup")
+		s.ProcessPendingRequestsOnStartup(ctx)
 	}
 
 	// Check for missing subtitles on startup
@@ -92,7 +92,7 @@ func (s *AutomationService) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.ProcessApprovedRequests(ctx)
+			s.ProcessPendingRequests(ctx)
 		case <-updateTicker.C:
 			s.UpdateDownloadStatus(ctx)
 		case <-subtitleTicker.C:
@@ -226,20 +226,76 @@ func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
 	}
 }
 
-// TriggerImmediateProcessing triggers immediate processing of approved requests
+// TriggerImmediateProcessing triggers immediate processing of pending requests
 func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
-	slog.Info("Triggering immediate processing of approved requests")
-	s.ProcessApprovedRequests(ctx)
+	slog.Info("Triggering immediate processing of pending requests")
+	s.ProcessPendingRequests(ctx)
 }
 
-func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
+// ProcessPendingRequestsOnStartup processes all pending requests on startup, ignoring retry timing
+func (s *AutomationService) ProcessPendingRequestsOnStartup(ctx context.Context) {
 	var requests []models.Request
-	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons, retry_count, last_search_at FROM requests WHERE status = 'approved'`
+	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons, retry_count, last_search_at FROM requests WHERE status = 'pending'`
 
-	slog.Debug("Checking for approved requests to process")
+	slog.Debug("Checking for pending requests to process on startup")
 	rows, err := database.DB.Query(query)
 	if err != nil {
-		slog.Error("Error querying approved requests", "error", err)
+		slog.Error("Error querying pending requests", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r models.Request
+		var tmdbID, tvdbID, imdbID, seasons sql.NullString
+		var lastSearchAt sql.NullTime
+		if err := rows.Scan(&r.ID, &r.Title, &r.MediaType, &r.Year, &tmdbID, &tvdbID, &imdbID, &seasons, &r.RetryCount, &lastSearchAt); err != nil {
+			slog.Error("Error scanning request", "error", err)
+			continue
+		}
+		// Decode unicode escape sequences in title (e.g., \u0026 -> &)
+		r.Title = decodeUnicodeEscapes(r.Title)
+		r.TMDBID = tmdbID.String
+		r.TVDBID = tvdbID.String
+		r.IMDBID = imdbID.String
+		r.Seasons = seasons.String
+		if lastSearchAt.Valid {
+			r.LastSearchAt = &lastSearchAt.Time
+		}
+
+		// If retries are exhausted but still marked as pending, mark as not_found
+		if r.RetryCount >= 54 {
+			slog.Warn("Request has exhausted retries but still marked as pending, marking as not_found", "request_id", r.ID, "retry_count", r.RetryCount)
+			database.DB.Exec("UPDATE requests SET status = 'not_found', updated_at = NOW() WHERE id = $1", r.ID)
+			continue
+		}
+
+		// On startup, process all pending requests regardless of retry timing
+		requests = append(requests, r)
+	}
+
+	if len(requests) == 0 {
+		slog.Debug("No pending requests to process on startup")
+		return
+	}
+
+	slog.Info("Found pending requests to process on startup", "count", len(requests))
+	for _, r := range requests {
+		slog.Info("Processing pending request on startup", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
+		if err := s.processRequest(ctx, r); err != nil {
+			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
+		}
+	}
+}
+
+func (s *AutomationService) ProcessPendingRequests(ctx context.Context) {
+	var requests []models.Request
+	query := `SELECT id, title, media_type, year, tmdb_id, tvdb_id, imdb_id, seasons, retry_count, last_search_at FROM requests WHERE status = 'pending'`
+
+	slog.Debug("Checking for pending requests to process")
+	rows, err := database.DB.Query(query)
+	if err != nil {
+		slog.Error("Error querying pending requests", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -263,16 +319,30 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 			r.LastSearchAt = &lastSearchAt.Time
 		}
 
-		// If retries are exhausted but still marked as approved, mark as not_found
+		// If retries are exhausted but still marked as pending, mark as not_found
 		if r.RetryCount >= 54 {
-			slog.Warn("Request has exhausted retries but still marked as approved, marking as not_found", "request_id", r.ID, "retry_count", r.RetryCount)
+			slog.Warn("Request has exhausted retries but still marked as pending, marking as not_found", "request_id", r.ID, "retry_count", r.RetryCount)
 			database.DB.Exec("UPDATE requests SET status = 'not_found', updated_at = NOW() WHERE id = $1", r.ID)
 			continue
 		}
 
 		// Check if this request is ready for retry based on retry count
 		if !s.isReadyForRetry(r, now) {
-			slog.Debug("Request not ready for retry yet", "request_id", r.ID, "retry_count", r.RetryCount, "last_search_at", r.LastSearchAt)
+			timeSinceLastSearch := now.Sub(*r.LastSearchAt)
+			var requiredWait time.Duration
+			if r.RetryCount < 24 {
+				requiredWait = 1 * time.Hour
+			} else if r.RetryCount < 54 {
+				requiredWait = 24 * time.Hour
+			}
+			timeUntilReady := requiredWait - timeSinceLastSearch
+			slog.Debug("Request not ready for retry yet", 
+				"request_id", r.ID, 
+				"retry_count", r.RetryCount, 
+				"last_search_at", r.LastSearchAt,
+				"time_since_last_search", timeSinceLastSearch,
+				"required_wait", requiredWait,
+				"time_until_ready", timeUntilReady)
 			continue
 		}
 
@@ -280,13 +350,13 @@ func (s *AutomationService) ProcessApprovedRequests(ctx context.Context) {
 	}
 
 	if len(requests) == 0 {
-		slog.Debug("No approved requests ready to process")
+		slog.Debug("No pending requests ready to process")
 		return
 	}
 
-	slog.Info("Found approved requests to process", "count", len(requests))
+	slog.Info("Found pending requests to process", "count", len(requests))
 	for _, r := range requests {
-		slog.Info("Processing approved request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
+		slog.Info("Processing pending request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
 		if err := s.processRequest(ctx, r); err != nil {
 			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}
@@ -827,9 +897,9 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		}
 
 		// If qBittorrent add fails and torrent doesn't exist, rollback the database changes
-		// Reset request back to approved so it can be retried
+		// Reset request back to pending so it can be retried
 		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
-		database.DB.Exec("UPDATE requests SET status = 'approved', updated_at = NOW() WHERE id = $1", r.ID)
+		database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", r.ID)
 		database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
 		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
 	}
@@ -922,7 +992,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 					for h := range activeHashes {
 						activeHashList = append(activeHashList, h)
 					}
-					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to approved",
+					slog.Warn("Download vanished from qBittorrent for over 15 minutes, resetting request to pending",
 						"torrent_hash", hash,
 						"normalized_hash", normalizedHash,
 						"request_id", reqID,
@@ -933,7 +1003,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 							}
 							return activeHashList
 						}())
-					database.DB.Exec("UPDATE requests SET status = 'approved' WHERE id = $1", reqID)
+					database.DB.Exec("UPDATE requests SET status = 'pending' WHERE id = $1", reqID)
 					database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
 				} else {
 					slog.Debug("Download still active in qBittorrent", "torrent_hash", hash, "normalized_hash", normalizedHash, "request_id", reqID)

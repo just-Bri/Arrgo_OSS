@@ -27,8 +27,8 @@ func CreateRequest(req models.Request) error {
 	if req.MediaType == "show" {
 		var existingID int
 		var existingSeasons string
-		// Look for active requests (approved or downloading) to append seasons to
-		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('approved', 'downloading')", req.TVDBID).Scan(&existingID, &existingSeasons)
+		// Look for active requests (pending or downloading) to append seasons to
+		err := database.DB.QueryRow("SELECT id, seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('pending', 'downloading')", req.TVDBID).Scan(&existingID, &existingSeasons)
 		if err == nil {
 			// Update existing request
 			newSeasons := existingSeasons
@@ -57,11 +57,11 @@ func CreateRequest(req models.Request) error {
 	slog.Info("Creating new request", "title", req.Title, "media_type", req.MediaType, "seasons", req.Seasons, "user_id", req.UserID)
 	query := `
 		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'approved', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
 	_, err := database.DB.Exec(query, req.UserID, req.Title, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
 	if err == nil {
-		slog.Info("Successfully created new request", "title", req.Title, "media_type", req.MediaType, "status", "approved")
+		slog.Info("Successfully created new request", "title", req.Title, "media_type", req.MediaType, "status", "pending")
 	}
 	return err
 }
@@ -105,12 +105,12 @@ func GetRequests() ([]models.Request, error) {
 func GetPendingRequestCounts() (int, int, error) {
 	var movieCount, showCount int
 
-	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status = 'approved'").Scan(&movieCount)
+	err := database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'movie' AND status = 'pending'").Scan(&movieCount)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status = 'approved'").Scan(&showCount)
+	err = database.DB.QueryRow("SELECT COUNT(*) FROM requests WHERE media_type = 'show' AND status = 'pending'").Scan(&showCount)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -242,10 +242,10 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 		}
 
 		// Always check for requested seasons, even if show exists (partial match)
-		// Check for active requests (approved or downloading)
+		// Check for active requests (pending or downloading)
 		var reqSeasons sql.NullString
 		var reqStatus string
-		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('approved', 'downloading')", externalID).Scan(&reqSeasons, &reqStatus)
+		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('pending', 'downloading')", externalID).Scan(&reqSeasons, &reqStatus)
 		if err == nil {
 			if reqSeasons.Valid && reqSeasons.String != "" {
 				seasonStrs := strings.Split(reqSeasons.String, ",")

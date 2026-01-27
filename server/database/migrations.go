@@ -183,7 +183,7 @@ func RunMigrations() error {
 		poster_path VARCHAR(255),
 		overview TEXT,
 		seasons TEXT, -- Comma-separated list of season numbers for shows
-		status VARCHAR(50) DEFAULT 'approved',
+		status VARCHAR(50) DEFAULT 'pending',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
