@@ -2036,13 +2036,42 @@ func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
 		if err == nil {
 			defer resp.Body.Close()
 
-			// Check content type
-			contentType := resp.Header.Get("Content-Type")
-			if strings.Contains(contentType, "torrent") || strings.Contains(contentType, "octet-stream") {
-				body, err := io.ReadAll(resp.Body)
-				if err == nil && len(body) > 0 {
-					// Validate it's a torrent file (bencoded, starts with 'd')
-					if len(body) > 10 && body[0] == 'd' {
+			// Check HTTP status code first
+			if resp.StatusCode != http.StatusOK {
+				slog.Debug("Torrent API returned non-200 status", "url", apiURL, "status", resp.StatusCode)
+				continue
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil || len(body) == 0 {
+				continue
+			}
+
+			// Check if it's HTML (error page) - HTML typically starts with <!DOCTYPE, <html, or <HTML
+			previewLen := 100
+			if len(body) < previewLen {
+				previewLen = len(body)
+			}
+			bodyPreview := string(body[:previewLen])
+			if strings.HasPrefix(strings.ToLower(bodyPreview), "<!doctype") ||
+				strings.HasPrefix(strings.ToLower(bodyPreview), "<html") ||
+				strings.Contains(strings.ToLower(bodyPreview), "<html") {
+				previewLen2 := 200
+				if len(bodyPreview) < previewLen2 {
+					previewLen2 = len(bodyPreview)
+				}
+				slog.Debug("Torrent API returned HTML instead of torrent file", "url", apiURL, "preview", bodyPreview[:previewLen2])
+				continue
+			}
+
+			// Validate it's a torrent file (bencoded, starts with 'd' and contains "info" key)
+			if len(body) > 10 && body[0] == 'd' {
+				// Better validation: check for "info" key which all torrent files must have
+				bodyStr := string(body)
+				if strings.Contains(bodyStr, "4:info") || strings.Contains(bodyStr, "info") {
+					// Additional check: verify it's actually bencoded (not just text containing "info")
+					// Bencoded dictionaries start with 'd' and end with 'e'
+					if strings.HasSuffix(bodyStr, "e") {
 						slog.Info("Successfully fetched .torrent file from public API",
 							"url", apiURL,
 							"size", len(body))
@@ -2050,6 +2079,16 @@ func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
 					}
 				}
 			}
+			
+			// Log debug info if validation failed
+			debugLen := 50
+			if len(body) < debugLen {
+				debugLen = len(body)
+			}
+			slog.Debug("Downloaded data doesn't appear to be a valid torrent file",
+				"url", apiURL,
+				"size", len(body),
+				"first_bytes", string(body[:debugLen]))
 		}
 	}
 
@@ -2064,14 +2103,35 @@ func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
 		if err == nil {
 			defer resp.Body.Close()
 
+			if resp.StatusCode != http.StatusOK {
+				continue
+			}
+
 			body, err := io.ReadAll(resp.Body)
 			if err == nil && len(body) > 0 {
+				// Check for HTML error pages
+				previewLen := 100
+				if len(body) < previewLen {
+					previewLen = len(body)
+				}
+				bodyStr := string(body[:previewLen])
+				if strings.HasPrefix(strings.ToLower(bodyStr), "<!doctype") ||
+					strings.HasPrefix(strings.ToLower(bodyStr), "<html") {
+					continue
+				}
+
 				// Torrent files are bencoded and typically start with 'd' (dictionary)
+				// Must contain "info" key and end with 'e'
 				if len(body) > 10 && body[0] == 'd' {
-					slog.Info("Successfully fetched .torrent file from tracker",
-						"url", torrentURL,
-						"size", len(body))
-					return body
+					bodyStr = string(body)
+					if strings.Contains(bodyStr, "4:info") || strings.Contains(bodyStr, "info") {
+						if strings.HasSuffix(bodyStr, "e") {
+							slog.Info("Successfully fetched .torrent file from tracker",
+								"url", torrentURL,
+								"size", len(body))
+							return body
+						}
+					}
 				}
 			}
 		}
@@ -2083,13 +2143,33 @@ func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
 			if err == nil {
 				defer resp.Body.Close()
 
+				if resp.StatusCode != http.StatusOK {
+					continue
+				}
+
 				body, err := io.ReadAll(resp.Body)
 				if err == nil && len(body) > 0 {
+					// Check for HTML error pages
+					previewLen := 100
+					if len(body) < previewLen {
+						previewLen = len(body)
+					}
+					bodyPreview := string(body[:previewLen])
+					if strings.HasPrefix(strings.ToLower(bodyPreview), "<!doctype") ||
+						strings.HasPrefix(strings.ToLower(bodyPreview), "<html") {
+						continue
+					}
+
 					if len(body) > 10 && body[0] == 'd' {
-						slog.Info("Successfully fetched .torrent file from tracker",
-							"url", torrentURL,
-							"size", len(body))
-						return body
+						bodyStr := string(body)
+						if strings.Contains(bodyStr, "4:info") || strings.Contains(bodyStr, "info") {
+							if strings.HasSuffix(bodyStr, "e") {
+								slog.Info("Successfully fetched .torrent file from tracker",
+									"url", torrentURL,
+									"size", len(body))
+								return body
+							}
+						}
 					}
 				}
 			}
