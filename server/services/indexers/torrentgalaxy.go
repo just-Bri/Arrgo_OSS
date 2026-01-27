@@ -49,7 +49,6 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 	// TorrentGalaxy doesn't have an official public API
 	// Options:
 	// 1. Use a proxy API service (if available)
-	// 2. Use Jackett/Prowlarr which provides Torznab API for TorrentGalaxy
 	// 3. Implement HTML scraping (requires more maintenance)
 
 	// Try using a proxy API endpoint if available

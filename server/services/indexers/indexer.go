@@ -4,9 +4,11 @@ import (
 	"context"
 	"Arrgo/database"
 	"Arrgo/models"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 )
 
 type SearchResult struct {
@@ -37,7 +39,6 @@ func GetIndexers() ([]Indexer, error) {
 	}
 
 	indexers := make([]Indexer, 0)
-	builtinMap := getBuiltinIndexerMap()
 
 	// Sort by priority
 	sort.Slice(dbIndexers, func(i, j int) bool {
@@ -46,14 +47,26 @@ func GetIndexers() ([]Indexer, error) {
 
 	for _, dbIdx := range dbIndexers {
 		if dbIdx.Type == "builtin" {
-			// Get built-in indexer
-			if idx, ok := builtinMap[dbIdx.Name]; ok {
+			// Try to get scraper type from config, fallback to name-based lookup
+			scraperType := getScraperTypeFromConfig(dbIdx.Config, dbIdx.Name)
+			
+			// Check if this is a generic scraper (has full config)
+			if scraperType == "generic" && dbIdx.Config != "" {
+				idx, err := createGenericIndexerFromConfig(dbIdx.Name, dbIdx.Config)
+				if err != nil {
+					slog.Warn("Failed to create generic indexer", "name", dbIdx.Name, "error", err)
+					continue
+				}
 				indexers = append(indexers, idx)
+			} else {
+				// Use specific built-in scraper
+				idx := createBuiltinIndexer(scraperType, dbIdx.Name)
+				if idx != nil {
+					indexers = append(indexers, idx)
+				} else {
+					slog.Warn("Failed to create built-in indexer", "name", dbIdx.Name, "scraper_type", scraperType)
+				}
 			}
-		} else if dbIdx.Type == "torznab" {
-			// Create Torznab indexer
-			idx := NewTorznabIndexer(dbIdx.Name, dbIdx.URL, dbIdx.APIKey)
-			indexers = append(indexers, idx)
 		}
 	}
 
@@ -112,5 +125,85 @@ func getBuiltinIndexerMap() map[string]Indexer {
 		"1337x":          NewX1337Indexer(),
 		"TorrentGalaxy": NewTorrentGalaxyIndexer(),
 		"SolidTorrents": NewSolidTorrentsIndexer(),
+	}
+}
+
+// getScraperTypeFromConfig extracts the scraper type from config JSON, with fallback to name
+func getScraperTypeFromConfig(configJSON, name string) string {
+	if configJSON == "" {
+		// Fallback to name-based mapping for backwards compatibility
+		return mapNameToScraperType(name)
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		slog.Warn("Failed to parse indexer config", "error", err, "config", configJSON)
+		return mapNameToScraperType(name)
+	}
+
+	if scraperType, ok := config["scraper_type"].(string); ok && scraperType != "" {
+		return scraperType
+	}
+
+	return mapNameToScraperType(name)
+}
+
+// mapNameToScraperType maps legacy indexer names to scraper types
+func mapNameToScraperType(name string) string {
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	case "yts":
+		return "yts"
+	case "nyaa":
+		return "nyaa"
+	case "1337x", "x1337":
+		return "1337x"
+	case "torrentgalaxy", "tgx":
+		return "torrentgalaxy"
+	case "solidtorrents", "solid":
+		return "solidtorrents"
+	default:
+		return nameLower
+	}
+}
+
+// createBuiltinIndexer creates a built-in indexer instance based on scraper type
+func createBuiltinIndexer(scraperType, displayName string) Indexer {
+	scraperTypeLower := strings.ToLower(scraperType)
+	switch scraperTypeLower {
+	case "yts":
+		return &YTSIndexer{}
+	case "nyaa":
+		return NewNyaaIndexer()
+	case "1337x", "x1337":
+		return NewX1337Indexer()
+	case "torrentgalaxy", "tgx":
+		return NewTorrentGalaxyIndexer()
+	case "solidtorrents", "solid":
+		return NewSolidTorrentsIndexer()
+	case "generic":
+		// Generic scraper requires config - this shouldn't be called directly
+		// It should be created via createGenericIndexerFromConfig
+		slog.Warn("Generic scraper type requires config", "type", scraperType)
+		return nil
+	default:
+		slog.Warn("Unknown scraper type", "type", scraperType)
+		return nil
+	}
+}
+
+// createGenericIndexerFromConfig creates a generic indexer from database config
+func createGenericIndexerFromConfig(name, configJSON string) (Indexer, error) {
+	return NewGenericIndexer(name, configJSON)
+}
+
+// GetAvailableScraperTypes returns a list of available built-in scraper types
+func GetAvailableScraperTypes() []map[string]string {
+	return []map[string]string{
+		{"value": "yts", "label": "YTS (Movies only)"},
+		{"value": "nyaa", "label": "Nyaa (Anime/TV)"},
+		{"value": "1337x", "label": "1337x (Movies & TV)"},
+		{"value": "torrentgalaxy", "label": "TorrentGalaxy (Movies & TV)"},
+		{"value": "solidtorrents", "label": "SolidTorrents (Movies & TV)"},
 	}
 }

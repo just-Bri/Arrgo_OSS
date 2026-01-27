@@ -19,50 +19,110 @@
             <div style="color: var(--muted-text); font-size: 13px; margin-bottom: 5px;">Built-in</div>
             <div style="font-size: 28px; font-weight: bold; color: var(--text-color);">{{.Stats.builtin}}</div>
         </div>
-        <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
-            <div style="color: var(--muted-text); font-size: 13px; margin-bottom: 5px;">Torznab</div>
-            <div style="font-size: 28px; font-weight: bold; color: var(--text-color);">{{.Stats.torznab}}</div>
-        </div>
     </div>
 
-    <!-- Add Torznab Indexer Form -->
-    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color); margin-bottom: 30px;">
-        <h2 style="margin: 0 0 15px 0; color: var(--text-color); font-size: 18px;">Add Torznab Indexer</h2>
-        <form hx-post="/indexers/add" 
+    <!-- Add Built-in Indexer Form -->
+    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color); margin-bottom: 20px;">
+        <h2 style="margin: 0 0 15px 0; color: var(--text-color); font-size: 18px;">Add Built-in Indexer</h2>
+        <p style="margin: 0 0 15px 0; color: var(--muted-text); font-size: 13px;">Add a new scraper from Arrgo's built-in indexers. No external services required!</p>
+        <form hx-post="/indexers/add-builtin" 
               hx-target="#indexers-table-body" 
               hx-swap="beforeend"
               hx-on::after-request="this.reset()"
               style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; align-items: end;">
             <div>
-                <label for="name" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Name</label>
-                <input type="text" id="name" name="name" required
+                <label for="builtin-name" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Name</label>
+                <input type="text" id="builtin-name" name="name" required
                        style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;"
-                       placeholder="e.g., My Torznab Indexer">
+                       placeholder="e.g., My YTS Instance">
             </div>
             <div>
-                <label for="url" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Torznab URL</label>
-                <input type="url" id="url" name="url" required
-                       style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;"
-                       placeholder="http://indexer:8080/api">
+                <label for="scraper_type" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Scraper Type</label>
+                <select id="scraper_type" name="scraper_type" required
+                        style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;">
+                    {{range $type := .Stats.scraper_types}}
+                    <option value="{{$type.value}}">{{$type.label}}</option>
+                    {{end}}
+                </select>
             </div>
             <div>
-                <label for="api_key" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">API Key (Optional)</label>
-                <input type="text" id="api_key" name="api_key"
-                       style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;"
-                       placeholder="Leave empty if not required">
-            </div>
-            <div>
-                <label for="priority" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Priority</label>
-                <input type="number" id="priority" name="priority" value="10" min="1"
+                <label for="builtin-priority" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-color); font-size: 14px;">Priority</label>
+                <input type="number" id="builtin-priority" name="priority" value="10" min="1"
                        style="width: 100%; padding: 10px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;">
             </div>
             <div>
                 <button type="submit" 
                         style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
-                    ➕ Add Indexer
+                    ➕ Add Built-in Indexer
                 </button>
             </div>
         </form>
+    </div>
+
+    <!-- Indexer Catalog Browser -->
+    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color); margin-bottom: 30px;">
+        <h2 style="margin: 0 0 20px 0; color: var(--text-color); font-size: 18px;">Indexer Catalog</h2>
+        <p style="margin: 0 0 20px 0; color: var(--muted-text); font-size: 14px;">Browse available indexers and add them to your configuration. Available indexers are ready to use, while others may require additional setup.</p>
+        
+        <!-- Filters -->
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+            <select id="catalog-category-filter" onchange="filterCatalog()" 
+                    style="padding: 8px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;">
+                <option value="all">All Categories</option>
+                <option value="general">General</option>
+                <option value="movies">Movies</option>
+                <option value="tv">TV Shows</option>
+                <option value="anime">Anime</option>
+                <option value="games">Games</option>
+            </select>
+            <select id="catalog-status-filter" onchange="filterCatalog()"
+                    style="padding: 8px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;">
+                <option value="all">All Status</option>
+                <option value="available">Available</option>
+                <option value="coming_soon">Coming Soon</option>
+                <option value="requires_config">Requires Config</option>
+            </select>
+            <input type="text" id="catalog-search" placeholder="Search indexers..." oninput="filterCatalog()"
+                   style="flex: 1; min-width: 200px; padding: 8px 12px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); font-size: 14px;">
+        </div>
+
+        <!-- Catalog Grid -->
+        <div id="catalog-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
+            {{range .Catalog}}
+            <div class="catalog-item" 
+                 data-category="{{.Category}}" 
+                 data-status="{{.Status}}"
+                 data-name="{{.Name}}"
+                 style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                        <h3 style="margin: 0 0 5px 0; color: var(--text-color); font-size: 16px; font-weight: 600;">{{.Name}}</h3>
+                        <span class="badge" style="background: {{if eq .Status "available"}}var(--success-color){{else if eq .Status "coming_soon"}}#ff9800{{else}}var(--muted-text){{end}}; color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px;">
+                            {{if eq .Status "available"}}Available{{else if eq .Status "coming_soon"}}Coming Soon{{else}}Requires Config{{end}}
+                        </span>
+                    </div>
+                </div>
+                <p style="margin: 0; color: var(--muted-text); font-size: 13px; line-height: 1.4;">{{.Description}}</p>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span style="background: var(--badge-bg); color: var(--badge-text); padding: 3px 8px; border-radius: 4px; font-size: 11px; text-transform: capitalize;">{{.Category}}</span>
+                    {{range .Languages}}
+                    <span style="background: var(--badge-bg); color: var(--badge-text); padding: 3px 8px; border-radius: 4px; font-size: 11px;">{{.}}</span>
+                    {{end}}
+                </div>
+                {{if eq .Status "available"}}
+                <button onclick="addFromCatalog('{{.ID}}', '{{.Name}}', '{{.ScraperType}}', {{if .Config}}'{{.Config}}'{{else}}''{{end}})"
+                        style="width: 100%; padding: 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; margin-top: 5px;">
+                    ➕ Add to Configuration
+                </button>
+                {{else}}
+                <button disabled
+                        style="width: 100%; padding: 8px; background: var(--muted-text); color: white; border: none; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: 500; margin-top: 5px; opacity: 0.5;">
+                    Coming Soon
+                </button>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
     </div>
 
     <!-- Indexers Table -->
@@ -86,7 +146,7 @@
                         <td style="padding: 12px; color: var(--text-color);">{{.Name}}</td>
                         <td style="padding: 12px;">
                             <span class="badge" style="background: var(--badge-bg); color: var(--badge-text); padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                                {{if eq .Type "builtin"}}Built-in{{else}}Torznab{{end}}
+                                Built-in
                             </span>
                         </td>
                         <td style="padding: 12px; color: var(--text-color);">{{.Priority}}</td>
@@ -106,7 +166,7 @@
                             {{if .URL}}{{.URL}}{{else}}—{{end}}
                         </td>
                         <td style="padding: 12px;">
-                            {{if eq .Type "torznab"}}
+                            {{if or (ne .Name "YTS") (ne .Name "Nyaa") (ne .Name "1337x") (ne .Name "TorrentGalaxy") (ne .Name "SolidTorrents")}}
                             <button class="btn-danger" 
                                     hx-delete="/indexers/delete?id={{.ID}}"
                                     hx-target="#indexer-{{.ID}}"
@@ -116,7 +176,7 @@
                                 Delete
                             </button>
                             {{else}}
-                            <span style="color: var(--muted-text); font-size: 13px;">Built-in</span>
+                            <span style="color: var(--muted-text); font-size: 13px;">Default</span>
                             {{end}}
                         </td>
                     </tr>
@@ -172,5 +232,74 @@
 .toggle-switch input:checked + .slider:before {
     transform: translateX(20px);
 }
+
+.catalog-item {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.catalog-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
 </style>
+
+<script>
+function filterCatalog() {
+    const categoryFilter = document.getElementById('catalog-category-filter').value;
+    const statusFilter = document.getElementById('catalog-status-filter').value;
+    const searchQuery = document.getElementById('catalog-search').value.toLowerCase();
+    const items = document.querySelectorAll('.catalog-item');
+
+    items.forEach(item => {
+        const category = item.dataset.category;
+        const status = item.dataset.status;
+        const name = item.dataset.name.toLowerCase();
+
+        const categoryMatch = categoryFilter === 'all' || category === categoryFilter;
+        const statusMatch = statusFilter === 'all' || status === statusFilter;
+        const searchMatch = searchQuery === '' || name.includes(searchQuery);
+
+        if (categoryMatch && statusMatch && searchMatch) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+function addFromCatalog(id, name, scraperType, config) {
+    const priority = prompt('Enter priority (lower = higher priority, default: 10):', '10');
+    if (priority === null) return;
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('scraper_type', scraperType);
+    formData.append('priority', priority || '10');
+    if (config) {
+        formData.append('config', config);
+    }
+
+    fetch('/indexers/add-builtin', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.text();
+        }
+        throw new Error('Failed to add indexer');
+    })
+    .then(html => {
+        // Insert the new row into the table
+        const tbody = document.getElementById('indexers-table-body');
+        tbody.insertAdjacentHTML('beforeend', html);
+        // Reload page to update stats
+        setTimeout(() => window.location.reload(), 500);
+    })
+    .catch(error => {
+        alert('Error adding indexer: ' + error.message);
+    });
+}
+
+</script>
 {{end}}

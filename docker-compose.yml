@@ -27,7 +27,6 @@ services:
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
-      - TORZNAB_API_KEY=${TORZNAB_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

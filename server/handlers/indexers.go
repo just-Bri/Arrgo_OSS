@@ -3,6 +3,7 @@ package handlers
 import (
 	"Arrgo/models"
 	"Arrgo/services"
+	"Arrgo/services/indexers"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -34,6 +35,7 @@ type IndexersPageData struct {
 	SearchQuery string
 	Indexers    []models.Indexer
 	Stats       map[string]interface{}
+	Catalog     []indexers.IndexerCatalogEntry
 }
 
 // IndexersHandler displays the indexer management page
@@ -49,10 +51,10 @@ func IndexersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	indexers, err := services.GetIndexers()
+	indexersList, err := services.GetIndexers()
 	if err != nil {
 		slog.Error("Error getting indexers", "error", err)
-		indexers = []models.Indexer{}
+		indexersList = []models.Indexer{}
 	}
 
 	stats, err := services.GetIndexerStats()
@@ -61,13 +63,24 @@ func IndexersHandler(w http.ResponseWriter, r *http.Request) {
 		stats = map[string]interface{}{}
 	}
 
+	// Get available scraper types for the UI
+	scraperTypes := indexers.GetAvailableScraperTypes()
+	if stats == nil {
+		stats = make(map[string]interface{})
+	}
+	stats["scraper_types"] = scraperTypes
+
+	// Get indexer catalog
+	catalog := indexers.GetIndexerCatalog()
+
 	data := IndexersPageData{
 		Username:    user.Username,
 		IsAdmin:     user.IsAdmin,
 		CurrentPage: "/indexers",
 		SearchQuery: "",
-		Indexers:    indexers,
+		Indexers:    indexersList,
 		Stats:       stats,
+		Catalog:     catalog,
 	}
 
 	if err := indexersTmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -122,8 +135,8 @@ func ToggleIndexerHandler(w http.ResponseWriter, r *http.Request) {
 	renderIndexerRow(w, indexer)
 }
 
-// AddTorznabIndexerHandler adds a new Torznab indexer
-func AddTorznabIndexerHandler(w http.ResponseWriter, r *http.Request) {
+// AddBuiltinIndexerHandler adds a new built-in indexer
+func AddBuiltinIndexerHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -136,12 +149,12 @@ func AddTorznabIndexerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.FormValue("name")
-	url := r.FormValue("url")
-	apiKey := r.FormValue("api_key")
+	scraperType := r.FormValue("scraper_type")
+	configJSON := r.FormValue("config")
 	priorityStr := r.FormValue("priority")
 
-	if name == "" || url == "" {
-		http.Error(w, "Name and URL are required", http.StatusBadRequest)
+	if name == "" || scraperType == "" {
+		http.Error(w, "Name and scraper type are required", http.StatusBadRequest)
 		return
 	}
 
@@ -152,9 +165,9 @@ func AddTorznabIndexerHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	indexer, err := services.AddTorznabIndexer(name, url, apiKey, priority)
+	indexer, err := services.AddBuiltinIndexerWithConfig(name, scraperType, configJSON, priority)
 	if err != nil {
-		slog.Error("Error adding Torznab indexer", "error", err)
+		slog.Error("Error adding built-in indexer", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -164,7 +177,7 @@ func AddTorznabIndexerHandler(w http.ResponseWriter, r *http.Request) {
 	renderIndexerRow(w, indexer)
 }
 
-// DeleteIndexerHandler deletes a Torznab indexer
+// DeleteIndexerHandler deletes an indexer
 func DeleteIndexerHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
@@ -242,9 +255,6 @@ func renderIndexerRow(w http.ResponseWriter, indexer *models.Indexer) {
 	}
 
 	typeBadge := "Built-in"
-	if indexer.Type == "torznab" {
-		typeBadge = "Torznab"
-	}
 
 	urlDisplay := indexer.URL
 	if urlDisplay == "" {
@@ -252,7 +262,15 @@ func renderIndexerRow(w http.ResponseWriter, indexer *models.Indexer) {
 	}
 
 	deleteButton := ""
-	if indexer.Type == "torznab" {
+	// Only allow deletion of custom (non-default) built-in indexers
+	defaultNames := map[string]bool{
+		"YTS":           true,
+		"Nyaa":          true,
+		"1337x":         true,
+		"TorrentGalaxy": true,
+		"SolidTorrents": true,
+	}
+	if !defaultNames[indexer.Name] {
 		deleteButton = fmt.Sprintf(`<button class="btn-danger" 
 			hx-delete="/indexers/delete?id=%d"
 			hx-target="#indexer-%d"
@@ -262,7 +280,7 @@ func renderIndexerRow(w http.ResponseWriter, indexer *models.Indexer) {
 			Delete
 		</button>`, indexer.ID, indexer.ID)
 	} else {
-		deleteButton = `<span style="color: var(--muted-text); font-size: 13px;">Built-in</span>`
+		deleteButton = `<span style="color: var(--muted-text); font-size: 13px;">Default</span>`
 	}
 
 	fmt.Fprintf(w, `<tr id="indexer-%d" class="indexer-row" style="border-bottom: 1px solid var(--border-color);">

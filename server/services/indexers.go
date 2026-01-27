@@ -4,6 +4,7 @@ import (
 	"Arrgo/database"
 	"Arrgo/models"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 )
@@ -106,26 +107,46 @@ func ToggleIndexer(id int, enabled bool) error {
 	return nil
 }
 
-// AddTorznabIndexer adds a new Torznab indexer
-func AddTorznabIndexer(name, url, apiKey string, priority int) (*models.Indexer, error) {
-	// Validate URL
-	if url == "" {
-		return nil, fmt.Errorf("URL is required")
+// AddBuiltinIndexer adds a new built-in indexer
+func AddBuiltinIndexer(name, scraperType string, priority int) (*models.Indexer, error) {
+	return AddBuiltinIndexerWithConfig(name, scraperType, "", priority)
+}
+
+// AddBuiltinIndexerWithConfig adds a new built-in indexer with optional config
+func AddBuiltinIndexerWithConfig(name, scraperType, configJSON string, priority int) (*models.Indexer, error) {
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if scraperType == "" {
+		return nil, fmt.Errorf("scraper type is required")
+	}
+
+	// If config is provided, use it; otherwise create minimal config with scraper type
+	if configJSON == "" {
+		configJSON = fmt.Sprintf(`{"scraper_type": "%s"}`, scraperType)
+	} else {
+		// Merge scraper_type into provided config
+		var configMap map[string]interface{}
+		if err := json.Unmarshal([]byte(configJSON), &configMap); err == nil {
+			configMap["scraper_type"] = scraperType
+			configBytes, _ := json.Marshal(configMap)
+			configJSON = string(configBytes)
+		}
 	}
 
 	// Check if indexer with same name/type already exists
 	var existingID int
 	err := database.DB.QueryRow(
-		"SELECT id FROM indexers WHERE name = $1 AND type = 'torznab'",
+		"SELECT id FROM indexers WHERE name = $1 AND type = 'builtin'",
 		name,
 	).Scan(&existingID)
 
 	if err == nil {
 		// Update existing
 		_, err = database.DB.Exec(
-			`UPDATE indexers SET url = $1, api_key = $2, priority = $3, 
-			 enabled = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
-			url, apiKey, priority, existingID,
+			`UPDATE indexers SET priority = $1, config = $2, 
+			 enabled = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+			priority, configJSON, existingID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update indexer: %w", err)
@@ -136,9 +157,9 @@ func AddTorznabIndexer(name, url, apiKey string, priority int) (*models.Indexer,
 	// Insert new
 	var id int
 	err = database.DB.QueryRow(
-		`INSERT INTO indexers (name, type, enabled, url, api_key, priority) 
-		 VALUES ($1, 'torznab', TRUE, $2, $3, $4) RETURNING id`,
-		name, url, apiKey, priority,
+		`INSERT INTO indexers (name, type, enabled, priority, config) 
+		 VALUES ($1, 'builtin', TRUE, $2, $3) RETURNING id`,
+		name, priority, configJSON,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add indexer: %w", err)
@@ -147,10 +168,36 @@ func AddTorznabIndexer(name, url, apiKey string, priority int) (*models.Indexer,
 	return GetIndexerByID(id)
 }
 
-// DeleteIndexer deletes an indexer (only Torznab indexers can be deleted)
+// DeleteIndexer deletes an indexer (custom built-in indexers can be deleted)
 func DeleteIndexer(id int) error {
+	// First check if it's a default seeded built-in indexer
+	var name string
+	var indexerType string
+	err := database.DB.QueryRow(
+		"SELECT name, type FROM indexers WHERE id = $1",
+		id,
+	).Scan(&name, &indexerType)
+	if err != nil {
+		return fmt.Errorf("indexer not found: %w", err)
+	}
+
+	// Prevent deletion of default seeded built-in indexers
+	if indexerType == "builtin" {
+		defaultNames := map[string]bool{
+			"YTS":            true,
+			"Nyaa":           true,
+			"1337x":          true,
+			"TorrentGalaxy":  true,
+			"SolidTorrents":  true,
+		}
+		if defaultNames[name] {
+			return fmt.Errorf("cannot delete default built-in indexer: %s", name)
+		}
+	}
+
+	// Delete the indexer
 	result, err := database.DB.Exec(
-		"DELETE FROM indexers WHERE id = $1 AND type = 'torznab'",
+		"DELETE FROM indexers WHERE id = $1",
 		id,
 	)
 	if err != nil {
@@ -163,7 +210,7 @@ func DeleteIndexer(id int) error {
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("indexer not found or cannot be deleted (built-in indexers cannot be deleted)")
+		return fmt.Errorf("indexer not found")
 	}
 
 	return nil
@@ -181,20 +228,9 @@ func UpdateIndexerPriority(id int, priority int) error {
 	return nil
 }
 
-// TestTorznabIndexer tests if a Torznab indexer is accessible
-func TestTorznabIndexer(url, apiKey string) error {
-	// This would make a test request to the Torznab API
-	// For now, we'll just validate the URL format
-	if url == "" {
-		return fmt.Errorf("URL is required")
-	}
-	// TODO: Actually test the connection by calling t=caps
-	return nil
-}
-
 // GetIndexerStats returns statistics about indexers
 func GetIndexerStats() (map[string]interface{}, error) {
-	var totalCount, enabledCount, builtinCount, torznabCount int
+	var totalCount, enabledCount, builtinCount int
 
 	err := database.DB.QueryRow("SELECT COUNT(*) FROM indexers").Scan(&totalCount)
 	if err != nil {
@@ -211,16 +247,10 @@ func GetIndexerStats() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	err = database.DB.QueryRow("SELECT COUNT(*) FROM indexers WHERE type = 'torznab'").Scan(&torznabCount)
-	if err != nil {
-		return nil, err
-	}
-
 	return map[string]interface{}{
 		"total":   totalCount,
 		"enabled": enabledCount,
 		"builtin": builtinCount,
-		"torznab": torznabCount,
 	}, nil
 }
 

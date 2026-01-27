@@ -5,7 +5,7 @@ import "time"
 type Indexer struct {
 	ID       int       `json:"id" db:"id"`
 	Name     string    `json:"name" db:"name"`
-	Type     string    `json:"type" db:"type"` // "builtin" or "torznab"
+	Type     string    `json:"type" db:"type"` // "builtin"
 	Enabled  bool      `json:"enabled" db:"enabled"`
 	URL      string    `json:"url,omitempty" db:"url"`
 	APIKey   string    `json:"api_key,omitempty" db:"api_key"`

@@ -236,12 +236,12 @@ func RunMigrations() error {
 	CREATE TABLE IF NOT EXISTS indexers (
 		id SERIAL PRIMARY KEY,
 		name VARCHAR(255) NOT NULL,
-		type VARCHAR(50) NOT NULL, -- 'builtin' or 'torznab'
+		type VARCHAR(50) NOT NULL, -- 'builtin'
 		enabled BOOLEAN DEFAULT TRUE,
-		url VARCHAR(500), -- For Torznab indexers
-		api_key VARCHAR(255), -- For Torznab indexers
+		url VARCHAR(500), -- Reserved for future use
+		api_key VARCHAR(255), -- Reserved for future use
 		priority INTEGER DEFAULT 0, -- Lower number = higher priority
-		config JSONB, -- Additional configuration
+		config JSONB, -- Additional configuration (stores scraper_type)
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		UNIQUE(name, type)

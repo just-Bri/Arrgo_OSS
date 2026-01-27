@@ -69,7 +69,7 @@ func setupRoutes() *http.ServeMux {
 		"/api/shows/rematch":       handlers.RematchShowHandler,
 		"/indexers":                handlers.IndexersHandler,
 		"/indexers/toggle":         handlers.ToggleIndexerHandler,
-		"/indexers/add":            handlers.AddTorznabIndexerHandler,
+		"/indexers/add-builtin":    handlers.AddBuiltinIndexerHandler,
 		"/indexers/delete":         handlers.DeleteIndexerHandler,
 		"/indexers/reorder":        handlers.ReorderIndexersHandler,
 	}
@@ -77,9 +77,6 @@ func setupRoutes() *http.ServeMux {
 	for path, handler := range protectedRoutes {
 		mux.Handle(path, middleware.RequireAuth(http.HandlerFunc(handler)))
 	}
-
-	// Torznab API endpoint - publicly accessible (protected by API key, not session)
-	mux.HandleFunc("/api", handlers.TorznabAPIHandler)
 
 	// Root redirect
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
