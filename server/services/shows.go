@@ -486,8 +486,17 @@ func scanEpisodes(seasonID int, seasonPath string) {
 			epTitle = fmt.Sprintf("Episode %d", episodeNum)
 		}
 
-		info, _ := entry.Info()
-		size := info.Size()
+		// Get file info, handle potential nil/error gracefully
+		var size int64
+		info, err := entry.Info()
+		if err == nil && info != nil {
+			size = info.Size()
+		} else {
+			// Fallback: try to get file size directly if entry.Info() fails
+			if fileInfo, err := os.Stat(episodePath); err == nil {
+				size = fileInfo.Size()
+			}
+		}
 		quality := DetectQuality(episodePath)
 
 		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
