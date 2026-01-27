@@ -295,6 +295,14 @@ func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 			// Torrent exists, update status based on progress
 			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
 				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", requestID)
+				
+				// Check if this request has a confirmed match and should be auto-imported
+				go func(reqID int, hash string) {
+					ctx := context.Background()
+					if err := s.checkAndAutoImport(ctx, reqID, hash); err != nil {
+						slog.Debug("Auto-import check failed or not applicable", "request_id", reqID, "error", err)
+					}
+				}(requestID, normalizedHash)
 			}
 			// Update download status
 			database.DB.Exec(`
@@ -770,6 +778,8 @@ func (s *AutomationService) processSingleRequest(ctx context.Context, r models.R
 
 func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Request) error {
 	// Check if this season is already covered by an existing multi-season torrent
+	// BUT: We should still allow downloading a multi-season torrent if it covers seasons we don't have
+	// (e.g., if we have season 3 but find a 1-4 torrent, we should download it for seasons 1, 2, 4)
 	if r.MediaType == "show" && r.Seasons != "" {
 		rows, err := database.DB.Query(`
 			SELECT d.torrent_hash 
@@ -781,6 +791,21 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			defer rows.Close()
 			currentSeasonStr := strings.TrimSpace(strings.Split(r.Seasons, ",")[0])
 			currentSeasonNum, _ := strconv.Atoi(currentSeasonStr)
+			
+			// Get all requested seasons for this request to check if ALL are covered
+			var allRequestedSeasons []int
+			allRequestedSeasonsStr := r.Seasons
+			// Try to get the full list from the request if available
+			var fullSeasonsList string
+			err := database.DB.QueryRow("SELECT seasons FROM requests WHERE id = $1", r.ID).Scan(&fullSeasonsList)
+			if err == nil && fullSeasonsList != "" {
+				allRequestedSeasonsStr = fullSeasonsList
+			}
+			for _, sStr := range strings.Split(allRequestedSeasonsStr, ",") {
+				if sn, err := strconv.Atoi(strings.TrimSpace(sStr)); err == nil {
+					allRequestedSeasons = append(allRequestedSeasons, sn)
+				}
+			}
 			
 			for rows.Next() {
 				var hash string
@@ -801,12 +826,29 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 						endSeason, err2 := strconv.Atoi(multiSeasonMatch[2])
 						if err1 == nil && err2 == nil && startSeason <= endSeason {
 							if currentSeasonNum >= startSeason && currentSeasonNum <= endSeason {
-								slog.Info("Season already covered by multi-season torrent",
-									"request_id", r.ID,
-									"season", currentSeasonStr,
-									"torrent_title", existingTorrent.Name,
-									"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
-								return nil // Season already covered, skip processing
+								// Check if ALL requested seasons are covered by this torrent
+								allCovered := true
+								for _, reqSeason := range allRequestedSeasons {
+									if reqSeason < startSeason || reqSeason > endSeason {
+										allCovered = false
+										break
+									}
+								}
+								if allCovered {
+									slog.Info("All requested seasons already covered by multi-season torrent",
+										"request_id", r.ID,
+										"season", currentSeasonStr,
+										"torrent_title", existingTorrent.Name,
+										"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
+									return nil // All seasons covered, skip processing
+								} else {
+									// Some seasons are covered, but not all - allow processing to continue
+									// The multi-season torrent we find might cover the missing seasons
+									slog.Debug("Some seasons covered by existing torrent, but not all - will check for better multi-season torrent",
+										"request_id", r.ID,
+										"season", currentSeasonStr,
+										"existing_torrent", existingTorrent.Name)
+								}
 							}
 						}
 					}
@@ -815,13 +857,34 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 					allSeasonsRegex := regexp.MustCompile(`(?:s|season)\s*(\d+)`)
 					allSeasonsMatches := allSeasonsRegex.FindAllStringSubmatch(torrentTitle, -1)
 					if len(allSeasonsMatches) > 1 {
+						foundSeasons := make(map[int]bool)
 						for _, match := range allSeasonsMatches {
-							if seasonNum, err := strconv.Atoi(match[1]); err == nil && seasonNum == currentSeasonNum {
-								slog.Info("Season already covered by multi-season torrent",
+							if seasonNum, err := strconv.Atoi(match[1]); err == nil {
+								foundSeasons[seasonNum] = true
+							}
+						}
+						// Check if current season is covered
+						if foundSeasons[currentSeasonNum] {
+							// Check if ALL requested seasons are covered
+							allCovered := true
+							for _, reqSeason := range allRequestedSeasons {
+								if !foundSeasons[reqSeason] {
+									allCovered = false
+									break
+								}
+							}
+							if allCovered {
+								slog.Info("All requested seasons already covered by multi-season torrent",
 									"request_id", r.ID,
 									"season", currentSeasonStr,
 									"torrent_title", existingTorrent.Name)
-								return nil // Season already covered, skip processing
+								return nil // All seasons covered, skip processing
+							} else {
+								// Some seasons covered, but not all - allow processing to continue
+								slog.Debug("Some seasons covered by existing torrent, but not all - will check for better multi-season torrent",
+									"request_id", r.ID,
+									"season", currentSeasonStr,
+									"existing_torrent", existingTorrent.Name)
 							}
 						}
 					}
@@ -937,6 +1000,57 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons, "retry_count", r.RetryCount)
 		s.incrementRetryCount(r.ID, r.RetryCount)
 		return nil
+	}
+
+	// For shows: Check if the selected torrent is a multi-season torrent that covers seasons we don't have
+	// Even if some seasons are already downloaded, we should still download if it covers missing seasons
+	if r.MediaType == "show" && r.Seasons != "" {
+		bestTitleLower := strings.ToLower(best.Title)
+		currentSeasonStr := strings.TrimSpace(strings.Split(r.Seasons, ",")[0])
+		currentSeasonNum, _ := strconv.Atoi(currentSeasonStr)
+		
+		// Check if this is a multi-season torrent
+		multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
+		multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(bestTitleLower)
+		if len(multiSeasonMatch) == 3 {
+			startSeason, err1 := strconv.Atoi(multiSeasonMatch[1])
+			endSeason, err2 := strconv.Atoi(multiSeasonMatch[2])
+			if err1 == nil && err2 == nil && startSeason <= endSeason {
+				// Check if this torrent would cover the current season being processed
+				if currentSeasonNum >= startSeason && currentSeasonNum <= endSeason {
+					// Check if we already have this exact torrent (by hash)
+					bestHash := best.InfoHash
+					if bestHash == "" && best.MagnetLink != "" {
+						bestHash = extractInfoHashFromMagnet(best.MagnetLink)
+					}
+					if bestHash != "" {
+						normalizedHash := strings.ToLower(bestHash)
+						existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
+						if err == nil && existingTorrent != nil {
+							// Torrent already exists - check if it covers all needed seasons
+							existingTitleLower := strings.ToLower(existingTorrent.Name)
+							// If the existing torrent is the same multi-season torrent, skip
+							if strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", startSeason)) && 
+							   strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", endSeason)) {
+								slog.Info("Multi-season torrent already exists, skipping download",
+									"request_id", r.ID,
+									"season", currentSeasonStr,
+									"torrent_title", existingTorrent.Name,
+									"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
+								return nil
+							}
+						}
+					}
+					// Multi-season torrent found and doesn't exist yet - proceed with download
+					// This will cover multiple seasons even if we're only processing one
+					slog.Info("Found multi-season torrent that will cover multiple seasons",
+						"request_id", r.ID,
+						"current_season", currentSeasonStr,
+						"torrent_title", best.Title,
+						"range", fmt.Sprintf("%d-%d", startSeason, endSeason))
+				}
+			}
+		}
 	}
 
 	slog.Info("Selected best torrent result", "request_id", r.ID, "title", best.Title, "seeds", best.Seeds, "quality", best.Quality, "resolution", best.Resolution, "info_hash", best.InfoHash, "has_magnet", best.MagnetLink != "", "source", best.Source)
@@ -1189,13 +1303,32 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 
 		// If finished, update request status
 		if t.Progress >= 1.0 || t.State == "uploading" || t.State == "stalledUP" {
-			_, err = database.DB.Exec(`
-				UPDATE requests
-				SET status = 'completed', updated_at = NOW()
-				WHERE id = (SELECT request_id FROM downloads WHERE LOWER(torrent_hash) = $1)`,
-				normalizedHash)
-			if err != nil {
-				slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash)
+			var requestID int
+			err = database.DB.QueryRow(`
+				SELECT request_id FROM downloads WHERE LOWER(torrent_hash) = $1 LIMIT 1`,
+				normalizedHash).Scan(&requestID)
+			if err == nil && requestID > 0 {
+				// Check if request was already completed to avoid duplicate processing
+				var currentStatus string
+				err = database.DB.QueryRow("SELECT status FROM requests WHERE id = $1", requestID).Scan(&currentStatus)
+				if err == nil && currentStatus != "completed" {
+					_, err = database.DB.Exec(`
+						UPDATE requests
+						SET status = 'completed', updated_at = NOW()
+						WHERE id = $1`,
+						requestID)
+					if err != nil {
+						slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash, "request_id", requestID)
+					} else {
+						// Check if this request has a confirmed match and should be auto-imported
+						go func(reqID int, hash string) {
+							ctx := context.Background()
+							if err := s.checkAndAutoImport(ctx, reqID, hash); err != nil {
+								slog.Debug("Auto-import check failed or not applicable", "request_id", reqID, "error", err)
+							}
+						}(requestID, normalizedHash)
+					}
+				}
 			}
 		}
 	}
@@ -2038,6 +2171,138 @@ func addTrackersToMagnet(magnetLink string, infoHash string) string {
 
 // incrementRetryCount increments the retry count and updates last_search_at for a request
 // If retries are exhausted (54 total: 24 hourly + 30 daily), sets status to 'not_found'
+// checkAndAutoImport checks if a completed request should be auto-imported
+// This is called when a torrent completes and the request has a confirmed match (TVDB/TMDB ID)
+func (s *AutomationService) checkAndAutoImport(ctx context.Context, requestID int, torrentHash string) error {
+	// Get request details to check if it has a confirmed match
+	var mediaType, tmdbID, tvdbID sql.NullString
+	err := database.DB.QueryRow(`
+		SELECT media_type, tmdb_id, tvdb_id 
+		FROM requests 
+		WHERE id = $1`, requestID).Scan(&mediaType, &tmdbID, &tvdbID)
+	if err != nil {
+		return fmt.Errorf("failed to get request details: %w", err)
+	}
+
+	// Check if we have a confirmed match (TVDB ID for shows, TMDB ID for movies)
+	hasConfirmedMatch := false
+	if mediaType.String == "show" && tvdbID.Valid && tvdbID.String != "" {
+		hasConfirmedMatch = true
+	} else if mediaType.String == "movie" && tmdbID.Valid && tmdbID.String != "" {
+		hasConfirmedMatch = true
+	}
+
+	if !hasConfirmedMatch {
+		return fmt.Errorf("request does not have confirmed match (no TVDB/TMDB ID)")
+	}
+
+	slog.Info("Request has confirmed match, checking for auto-import",
+		"request_id", requestID,
+		"media_type", mediaType.String,
+		"tvdb_id", tvdbID.String,
+		"tmdb_id", tmdbID.String)
+
+	// Trigger a scan of the incoming folder to ensure media is detected
+	cfg := s.cfg
+	if mediaType.String == "movie" {
+		slog.Info("Scanning incoming movies for auto-import", "request_id", requestID)
+		if err := ScanMovies(ctx, cfg, true); err != nil {
+			return fmt.Errorf("failed to scan incoming movies: %w", err)
+		}
+	} else if mediaType.String == "show" {
+		slog.Info("Scanning incoming shows for auto-import", "request_id", requestID)
+		if err := ScanShows(ctx, cfg, true); err != nil {
+			return fmt.Errorf("failed to scan incoming shows: %w", err)
+		}
+	}
+
+	// Wait a moment for scan to complete
+	time.Sleep(2 * time.Second)
+
+	// Find media linked to this request via torrent hash
+	if mediaType.String == "movie" {
+		var movieID int
+		err := database.DB.QueryRow(`
+			SELECT id FROM movies 
+			WHERE LOWER(torrent_hash) = $1 
+			AND tmdb_id IS NOT NULL 
+			AND tmdb_id != ''
+			AND path LIKE $2 || '%'
+			LIMIT 1`,
+			torrentHash, cfg.IncomingMoviesPath).Scan(&movieID)
+		if err == nil {
+			slog.Info("Found matched movie for auto-import",
+				"request_id", requestID,
+				"movie_id", movieID,
+				"torrent_hash", torrentHash)
+			// Auto-import the movie
+			if err := RenameAndMoveMovieWithCleanup(cfg, movieID, true); err != nil {
+				return fmt.Errorf("failed to auto-import movie: %w", err)
+			}
+			slog.Info("Successfully auto-imported movie",
+				"request_id", requestID,
+				"movie_id", movieID)
+			return nil
+		}
+		return fmt.Errorf("no matched movie found for torrent hash")
+	} else if mediaType.String == "show" {
+		// For shows, we need to import all episodes from the torrent
+		// Get all episodes linked to this torrent hash
+		rows, err := database.DB.Query(`
+			SELECT e.id, e.season_id, s.show_id, sh.tvdb_id
+			FROM episodes e
+			JOIN seasons s ON e.season_id = s.id
+			JOIN shows sh ON s.show_id = sh.id
+			WHERE LOWER(e.torrent_hash) = $1 
+			AND sh.tvdb_id IS NOT NULL 
+			AND sh.tvdb_id != ''
+			AND e.file_path LIKE $2 || '%'
+			AND e.imported_at IS NULL`,
+			torrentHash, cfg.IncomingShowsPath)
+		if err != nil {
+			return fmt.Errorf("failed to query episodes: %w", err)
+		}
+		defer rows.Close()
+
+		var importedCount int
+		for rows.Next() {
+			var episodeID, seasonID, showID int
+			var showTVDBID string
+			if err := rows.Scan(&episodeID, &seasonID, &showID, &showTVDBID); err != nil {
+				continue
+			}
+
+			// Verify the show TVDB ID matches the request
+			if showTVDBID == tvdbID.String {
+				slog.Info("Found matched episode for auto-import",
+					"request_id", requestID,
+					"episode_id", episodeID,
+					"show_id", showID,
+					"tvdb_id", showTVDBID)
+				// Auto-import the episode
+				if err := RenameAndMoveEpisodeWithCleanup(cfg, episodeID, true); err != nil {
+					slog.Warn("Failed to auto-import episode",
+						"request_id", requestID,
+						"episode_id", episodeID,
+						"error", err)
+					continue
+				}
+				importedCount++
+			}
+		}
+
+		if importedCount > 0 {
+			slog.Info("Successfully auto-imported episodes",
+				"request_id", requestID,
+				"episodes_imported", importedCount)
+			return nil
+		}
+		return fmt.Errorf("no matched episodes found for torrent hash")
+	}
+
+	return fmt.Errorf("unknown media type: %s", mediaType.String)
+}
+
 func (s *AutomationService) incrementRetryCount(requestID int, currentRetryCount int) {
 	newRetryCount := currentRetryCount + 1
 
