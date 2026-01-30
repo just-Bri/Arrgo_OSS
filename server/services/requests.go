@@ -144,9 +144,11 @@ func DeleteRequest(id int, qb *QBittorrentClient) error {
 		for rows.Next() {
 			var hash string
 			if err := rows.Scan(&hash); err == nil {
-				// 2. Delete from qBittorrent and remove files
+				// 2. IMPORTANT: Only remove torrent from qBittorrent WITHOUT deleting files
+				// Files are only deleted if they've been imported (handled by cleanup logic)
+				// This ensures files are preserved until they're imported
 				if qb != nil {
-					_ = qb.DeleteTorrent(context.Background(), hash, true)
+					_ = qb.DeleteTorrent(context.Background(), hash, false)
 				}
 			}
 		}
@@ -228,14 +230,60 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 				status.Message = "Already in library"
 			}
 
-			// Get seasons in library
+			// Get seasons in library - only include seasons where ALL episodes are present
+			// This prevents marking incomplete seasons as "in library"
+			// Fetch expected episodes from TVDB once (if available) to compare against
+			var expectedEpisodes []TVDBEpisode
+			if cfg.TVDBAPIKey != "" {
+				expectedEpisodes, _ = GetTVDBShowEpisodes(cfg, externalID)
+			}
+			
+			// Build map of expected episode counts per season
+			expectedCountsBySeason := make(map[int]int)
+			for _, ep := range expectedEpisodes {
+				expectedCountsBySeason[ep.SeasonNumber]++
+			}
+			
 			rows, err := database.DB.Query("SELECT season_number FROM seasons WHERE show_id = $1 ORDER BY season_number", showID)
 			if err == nil {
 				defer rows.Close()
 				for rows.Next() {
 					var sn int
 					if err := rows.Scan(&sn); err == nil {
-						status.Seasons = append(status.Seasons, sn)
+						// Get expected episode count for this season
+						expectedCount := expectedCountsBySeason[sn]
+						
+						// Count actual episodes we have for this season
+						var actualCount int
+						err := database.DB.QueryRow(`
+							SELECT COUNT(*) 
+							FROM episodes e
+							JOIN seasons s ON e.season_id = s.id
+							WHERE s.show_id = $1 AND s.season_number = $2
+							AND e.file_path IS NOT NULL 
+							AND e.file_path != ''`, showID, sn).Scan(&actualCount)
+						
+						if err == nil {
+							// Only mark season as "in library" if:
+							// 1. We have episodes (actualCount > 0)
+							// 2. Either we have all expected episodes, OR we don't have TVDB data to compare
+							if actualCount > 0 {
+								if expectedCount == 0 {
+									// No TVDB data - assume complete if we have episodes
+									status.Seasons = append(status.Seasons, sn)
+								} else if actualCount >= expectedCount {
+									// We have all or more episodes than expected
+									status.Seasons = append(status.Seasons, sn)
+								} else {
+									// We have episodes but not all of them - season is incomplete
+									slog.Debug("Season marked as incomplete - missing episodes",
+										"show_id", showID,
+										"season", sn,
+										"actual_count", actualCount,
+										"expected_count", expectedCount)
+								}
+							}
+						}
 					}
 				}
 			}
@@ -243,6 +291,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 
 		// Always check for requested seasons, even if show exists (partial match)
 		// Check for active requests (pending or downloading)
+		// Also check completed requests - if episodes are missing, allow re-requesting
 		var reqSeasons sql.NullString
 		var reqStatus string
 		err = database.DB.QueryRow("SELECT seasons, status FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status IN ('pending', 'downloading')", externalID).Scan(&reqSeasons, &reqStatus)
@@ -251,12 +300,35 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 				seasonStrs := strings.Split(reqSeasons.String, ",")
 				for _, s := range seasonStrs {
 					if sn, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
-						status.RequestedSeasons = append(status.RequestedSeasons, sn)
+						// Only add to requested seasons if the season is actually complete in library
+						// If season is incomplete, don't block re-requesting
+						if slices.Contains(status.Seasons, sn) {
+							status.RequestedSeasons = append(status.RequestedSeasons, sn)
+						}
 					}
 				}
 			}
 			if !status.Exists {
 				status.Message = "Already requested (Status: " + reqStatus + ")"
+			}
+		}
+		
+		// Also check completed requests - if they're incomplete, don't block re-requesting
+		var completedReqSeasons sql.NullString
+		err = database.DB.QueryRow("SELECT seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status = 'completed'", externalID).Scan(&completedReqSeasons)
+		if err == nil && completedReqSeasons.Valid && completedReqSeasons.String != "" {
+			// Check if any requested seasons are incomplete - if so, allow re-requesting
+			seasonStrs := strings.Split(completedReqSeasons.String, ",")
+			for _, s := range seasonStrs {
+				if sn, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+					// If season was completed but is not in library (incomplete), don't block
+					// The season will only be in status.Seasons if it's complete
+					if !slices.Contains(status.Seasons, sn) {
+						slog.Debug("Completed request has incomplete season - allowing re-request",
+							"tvdb_id", externalID,
+							"season", sn)
+					}
+				}
 			}
 		}
 

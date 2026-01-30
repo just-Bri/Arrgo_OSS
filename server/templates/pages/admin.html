@@ -347,6 +347,19 @@
                                     {{if .Quality}}
                                     <span style="background: var(--quality-bg); padding: 1px 4px; border-radius: 4px; color: var(--quality-text);">{{.Quality}}</span>
                                     {{end}}
+                                    {{if .SeedingStatus}}
+                                    {{if .SeedingStatus.TorrentExists}}
+                                        {{if .SeedingStatus.IsSeeding}}
+                                            {{if .SeedingStatus.MeetsCriteria}}
+                                            <span style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;" title="Seeding complete ({{printf "%.1f" .SeedingStatus.Ratio}} ratio, {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                            {{else}}
+                                            <span style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;" title="Ratio: {{printf "%.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                            {{end}}
+                                        {{else}}
+                                        <span style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸ Not Seeding</span>
+                                        {{end}}
+                                    {{end}}
+                                    {{end}}
                                 </div>
                             </div>
                             {{if eq .Status "matched"}}
@@ -388,6 +401,19 @@
                                     <span style="background: var(--accent-color); padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">
                                         Seasons: {{range $i, $s := .Seasons}}{{if $i}}, {{end}}S{{printf "%02d" $s}}{{end}}
                                     </span>
+                                    {{end}}
+                                    {{if .SeedingStatus}}
+                                    {{if .SeedingStatus.TorrentExists}}
+                                        {{if .SeedingStatus.IsSeeding}}
+                                            {{if .SeedingStatus.MeetsCriteria}}
+                                            <span style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;" title="Seeding complete ({{printf "%.1f" .SeedingStatus.Ratio}} ratio, {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                            {{else}}
+                                            <span style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;" title="Ratio: {{printf "%.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                            {{end}}
+                                        {{else}}
+                                        <span style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸ Not Seeding</span>
+                                        {{end}}
+                                    {{end}}
                                     {{end}}
                                 </div>
                             </div>

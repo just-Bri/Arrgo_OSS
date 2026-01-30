@@ -16,6 +16,7 @@ type Movie struct {
 	Genres      string     `json:"genres"`
 	Status      string     `json:"status"` // e.g., "discovered", "matching", "ready"
 	RawMetadata []byte     `json:"raw_metadata"`
+	TorrentHash string     `json:"torrent_hash,omitempty"` // Torrent hash for seeding status
 	ImportedAt  *time.Time `json:"imported_at,omitempty"` // Timestamp when imported to library
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`

@@ -362,7 +362,7 @@ func GetMovies() ([]models.Movie, error) {
 	}
 	defer rows.Close()
 
-	movies := []models.Movie{}
+		movies := []models.Movie{}
 	for rows.Next() {
 		var m models.Movie
 		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
@@ -380,6 +380,7 @@ func GetMovies() ([]models.Movie, error) {
 		}
 		m.Quality = quality.String
 		m.Genres = genres.String
+		m.TorrentHash = torrentHash.String
 		movies = append(movies, m)
 	}
 	return movies, nil
