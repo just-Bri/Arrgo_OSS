@@ -283,10 +283,21 @@ func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 		existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
 		if err != nil || existingTorrent == nil {
 			// Torrent doesn't exist in qBittorrent, reset to pending
+			// Get request details for better logging
+			var requestYear int
+			var requestTVDBID string
+			var downloadTitle string
+			database.DB.QueryRow("SELECT year, tvdb_id FROM requests WHERE id = $1", requestID).Scan(&requestYear, &requestTVDBID)
+			database.DB.QueryRow("SELECT title FROM downloads WHERE request_id = $1 AND LOWER(torrent_hash) = $2 LIMIT 1", requestID, normalizedHash).Scan(&downloadTitle)
+			
 			slog.Warn("Downloading request has no active torrent in qBittorrent, resetting to pending", 
 				"request_id", requestID, 
 				"title", title,
-				"torrent_hash", normalizedHash)
+				"year", requestYear,
+				"tvdb_id", requestTVDBID,
+				"torrent_hash", normalizedHash,
+				"download_title", downloadTitle,
+				"error", err)
 			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
 			// Also clean up the downloads record
 			database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
@@ -901,12 +912,27 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 				// Convert to int for proper zero-padding
 				if num, err := strconv.Atoi(seasonNum); err == nil {
 					// Format: "Show Name S02" (most common)
-					searchQuery = fmt.Sprintf("%s S%02d", r.Title, num)
+					// Include year if available to distinguish between different versions (e.g., Matlock 1986 vs 2024)
+					if r.Year > 0 {
+						searchQuery = fmt.Sprintf("%s %d S%02d", r.Title, r.Year, num)
+					} else {
+						searchQuery = fmt.Sprintf("%s S%02d", r.Title, num)
+					}
 				} else {
 					// Fallback to string format if conversion fails
-					searchQuery = fmt.Sprintf("%s S%s", r.Title, seasonNum)
+					if r.Year > 0 {
+						searchQuery = fmt.Sprintf("%s %d S%s", r.Title, r.Year, seasonNum)
+					} else {
+						searchQuery = fmt.Sprintf("%s S%s", r.Title, seasonNum)
+					}
 				}
+			} else if r.Year > 0 {
+				// No season specified but year available - include year
+				searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
 			}
+		} else if r.Year > 0 {
+			// No seasons specified but year available - include year
+			searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
 		}
 	} else if r.MediaType == "movie" && r.Year > 0 {
 		// For movies, include year in search query to improve matching
@@ -1139,13 +1165,64 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	}
 
 	// Add to downloads table
-	_, err = tx.Exec(`
+	// Check if this hash is already used by another request (hash collision) - check within transaction
+	var existingRequestID int
+	err = tx.QueryRow(`
+		SELECT request_id FROM downloads WHERE LOWER(torrent_hash) = $1 LIMIT 1`,
+		infoHash).Scan(&existingRequestID)
+	if err == nil && existingRequestID > 0 && existingRequestID != r.ID {
+		// Hash collision - this torrent hash is already associated with a different request
+		// Get details of the conflicting request for logging
+		var conflictTitle string
+		var conflictYear int
+		var conflictTVDBID string
+		database.DB.QueryRow("SELECT title, year, tvdb_id FROM requests WHERE id = $1", existingRequestID).Scan(&conflictTitle, &conflictYear, &conflictTVDBID)
+		
+		slog.Warn("Torrent hash collision detected - same torrent hash for different requests",
+			"current_request_id", r.ID,
+			"current_title", r.Title,
+			"current_year", r.Year,
+			"current_tvdb_id", r.TVDBID,
+			"conflict_request_id", existingRequestID,
+			"conflict_title", conflictTitle,
+			"conflict_year", conflictYear,
+			"conflict_tvdb_id", conflictTVDBID,
+			"torrent_hash", infoHash,
+			"torrent_title", best.Title)
+		
+		// Rollback transaction - don't mark this request as downloading
+		tx.Rollback()
+		// Reset request to pending so it can retry with better matching
+		database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", r.ID)
+		return fmt.Errorf("torrent hash collision: hash %s already used by request %d (%s %d)", infoHash, existingRequestID, conflictTitle, conflictYear)
+	}
+	
+	result, err := tx.Exec(`
 		INSERT INTO downloads (request_id, torrent_hash, title, status, updated_at)
 		VALUES ($1, $2, $3, 'downloading', NOW())
 		ON CONFLICT (torrent_hash) DO NOTHING`,
 		r.ID, infoHash, best.Title)
 	if err != nil {
 		return fmt.Errorf("failed to insert download record: %w", err)
+	}
+	
+	// Check if insert actually succeeded (not skipped due to conflict)
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		// Insert was skipped - check if it's because hash already exists for this request
+		var checkRequestID int
+		err = tx.QueryRow(`
+			SELECT request_id FROM downloads WHERE LOWER(torrent_hash) = $1 LIMIT 1`,
+			infoHash).Scan(&checkRequestID)
+		if err == nil && checkRequestID == r.ID {
+			// Hash already exists for this request - that's okay, continue
+			slog.Debug("Download record already exists for this request and hash", "request_id", r.ID, "hash", infoHash)
+		} else {
+			// Hash exists for different request - this is a problem
+			tx.Rollback()
+			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", r.ID)
+			return fmt.Errorf("torrent hash %s already exists for a different request", infoHash)
+		}
 	}
 
 	// Commit transaction before adding to qBittorrent
@@ -1175,7 +1252,15 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		return nil
 	}
 
-	slog.Info("Adding torrent to qBittorrent", "request_id", r.ID, "info_hash", infoHash, "category", category, "save_path", savePath)
+	slog.Info("Adding torrent to qBittorrent",
+		"request_id", r.ID,
+		"title", r.Title,
+		"year", r.Year,
+		"tvdb_id", r.TVDBID,
+		"torrent_title", best.Title,
+		"info_hash", infoHash,
+		"category", category,
+		"save_path", savePath)
 
 	// Try to fetch .torrent file first (avoids metadata download issues)
 	var addErr error
@@ -1233,10 +1318,17 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 		// If qBittorrent add fails and torrent doesn't exist, rollback the database changes
 		// Reset request back to pending so it can be retried
-		slog.Error("Failed to add torrent to qBittorrent, resetting request", "request_id", r.ID, "error", err)
+		slog.Error("Failed to add torrent to qBittorrent, resetting request",
+			"request_id", r.ID,
+			"title", r.Title,
+			"year", r.Year,
+			"tvdb_id", r.TVDBID,
+			"torrent_title", best.Title,
+			"info_hash", normalizedHash,
+			"error", addErr)
 		database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", r.ID)
 		database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
-		return fmt.Errorf("failed to add torrent to qBittorrent: %w", err)
+		return fmt.Errorf("failed to add torrent to qBittorrent: %w", addErr)
 	}
 
 	slog.Info("Successfully processed request", "request_id", r.ID, "title", r.Title, "status", "downloading")
@@ -1614,8 +1706,8 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 			}
 		}
 
-		// Title and year matching bonus (for movies)
-		if mediaType == "movie" && requestedTitle != "" {
+		// Title and year matching bonus (for movies and shows)
+		if requestedTitle != "" {
 			requestedTitleLower := strings.ToLower(requestedTitle)
 			resultTitleLower := strings.ToLower(r.Title)
 
@@ -1627,11 +1719,26 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 				score += 1000
 			}
 
-			// Year matching bonus
+			// Year matching bonus (for both movies and shows)
+			// This helps distinguish between different versions (e.g., Matlock 1986 vs Matlock 2024)
 			if requestedYear > 0 {
 				yearStr := fmt.Sprintf("%d", requestedYear)
 				if strings.Contains(resultTitleLower, yearStr) {
 					score += 500 // Big bonus for year match
+				} else {
+					// Penalize results with different years to avoid wrong matches
+					// Check for other 4-digit years in the title
+					yearPattern := regexp.MustCompile(`\b(19|20)\d{2}\b`)
+					yearsInTitle := yearPattern.FindAllString(resultTitleLower, -1)
+					for _, y := range yearsInTitle {
+						if y != yearStr {
+							score -= 300 // Penalty for wrong year
+							slog.Debug("Penalizing torrent with wrong year",
+								"requested_year", requestedYear,
+								"found_year", y,
+								"torrent_title", r.Title)
+						}
+					}
 				}
 			}
 		}
