@@ -5,6 +5,7 @@ import (
 	"Arrgo/models"
 	"Arrgo/services"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
@@ -120,4 +121,58 @@ func ScanStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
+}
+
+func ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for force refresh parameter
+	forceRefresh := r.URL.Query().Get("force") == "true"
+
+	result, err := services.ScanAllMediaForSubtitles(forceRefresh)
+	if err != nil {
+		slog.Error("Error scanning subtitles", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	queuedCount, err := services.QueueMissingSubtitles()
+	if err != nil {
+		slog.Error("Error queueing missing subtitles", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"queued_count": queuedCount,
+		"message":      fmt.Sprintf("Queued %d media items for subtitle download", queuedCount),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

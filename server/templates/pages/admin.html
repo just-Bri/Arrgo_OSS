@@ -186,6 +186,93 @@
             </script>
         </div>
 
+        <script>
+            function scanSubtitles(event) {
+                const btn = document.getElementById('scan-subtitles-btn');
+                const resultDiv = document.getElementById('subtitle-scan-result');
+                const resultContent = document.getElementById('scan-result-content');
+                
+                // Check if shift key is pressed for force refresh
+                const forceRefresh = event && event.shiftKey;
+                const url = forceRefresh ? '/admin/subtitles/scan?force=true' : '/admin/subtitles/scan';
+                
+                btn.disabled = true;
+                btn.textContent = forceRefresh ? '⏳ Scanning (force refresh)...' : '⏳ Scanning...';
+                resultDiv.style.display = 'none';
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    const cacheNote = forceRefresh ? '' : '<div style="margin-top: 8px; font-size: 11px; color: var(--muted-text); font-style: italic;">Results cached for 24 hours</div>';
+                    resultContent.innerHTML = `
+                        <div style="margin-bottom: 4px;">Movies: ${data.movies_with_subs || 0} with subtitles, ${data.movies_missing || 0} missing (Total: ${data.total_movies || 0})</div>
+                        <div>Episodes: ${data.episodes_with_subs || 0} with subtitles, ${data.episodes_missing || 0} missing (Total: ${data.total_episodes || 0})</div>
+                        ${cacheNote}
+                    `;
+                    resultDiv.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = '🔍 Scan All Media for Subtitles';
+                })
+                .catch(err => {
+                    console.error('Error scanning subtitles:', err);
+                    alert('Error scanning subtitles: ' + err.message);
+                    btn.disabled = false;
+                    btn.textContent = '🔍 Scan All Media for Subtitles';
+                });
+            }
+
+            function queueMissingSubtitles() {
+                const btn = document.getElementById('queue-subtitles-btn');
+                
+                btn.disabled = true;
+                btn.textContent = '⏳ Queueing...';
+
+                fetch('/admin/subtitles/queue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message || `Queued ${data.queued_count || 0} media items for subtitle download`);
+                    btn.disabled = false;
+                    btn.textContent = '📥 Queue Missing Subtitles';
+                })
+                .catch(err => {
+                    console.error('Error queueing subtitles:', err);
+                    alert('Error queueing subtitles: ' + err.message);
+                    btn.disabled = false;
+                    btn.textContent = '📥 Queue Missing Subtitles';
+                });
+            }
+        </script>
+
+        <!-- Subtitle Management -->
+        <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Subtitle Management</h2>
+            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Scan media items and queue missing subtitles for download. Scan results are cached for 24 hours. Hold Shift while clicking to force a fresh scan.</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <button id="scan-subtitles-btn" onclick="scanSubtitles(event)" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                    🔍 Scan All Media for Subtitles
+                </button>
+                <button id="queue-subtitles-btn" onclick="queueMissingSubtitles()" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                    📥 Queue Missing Subtitles
+                </button>
+            </div>
+            <div id="subtitle-scan-result" style="margin-top: 15px; padding: 12px; background: var(--border-color); border-radius: 4px; display: none;">
+                <div style="color: var(--text-color); font-size: 13px;">
+                    <div style="margin-bottom: 8px;"><strong>Scan Results:</strong></div>
+                    <div id="scan-result-content"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- System Info -->
         <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">User Info</h2>

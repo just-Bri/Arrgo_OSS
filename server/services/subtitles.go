@@ -654,3 +654,169 @@ func HasSubtitles(videoPath string) bool {
 
 	return false
 }
+
+type SubtitleScanResult struct {
+	TotalMovies      int `json:"total_movies"`
+	MoviesWithSubs   int `json:"movies_with_subs"`
+	MoviesMissing    int `json:"movies_missing"`
+	TotalEpisodes    int `json:"total_episodes"`
+	EpisodesWithSubs int `json:"episodes_with_subs"`
+	EpisodesMissing  int `json:"episodes_missing"`
+}
+
+const (
+	subtitleScanCacheKey = "subtitle_scan_cache"
+	cacheTTL             = 24 * time.Hour
+)
+
+// getCachedScanResult retrieves cached scan results if they exist and are still valid
+func getCachedScanResult() (*SubtitleScanResult, bool) {
+	var value string
+	var updatedAt time.Time
+	err := database.DB.QueryRow(
+		"SELECT value, updated_at FROM settings WHERE key = $1",
+		subtitleScanCacheKey,
+	).Scan(&value, &updatedAt)
+	if err != nil {
+		return nil, false
+	}
+
+	// Check if cache is still valid (less than 24 hours old)
+	if time.Since(updatedAt) > cacheTTL {
+		return nil, false
+	}
+
+	// Parse JSON result
+	var result SubtitleScanResult
+	if err := json.Unmarshal([]byte(value), &result); err != nil {
+		slog.Warn("Failed to parse cached scan result", "error", err)
+		return nil, false
+	}
+
+	return &result, true
+}
+
+// cacheScanResult stores scan results in the database
+func cacheScanResult(result *SubtitleScanResult) error {
+	jsonData, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal scan result: %w", err)
+	}
+
+	return SetSetting(subtitleScanCacheKey, string(jsonData))
+}
+
+// ScanAllMediaForSubtitles scans all movies and episodes to check if they have subtitles
+// Results are cached for 24 hours to avoid repeated scans
+// Set forceRefresh to true to bypass cache and perform a new scan
+func ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
+	// Check cache first (unless forcing refresh)
+	if !forceRefresh {
+		if cached, ok := getCachedScanResult(); ok {
+			slog.Info("Returning cached subtitle scan results")
+			return cached, nil
+		}
+	} else {
+		slog.Info("Force refresh requested, bypassing cache")
+	}
+
+	slog.Info("Performing new subtitle scan (cache expired or missing)")
+	result := &SubtitleScanResult{}
+
+	// Scan movies
+	movies, err := GetMovies()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get movies: %w", err)
+	}
+
+	result.TotalMovies = len(movies)
+	for _, movie := range movies {
+		if movie.Path != "" {
+			if HasSubtitles(movie.Path) {
+				result.MoviesWithSubs++
+			} else {
+				result.MoviesMissing++
+			}
+		}
+	}
+
+	// Scan episodes
+	episodeQuery := `SELECT id, file_path FROM episodes`
+	rows, err := database.DB.Query(episodeQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get episodes: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var episodeID int
+		var filePath string
+		if err := rows.Scan(&episodeID, &filePath); err != nil {
+			continue
+		}
+
+		result.TotalEpisodes++
+		if filePath != "" {
+			if HasSubtitles(filePath) {
+				result.EpisodesWithSubs++
+			} else {
+				result.EpisodesMissing++
+			}
+		}
+	}
+
+	// Cache the results
+	if err := cacheScanResult(result); err != nil {
+		slog.Warn("Failed to cache scan results", "error", err)
+		// Don't fail the request if caching fails
+	}
+
+	return result, nil
+}
+
+// QueueMissingSubtitles queues all movies and episodes that are missing subtitles
+func QueueMissingSubtitles() (int, error) {
+	queuedCount := 0
+
+	// Queue missing movie subtitles
+	movies, err := GetMovies()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get movies: %w", err)
+	}
+
+	for _, movie := range movies {
+		if movie.Path != "" && !HasSubtitles(movie.Path) {
+			if err := QueueSubtitleDownload("movie", movie.ID); err != nil {
+				slog.Warn("Failed to queue subtitle for movie", "movie_id", movie.ID, "error", err)
+			} else {
+				queuedCount++
+			}
+		}
+	}
+
+	// Queue missing episode subtitles
+	episodeQuery := `SELECT id, file_path FROM episodes`
+	rows, err := database.DB.Query(episodeQuery)
+	if err != nil {
+		return queuedCount, fmt.Errorf("failed to get episodes: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var episodeID int
+		var filePath string
+		if err := rows.Scan(&episodeID, &filePath); err != nil {
+			continue
+		}
+
+		if filePath != "" && !HasSubtitles(filePath) {
+			if err := QueueSubtitleDownload("episode", episodeID); err != nil {
+				slog.Warn("Failed to queue subtitle for episode", "episode_id", episodeID, "error", err)
+			} else {
+				queuedCount++
+			}
+		}
+	}
+
+	return queuedCount, nil
+}
