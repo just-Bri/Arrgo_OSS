@@ -138,9 +138,9 @@ This invalidates the Docker build cache and forces it to pick up your latest fil
 - [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
 - [x] Unraid Optimization (Permissions, Docker-ready)
 - [x] Show Organization (Auto-renaming episodes)
-- [ ] Subtitle Management (Bazarr functionality)
-- [ ] Integration with Download Clients (qBittorrent, etc.)
-- [ ] User Management UI (Promote/Demote admins)
+- [X] Subtitle Management (Bazarr functionality)
+- [X] Integration with Download Clients (qBittorrent, etc.)
+- [X] User Management UI (Promote/Demote admins)
 - [ ] Advanced Library Filtering & Bulk Actions
 
 ## 📝 Note on Database Choice
