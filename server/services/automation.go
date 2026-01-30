@@ -1675,16 +1675,19 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		resolutionLower := strings.ToLower(r.Resolution)
 
 		// Quality priority: 1080p > 4K > 720p > anything else
+		// Quality scores are set high enough to ensure quality is always the primary factor
+		// Maximum possible other bonuses: 2000 (exact title) + 500 (year) + 500 (season) + 300 (info hash) = 3300
+		// So quality differences must be > 3300 to guarantee priority order
 		// Check in order of preference (most specific first to avoid false matches)
 		if strings.Contains(titleLower, "1080") || strings.Contains(resolutionLower, "1080") {
-			score += 1200 // Highest priority: 1080p
+			score += 10000 // Highest priority: 1080p
 		} else if strings.Contains(titleLower, "2160") || strings.Contains(titleLower, "4k") || strings.Contains(titleLower, "uhd") ||
 			strings.Contains(resolutionLower, "2160") || strings.Contains(resolutionLower, "4k") || strings.Contains(resolutionLower, "uhd") {
-			score += 800 // Second priority: 4K (2160p, 4k, UHD)
+			score += 5500 // Second priority: 4K (2160p, 4k, UHD) - must be > 720p (2000) + max bonuses (3300)
 		} else if strings.Contains(titleLower, "720") || strings.Contains(resolutionLower, "720") {
-			score += 500 // Third priority: 720p
+			score += 2000 // Third priority: 720p
 		} else if strings.Contains(titleLower, "480") || strings.Contains(resolutionLower, "480") {
-			score += 100 // Lower priority: 480p
+			score += 500 // Lower priority: 480p
 		}
 
 		// Season matching bonus (for shows)
