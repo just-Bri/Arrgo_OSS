@@ -170,6 +170,28 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 
 	slog.Debug("Processing movie folder", "folder", folderName, "folder_path", folderPath, "parsed_title", title, "year", year)
 
+	// Check if a movie with this title/year already exists in the library (not in incoming)
+	// This prevents re-scanning folders for movies that were already imported
+	var existingMovieID int
+	var existingMoviePath string
+	checkQuery := `
+		SELECT id, path FROM movies 
+		WHERE title = $1 AND year = $2 
+		AND imported_at IS NOT NULL
+		AND path NOT LIKE $3 || '%'
+		LIMIT 1
+	`
+	err := database.DB.QueryRow(checkQuery, title, year, cfg.IncomingMoviesPath).Scan(&existingMovieID, &existingMoviePath)
+	if err == nil {
+		slog.Debug("Movie already exists in library, skipping incoming folder",
+			"folder", folderName,
+			"title", title,
+			"year", year,
+			"existing_movie_id", existingMovieID,
+			"existing_path", existingMoviePath)
+		return
+	}
+
 	// Find the main movie file in this folder
 	mainMovieFile := findMainMovieFile(folderPath, folderName)
 	if mainMovieFile == "" {
@@ -238,9 +260,12 @@ func findMainMovieFile(folderPath string, folderName string) string {
 		"credit", "credits", "opening", "ending",
 	}
 
+	slog.Debug("Searching for movie files", "folder_path", folderPath, "folder_name", folderName)
+
 	// Walk the folder (but skip subdirectories that are clearly extras)
 	err := filepath.WalkDir(folderPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			slog.Debug("Error walking directory", "path", path, "error", err)
 			return nil
 		}
 
@@ -253,8 +278,10 @@ func findMainMovieFile(folderPath string, folderName string) string {
 				"trailers": true, "trailer": true, "samples": true, "sample": true,
 			}
 			if skipDirs[subDirName] {
+				slog.Debug("Skipping subdirectory", "subdir", subDirName, "path", path)
 				return filepath.SkipDir
 			}
+			slog.Debug("Found subdirectory (not skipped)", "subdir", subDirName, "path", path)
 			return nil
 		}
 
@@ -263,27 +290,35 @@ func findMainMovieFile(folderPath string, folderName string) string {
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
+		filename := filepath.Base(path)
 		if !MovieExtensions[ext] {
+			slog.Debug("Skipping file - extension not recognized", "file", filename, "ext", ext)
 			return nil
 		}
 
+		slog.Debug("Found potential movie file", "file", filename, "ext", ext, "path", path)
+
 		// Check if this looks like an extra file
-		filename := strings.ToLower(filepath.Base(path))
+		filenameLower := strings.ToLower(filename)
 		isExtra := false
 		for _, pattern := range skipPatterns {
-			if strings.Contains(filename, pattern) {
+			if strings.Contains(filenameLower, pattern) {
 				isExtra = true
+				slog.Debug("File marked as extra", "file", filename, "pattern", pattern)
 				break
 			}
 		}
 
 		// Also check if filename contains folder name (more likely to be main movie)
-		containsFolderName := strings.Contains(strings.ToLower(filename), strings.ToLower(folderName))
+		containsFolderName := strings.Contains(filenameLower, strings.ToLower(folderName))
 
 		info, err := os.Stat(path)
 		if err != nil {
+			slog.Debug("Error getting file info", "file", filename, "error", err)
 			return nil
 		}
+
+		slog.Debug("Adding file as candidate", "file", filename, "size", info.Size(), "is_extra", isExtra, "contains_folder_name", containsFolderName)
 
 		// Prefer files that contain the folder name, or if none found, use largest
 		candidates = append(candidates, struct {
@@ -304,12 +339,16 @@ func findMainMovieFile(folderPath string, folderName string) string {
 	})
 
 	if err != nil {
+		slog.Debug("Error walking directory", "folder_path", folderPath, "error", err)
 		return ""
 	}
 
 	if len(candidates) == 0 {
+		slog.Debug("No movie file candidates found", "folder_path", folderPath, "folder_name", folderName)
 		return ""
 	}
+
+	slog.Debug("Found movie file candidates", "folder_path", folderPath, "count", len(candidates))
 
 	// Find the best candidate:
 	// 1. Files that contain folder name and aren't extras
