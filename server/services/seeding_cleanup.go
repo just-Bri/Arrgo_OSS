@@ -288,21 +288,21 @@ func cleanupIncomingFiles(savePath, incomingPath string) error {
 
 // SeedingStatus represents the seeding status of a torrent
 type SeedingStatus struct {
-	IsSeeding         bool    // Whether torrent is actively seeding
-	Ratio             float64 // Current seed ratio
+	IsSeeding          bool    // Whether torrent is actively seeding
+	Ratio              float64 // Current seed ratio
 	SeedingTimeMinutes float64 // Seeding time in minutes
-	MeetsCriteria     bool    // Whether seeding criteria is met (1440 min OR 2.0 ratio)
-	TorrentExists     bool    // Whether torrent exists in qBittorrent
+	MeetsCriteria      bool    // Whether seeding criteria is met (1440 min OR 2.0 ratio)
+	TorrentExists      bool    // Whether torrent exists in qBittorrent
 }
 
 // GetSeedingStatus gets the seeding status for a torrent hash
 func GetSeedingStatus(ctx context.Context, cfg *config.Config, qb *QBittorrentClient, torrentHash string) (*SeedingStatus, error) {
 	status := &SeedingStatus{
-		IsSeeding:     false,
-		Ratio:         0.0,
+		IsSeeding:          false,
+		Ratio:              0.0,
 		SeedingTimeMinutes: 0.0,
-		MeetsCriteria: false,
-		TorrentExists: false,
+		MeetsCriteria:      false,
+		TorrentExists:      false,
 	}
 
 	if qb == nil || torrentHash == "" {
@@ -422,7 +422,7 @@ func CleanupTorrentOnImport(ctx context.Context, cfg *config.Config, qb *QBittor
 	var incomingPath string
 	var finalPath string
 	var mediaType string
-	
+
 	if strings.HasPrefix(filePath, cfg.IncomingMoviesPath) {
 		incomingPath = cfg.IncomingMoviesPath
 		mediaType = "movie"
@@ -504,41 +504,98 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 
 	// Get the directory containing the file (torrents usually save to a directory)
 	fileDir := filepath.Dir(filePath)
+	folderName := filepath.Base(fileDir)
+	fileName := filepath.Base(filePath)
 
 	// Try to find a torrent with matching save path
 	ctx := context.Background()
 	torrents, err := qb.GetTorrentsDetailed(ctx, "")
 	if err != nil {
+		slog.Debug("Failed to get torrents for hash linking", "file_path", filePath, "error", err)
 		return
 	}
 
+	var matchedHash string
 	for _, torrent := range torrents {
-		// Check if torrent's save path matches or contains the file directory
+		normalizedHash := strings.ToLower(torrent.Hash)
+		torrentNameLower := strings.ToLower(torrent.Name)
+
+		// Method 1: Check if torrent's save path matches or contains the file directory
 		if strings.HasPrefix(fileDir, torrent.SavePath) || strings.HasPrefix(torrent.SavePath, fileDir) {
-			normalizedHash := strings.ToLower(torrent.Hash)
-
-			// Link to movie or episode
-			switch mediaType {
-			case "movie":
-				database.DB.Exec(`
-					UPDATE movies 
-					SET torrent_hash = $1 
-					WHERE path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
-					normalizedHash, filePath)
-			case "show":
-				database.DB.Exec(`
-					UPDATE episodes 
-					SET torrent_hash = $1 
-					WHERE file_path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
-					normalizedHash, filePath)
-			}
-
-			slog.Debug("Linked torrent hash to file",
+			matchedHash = normalizedHash
+			slog.Debug("Linked torrent hash to file via path match",
 				"hash", normalizedHash,
 				"file_path", filePath,
+				"torrent_save_path", torrent.SavePath,
 				"media_type", mediaType)
 			break
 		}
+
+		// Method 2: Fallback - try matching folder name or file name to torrent name
+		// This helps when path matching fails but the torrent name contains the folder/file name
+		if matchedHash == "" {
+			folderNameLower := strings.ToLower(folderName)
+			fileNameLower := strings.ToLower(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
+
+			// Check if torrent name contains folder name or file name (without extension)
+			if strings.Contains(torrentNameLower, folderNameLower) || strings.Contains(torrentNameLower, fileNameLower) {
+				// Additional check: make sure it's a reasonable match (folder/file name should be substantial)
+				if len(folderNameLower) > 3 || len(fileNameLower) > 3 {
+					matchedHash = normalizedHash
+					slog.Debug("Linked torrent hash to file via name match",
+						"hash", normalizedHash,
+						"file_path", filePath,
+						"torrent_name", torrent.Name,
+						"folder_name", folderName,
+						"media_type", mediaType)
+					break
+				}
+			}
+		}
+	}
+
+	// Link the hash if we found a match
+	if matchedHash != "" {
+		switch mediaType {
+		case "movie":
+			result, err := database.DB.Exec(`
+				UPDATE movies 
+				SET torrent_hash = $1 
+				WHERE path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
+				matchedHash, filePath)
+			if err != nil {
+				slog.Debug("Failed to update movie with torrent hash", "file_path", filePath, "error", err)
+			} else {
+				rowsAffected, _ := result.RowsAffected()
+				if rowsAffected > 0 {
+					slog.Info("Linked torrent hash to movie",
+						"hash", matchedHash,
+						"file_path", filePath)
+				}
+			}
+		case "show":
+			result, err := database.DB.Exec(`
+				UPDATE episodes 
+				SET torrent_hash = $1 
+				WHERE file_path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
+				matchedHash, filePath)
+			if err != nil {
+				slog.Debug("Failed to update episode with torrent hash", "file_path", filePath, "error", err)
+			} else {
+				rowsAffected, _ := result.RowsAffected()
+				if rowsAffected > 0 {
+					slog.Info("Linked torrent hash to episode",
+						"hash", matchedHash,
+						"file_path", filePath)
+				}
+			}
+		}
+	} else {
+		slog.Debug("Could not find matching torrent for file",
+			"file_path", filePath,
+			"folder_name", folderName,
+			"media_type", mediaType,
+			"torrent_count", len(torrents))
 	}
 }
 

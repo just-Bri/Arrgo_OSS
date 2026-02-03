@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -183,20 +184,48 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 			if isAdmin {
 				// Check if movie has been imported
 				var importedAt sql.NullTime
-				database.DB.QueryRow("SELECT imported_at FROM movies WHERE id = $1", m.ID).Scan(&importedAt)
-				
+				err := database.DB.QueryRow("SELECT imported_at FROM movies WHERE id = $1", m.ID).Scan(&importedAt)
+				if err != nil {
+					slog.Debug("Error checking imported_at for movie", "movie_id", m.ID, "error", err)
+				}
+
 				// Skip if already imported
 				if importedAt.Valid {
+					slog.Debug("Skipping movie - already imported", "movie_id", m.ID, "title", m.Title, "imported_at", importedAt.Time)
 					continue
 				}
-				
+
 				// Check if it has a torrent hash and if it's still downloading
 				var torrentHash sql.NullString
-				database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", m.ID).Scan(&torrentHash)
+				err = database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", m.ID).Scan(&torrentHash)
+				if err != nil {
+					slog.Debug("Error checking torrent_hash for movie", "movie_id", m.ID, "error", err)
+				}
 
 				// Show if no torrent hash OR torrent is not downloading (seeding)
-				if !torrentHash.Valid || torrentHash.String == "" || !services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String) {
+				hasHash := torrentHash.Valid && torrentHash.String != ""
+				isDownloading := false
+				if hasHash {
+					isDownloading = services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String)
+					slog.Debug("Checking torrent status for movie",
+						"movie_id", m.ID,
+						"title", m.Title,
+						"torrent_hash", torrentHash.String,
+						"is_downloading", isDownloading)
+				}
+
+				if !hasHash || !isDownloading {
 					incomingMovies = append(incomingMovies, m)
+					slog.Debug("Added movie to incoming list",
+						"movie_id", m.ID,
+						"title", m.Title,
+						"has_hash", hasHash,
+						"is_downloading", isDownloading)
+				} else {
+					slog.Debug("Skipping movie - still downloading",
+						"movie_id", m.ID,
+						"title", m.Title,
+						"torrent_hash", torrentHash.String)
 				}
 			}
 		} else {

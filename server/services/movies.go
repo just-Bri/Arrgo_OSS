@@ -89,6 +89,8 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 			continue
 		}
 
+		slog.Debug("Found entries in directory", "path", p, "count", len(entries))
+		dirCount := 0
 		stopped := false
 		for _, entry := range entries {
 			select {
@@ -96,6 +98,8 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 				stopped = true
 			default:
 				if entry.IsDir() {
+					dirCount++
+					slog.Debug("Found directory to process", "path", p, "folder", entry.Name())
 					taskChan <- movieTask{root: p, name: entry.Name()}
 				}
 			}
@@ -103,6 +107,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 				break
 			}
 		}
+		slog.Debug("Queued directories for processing", "path", p, "directory_count", dirCount)
 	}
 
 	close(taskChan)
@@ -163,12 +168,16 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		return
 	}
 
+	slog.Debug("Processing movie folder", "folder", folderName, "folder_path", folderPath, "parsed_title", title, "year", year)
+
 	// Find the main movie file in this folder
 	mainMovieFile := findMainMovieFile(folderPath, folderName)
 	if mainMovieFile == "" {
-		// No movie file found, skip this folder
+		slog.Debug("No movie file found in folder", "folder", folderName, "folder_path", folderPath)
 		return
 	}
+
+	slog.Debug("Found main movie file", "folder", folderName, "file", mainMovieFile)
 
 	info, err := os.Stat(mainMovieFile)
 	if err != nil {
@@ -192,17 +201,25 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		Status:     "discovered",
 	}
 
-	if id, err := upsertMovie(movie); err != nil {
-		slog.Error("Error upserting movie", "title", title, "error", err)
-	} else {
-		// Try to link torrent hash if file is in incoming folder
-		if strings.HasPrefix(mainMovieFile, cfg.IncomingMoviesPath) {
-			if qb, err := NewQBittorrentClient(cfg); err == nil {
-				LinkTorrentHashToFile(cfg, qb, mainMovieFile, "movie")
-			}
+	id, err := upsertMovie(movie)
+	if err != nil {
+		slog.Error("Error upserting movie", "title", title, "folder", folderName, "error", err)
+		return
+	}
+
+	slog.Info("Upserted movie", "movie_id", id, "title", title, "year", year, "folder", folderName, "path", mainMovieFile)
+
+	// Try to link torrent hash if file is in incoming folder
+	if strings.HasPrefix(mainMovieFile, cfg.IncomingMoviesPath) {
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			LinkTorrentHashToFile(cfg, qb, mainMovieFile, "movie")
+		} else {
+			slog.Debug("Could not create qBittorrent client for hash linking", "error", err)
 		}
-		// Fetch metadata immediately
-		MatchMovie(cfg, id)
+	}
+	// Fetch metadata immediately
+	if err := MatchMovie(cfg, id); err != nil {
+		slog.Debug("Error matching movie metadata", "movie_id", id, "title", title, "error", err)
 	}
 }
 
@@ -362,7 +379,7 @@ func GetMovies() ([]models.Movie, error) {
 	}
 	defer rows.Close()
 
-		movies := []models.Movie{}
+	movies := []models.Movie{}
 	for rows.Next() {
 		var m models.Movie
 		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
@@ -443,7 +460,7 @@ func PurgeMissingMovies() {
 func SearchMoviesLocal(query string) ([]models.Movie, error) {
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := GetSearchVariantsForDB(query)
-	
+
 	// Build SQL query with OR conditions for each variant
 	var conditions []string
 	args := make([]interface{}, len(variants))
@@ -451,14 +468,14 @@ func SearchMoviesLocal(query string) ([]models.Movie, error) {
 		conditions = append(conditions, fmt.Sprintf("(title ILIKE $%d OR overview ILIKE $%d OR genres ILIKE $%d)", i+1, i+1, i+1))
 		args[i] = variant
 	}
-	
+
 	dbQuery := fmt.Sprintf(`
 		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at
 		FROM movies
 		WHERE %s
 		ORDER BY title ASC
 	`, strings.Join(conditions, " OR "))
-	
+
 	rows, err := database.DB.Query(dbQuery, args...)
 	if err != nil {
 		return nil, err
