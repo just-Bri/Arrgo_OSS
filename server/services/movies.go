@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -253,11 +254,12 @@ func findMainMovieFile(folderPath string, folderName string) string {
 	}
 
 	// Common patterns for extra files to skip
+	// Use word boundaries to avoid false matches (e.g., "ending" shouldn't match "Bending")
 	skipPatterns := []string{
 		"cm", "pv", "iv", "tvsp", "menu", "trailer", "sample",
 		"deleted", "behind", "featurette", "interview", "promo",
 		"promotional", "teaser", "preview", "intro", "outro",
-		"credit", "credits", "opening", "ending",
+		"credit", "credits", "opening",
 	}
 
 	slog.Debug("Searching for movie files", "folder_path", folderPath, "folder_name", folderName)
@@ -299,10 +301,18 @@ func findMainMovieFile(folderPath string, folderName string) string {
 		slog.Debug("Found potential movie file", "file", filename, "ext", ext, "path", path)
 
 		// Check if this looks like an extra file
+		// Use word boundaries to avoid false matches (e.g., "ending" shouldn't match "Bending")
 		filenameLower := strings.ToLower(filename)
 		isExtra := false
 		for _, pattern := range skipPatterns {
-			if strings.Contains(filenameLower, pattern) {
+			// Use regexp for word boundary matching - pattern must be a whole word
+			// Word boundary: start of string, end of string, or non-word character
+			patternLower := strings.ToLower(pattern)
+			// Escape special regex characters in pattern
+			escapedPattern := regexp.QuoteMeta(patternLower)
+			// Match whole word: word boundary before and after
+			wordBoundaryRegex := regexp.MustCompile(`(^|[^a-z0-9])` + escapedPattern + `([^a-z0-9]|$)`)
+			if wordBoundaryRegex.MatchString(filenameLower) {
 				isExtra = true
 				slog.Debug("File marked as extra", "file", filename, "pattern", pattern)
 				break
@@ -361,10 +371,14 @@ func findMainMovieFile(folderPath string, folderName string) string {
 		filename := strings.ToLower(filepath.Base(cand.path))
 		containsFolderName := strings.Contains(filename, strings.ToLower(folderName))
 
-		// Check if it's an extra
+		// Check if it's an extra (using word boundaries)
 		isExtra := false
+		filenameLower := strings.ToLower(filename)
 		for _, pattern := range skipPatterns {
-			if strings.Contains(filename, pattern) {
+			patternLower := strings.ToLower(pattern)
+			escapedPattern := regexp.QuoteMeta(patternLower)
+			wordBoundaryRegex := regexp.MustCompile(`(^|[^a-z0-9])` + escapedPattern + `([^a-z0-9]|$)`)
+			if wordBoundaryRegex.MatchString(filenameLower) {
 				isExtra = true
 				break
 			}
