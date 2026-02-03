@@ -272,7 +272,7 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := ExpandSearchQuery(query)
-	
+
 	// Track seen IDs to avoid duplicates
 	seenIDs := make(map[string]bool)
 	allResults := make([]SearchResult, 0)
@@ -345,7 +345,7 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := ExpandSearchQuery(query)
-	
+
 	// Track seen IDs to avoid duplicates
 	seenIDs := make(map[string]bool)
 	allResults := make([]SearchResult, 0)
@@ -479,7 +479,29 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 
 	var matchedTMDBID = m.TMDBID
 
-	// 2. Search TMDB if ID not provided
+	// 2. Check if movie is linked to a request with TMDB ID via torrent hash
+	if matchedTMDBID == "" {
+		var torrentHash sql.NullString
+		err = database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
+		if err == nil && torrentHash.Valid && torrentHash.String != "" {
+			var requestTMDBID sql.NullString
+			err = database.DB.QueryRow(`
+				SELECT r.tmdb_id 
+				FROM requests r 
+				JOIN downloads d ON r.id = d.request_id 
+				WHERE LOWER(d.torrent_hash) = LOWER($1) 
+				AND r.media_type = 'movie'
+				AND r.tmdb_id IS NOT NULL 
+				AND r.tmdb_id != ''
+				LIMIT 1`, torrentHash.String).Scan(&requestTMDBID)
+			if err == nil && requestTMDBID.Valid && requestTMDBID.String != "" {
+				matchedTMDBID = requestTMDBID.String
+				slog.Info("Found request TMDB ID from torrent hash", "movie_id", movieID, "tmdb_id", matchedTMDBID, "torrent_hash", torrentHash.String)
+			}
+		}
+	}
+
+	// 3. Search TMDB if ID still not provided
 	if matchedTMDBID == "" {
 		// Clean the title before searching to remove quality tags and other metadata
 		cleanedTitle := cleanTitleTags(m.Title)

@@ -178,6 +178,8 @@ func cleanTitleTags(title string) string {
 		"AC3", "DTS", "AAC", "MP3", "DDP", "DD5.1", "DTS-HD", "TrueHD",
 		"Subs", "Sub", "Dub", "Dubbed", "Multi", "Multi-Audio",
 		"REPACK", "PROPER", "READNFO", "NFO",
+		"EXTENDED", "EXTENDED CUT", "DIRECTOR'S CUT", "DIRECTORS CUT", "UNRATED", "UNRATED CUT",
+		"THEATRICAL", "THEATRICAL CUT", "FINAL CUT", "SPECIAL EDITION", "COLLECTOR'S EDITION",
 	}
 
 	cleaned := title
