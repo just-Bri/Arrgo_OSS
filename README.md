@@ -1,148 +1,111 @@
-# Arrgo
+# Arrgo 🏴‍☠️
 
-Arrgo is a lightweight, high-performance media management tool designed to replace traditional *arr stacks (Sonarr, Radarr, and eventually Bazarr). It's built for speed, simplicity, and ease of deployment.
+Arrgo is a lightweight, high-performance media management tool designed to provide a modern, consolidated alternative to the existing *arr stack.  
+Built for speed and simplicity, it is specifically optimized for home server environments like **Unraid**.
 
-## 🚀 Goals
+## 🚀 Key Features & Goals
 
-The primary goal of Arrgo is to provide a modern, consolidated alternative to the existing media management ecosystem, specifically optimized for home server environments like Unraid.
-
-- **Consolidated Management**: Handle both movies and shows in one application.
-- **Media Server Compatibility**: Automatically organize and rename files to follow [Plex](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/) and [Jellyfin](https://jellyfin.org/docs/general/server/media/movies/) naming conventions.
-- **Lightweight & Fast**: Built with Go and HTMX to ensure minimal resource usage and a snappy user interface.
-- **Docker-First**: Designed to be easily deployed via Docker Compose.
-- **Simplicity**: Start simple with core functionality and expand over time.
+- **Consolidated Management**: Handle both movies and tv shows in one unified interface.
+- **Automated Workflows**: Automated downloads via qBittorrent, intelligent seeding cleanup, and integrated subtitle fetching.
+- **Media Server Compatibility**: Automatically organizes and renames files to follow [Plex](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/) and [Jellyfin](https://jellyfin.org/docs/general/server/media/movies/) conventions.
+- **Deep Metadata**: Powered by TMDB and TVDB for rich posters, descriptions, and episode-level library status.
+- **Lightweight & Fast**: Built with Go and HTMX for minimal resource usage and a snappy UI.
+- **Home Server First**: Designed with Unraid in mind, featuring native PUID/PGID support and simple Docker deployment.
 
 ## 🛠 Tech Stack
 
 - **Backend**: [Go](https://go.dev/)
-- **Frontend**: [HTMX](https://htmx.org/) (Server-side rendered Go templates)
-- **Database**: [PostgreSQL](https://www.postgresql.org/) (Chosen for robust, relational long-term storage)
-- **Metadata**: [TMDB](https://www.themoviedb.org/) (Movies) & [TVDB](https://www.thetvdb.com/) (TV Shows)
-- **Deployment**: [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
+- **Frontend**: [HTMX](https://htmx.org/)
+- **Database**: [PostgreSQL 16](https://www.postgresql.org/)
+- **Infrastructure**: [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
 
-## 🌟 Current Features
+## ⚡ Quick Start
 
-- **Consolidated Management**: Handle both movies and shows in one application.
-- **Unified Search**: Search across your local library and external sources (TMDB/TVDB) simultaneously from any page.
-- **Media Details**: Deep dive into your library with rich metadata, posters, and episode-level library status.
-- **Request System**: Users can request new movies or specific seasons of shows.
-- **Secure Auth**: Password-based login with bcrypt hashing and session management.
-- **Role-Based Access**: Restrict dangerous actions (like library scans) to admin users.
-- **Automatic Organization**: Automatically organize and rename files to follow standard naming conventions.
-- **Smart Scanning**: Split scanning logic for library and incoming media, with a background worker that automatically polls for new media hourly.
-- **Cross-Device Support**: Efficiently handles moving media across different disks or mount points with a safe fallback mechanism.
-- **Library Sanitization**: Automatically cleans up database records for files or folders that have been deleted or moved manually.
+### 1. Deployment
 
-## 📂 Project Structure
+```bash
+# Clone the repository
+git clone https://github.com/justbri/Arrgo.git
+cd Arrgo
 
-- `/handlers`: HTTP request handlers and routing logic.
-- `/models`: Database schemas and data structures.
-- `/services`: Core business logic and external integrations.
-- `/templates`: HTML templates using Go's `html/template` engine with HTMX enhancements.
-- `/static`: Static assets (CSS, JS, images).
-- `/database`: Connection management, schema initialization, and seeding logic.
-- `/config`: Application configuration handling.
+# Configure environment
+cp .env.example .env
+# Edit .env with your actual values
 
-## ⚙️ Getting Started
-
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-
-### Deployment
-
-To get started on your home server (like Unraid):
-
-1. Clone the repository
-2. Copy `.env.example` to `.env` and fill in your configuration values:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your actual values
-   ```
-3. Run Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
+# Start the stack
+docker-compose up -d
+```
 
 The application will be available at `http://localhost:5003`.
 
-### Environment Variables
+### 2. Required Environment Variables
 
-Configure the following variables in your `.env` file (see `.env.example` for a complete list):
+Ensure these are set in your `.env` file for core functionality:
 
-**Required:**
-- `SESSION_SECRET`: Key used for secure session management (generate a random secret).
-- `POSTGRES_PASSWORD`: Password for the PostgreSQL database.
-- `TMDB_API_KEY`: Your [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) (Required for metadata).
-- `TVDB_API_KEY`: Your [TheTVDB API Key](https://thetvdb.com/api-information) (Required for TV shows).
-- `OPENSUBTITLES_API_KEY`: Your [OpenSubtitles.com API Key](https://www.opensubtitles.com/en/consumers) (Required for subtitles).
-- `OPENSUBTITLES_USER`: Your OpenSubtitles username.
-- `OPENSUBTITLES_PASS`: Your OpenSubtitles password.
-- `QBITTORRENT_USER`: qBittorrent WebUI username.
-- `QBITTORRENT_PASS`: qBittorrent WebUI password.
-- `ADMIN_PASSWORD`: Initial admin account password (used for seeding).
+| Variable | Description |
+| :--- | :--- |
+| `SESSION_SECRET` | Secure key for session management (generate a random string) |
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL container |
+| `TMDB_API_KEY` | [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) |
+| `TVDB_API_KEY` | [TheTVDB API Key](https://thetvdb.com/api-information) |
+| `ADMIN_PASSWORD` | Initial password for the seeded admin account |
 
-**Optional (with defaults):**
-- `PORT`: The port the application will listen on (default: 5003).
-- `PUID/PGID`: User/Group ID for file permissions (default: 99/100 for Unraid).
-- `MOVIES_PATH`: Local path where your processed movies are stored (default: `/data/movies`).
-- `SHOWS_PATH`: Local path where your processed shows are stored (default: `/data/shows`).
-- `INCOMING_MOVIES_PATH`: Path where new, unprocessed movies are located (default: `/data/incoming/movies`).
-- `INCOMING_SHOWS_PATH`: Path where new, unprocessed shows are located (default: `/data/incoming/shows`).
-- `DEBUG`: Set to `true` for verbose logging (default: `false`).
+### 3. Optional Configuration
 
-**VPN Configuration (qBittorrent VPN container - PIA only):**
-- `PIA_USER`: Private Internet Access username.
-- `PIA_PASSWORD`: Private Internet Access password.
-- `PIA_REMOTE`: Optional VPN server (leave empty for auto-select).
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `SERVER_IP` | `localhost` | IP address of your server (e.g. 192.168.1.100) |
+| `MEDIA_PATH` | `/mnt/user/media` | **Host** path to your media library |
+| `MOVIES_PATH` | `/data/movies` | **Container** path for processed movies |
+| `SHOWS_PATH` | `/data/shows` | **Container** path for processed shows |
+| `PUID/PGID` | `99`/`100` | User/Group ID for file permissions (Unraid defaults) |
+| `QBITTORRENT_URL` | `http://qbittorrent:8080` | URL for qBittorrent WebUI |
+| `DEBUG` | `false` | Set to `true` for verbose logging |
 
-**Important Setup Steps:**
-1. Download PIA OpenVPN configuration files:
+---
+
+## 🛡 VPN Configuration (PIA Only)
+
+Arrgo includes a pre-configured qBittorrent VPN stack (based on `binhex/arch-qbittorrentvpn`) optimized for Private Internet Access.
+
+1. **Download PIA OpenVPN configs**:
    ```bash
-   # Download the PIA OpenVPN configs
    wget https://www.privateinternetaccess.com/openvpn/openvpn.zip
-   unzip openvpn.zip -d /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/
+   # Create directory if it doesn't exist
+   mkdir -p ./config/qbittorrent/openvpn
+   unzip openvpn.zip -d ./config/qbittorrent/openvpn/
    ```
-2. Remove any non-PIA `.ovpn` files (like ProtonVPN) from `/mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/`
-3. Ensure your `.env` file has `PIA_USER` and `PIA_PASSWORD` set correctly
-4. The container will use the PIA `.ovpn` files with your credentials to connect
+2. **Clean up**: Remove any non-PIA `.ovpn` files from the directory.
+3. **Credentials**: Set `PIA_USER` and `PIA_PASSWORD` in your `.env`.
 
-### 💡 Tips for Unraid Users
+---
 
-Arrgo is specifically optimized for Unraid. When deploying:
+## 💡 Tips for Unraid Users
 
-1. **Volume Mappings**: Ensure your media paths in `docker-compose.yml` point to your `/mnt/user/...` shares.
-2. **Permissions**: Use `PUID=99` and `PGID=100` (default Unraid user) to ensure the application has correct access to your media files.
-3. **Database**: The database is mapped to `./db_data` by default, ensuring your metadata and settings persist in your appdata folder.
+### Deployment Method
+Unraid does not support Docker Compose natively in the "Docker" tab. To deploy Arrgo, you should use:
+- **[Dockge](https://github.com/louislam/dockge)** (Highly Recommended): A beautiful, easy-to-use self-hosted manager for Docker Compose stacks.
+- **Docker Compose Manager Plugin**: Available via the Unraid Community Applications (CA) store.
 
-### 🛠 Troubleshooting: Forcing a Rebuild
+### Configuration
+- **Network**: Set `SERVER_IP` in `.env` to your Unraid server's IP (e.g., `192.168.1.100`) so the qBittorrent button works correctly.
+- **Media**: Set `MEDIA_PATH` in `.env` to your share (e.g., `/mnt/user/media`).
+- **Database**: The database is mapped to `./data/db` within the project folder. You can add this path to your backup solution.
 
-If Dockge or Unraid is "stuck" using an old version of the code (common with SMB shares), you can force a fresh build without leaving the UI:
+## 🛠 Troubleshooting: Force Rebuild
 
-1. Click **Edit** on the stack in Dockge.
-2. In the `docker-compose.yml` section, look for `BUILD_VERSION: 1`.
-3. Increment the number (e.g., change `1` to `2`).
-4. Click **Deploy**.
-
-This invalidates the Docker build cache and forces it to pick up your latest file changes.
+If your deployment is stuck using old code (common with SMB shares), click **Edit** on your stack in Dockge, increment the `BUILD_VERSION` number in the `docker-compose.yml` section, and click **Deploy**. This forces a fresh build by invalidating the Docker cache.
 
 ## 🗺 Roadmap
 
-- [x] Basic Login & Authentication (bcrypt hashing)
-- [x] User Registration & Admin Permissions
-- [x] Dashboard with Movie/Show Library Overview
-- [x] Unified Search (Local Library + TMDB/TVDB)
-- [x] Media Details Pages (Extended metadata, episode lists)
-- [x] Library Scanner (Automatic detection of new media)
-- [x] Movie Metadata & Organization (TMDB integration, Auto-renaming)
-- [x] Unraid Optimization (Permissions, Docker-ready)
-- [x] Show Organization (Auto-renaming episodes)
-- [X] Subtitle Management (Bazarr functionality)
-- [X] Integration with Download Clients (qBittorrent, etc.)
-- [X] User Management UI (Promote/Demote admins)
+- [x] Basic Login & Authentication (bcrypt)
+- [x] Unified Search (Local + TMDB/TVDB)
+- [x] Library Scanner & Auto-renaming
+- [x] Show/Season/Episode Support
+- [x] Subtitle Management (OpenSubtitles)
+- [x] qBittorrent Integration & Automation
 - [ ] Advanced Library Filtering & Bulk Actions
 
-## 📝 Note on Database Choice
+## ⚖️ License
 
-While Redis was considered for its speed, **PostgreSQL** was chosen for the primary data store and metadata caching. Media management involves complex relational data (shows -> seasons -> episodes -> files) and heavy metadata (summaries, cast, etc.), making a relational database with JSONB support the superior choice for long-term robustness and resource efficiency on home servers.
+Distributed under the **MIT License**. See `LICENSE` for more information.

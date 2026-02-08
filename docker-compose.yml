@@ -11,6 +11,7 @@ services:
       - PORT=${PORT:-5003}
       - ENV=${ENV:-development}
       - DEBUG=${DEBUG:-true}
+      - BUILD_VERSION=1
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
       - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-debug}
@@ -27,6 +28,9 @@ services:
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@arrgo.local}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -40,7 +44,7 @@ services:
       - ./server/templates:/root/templates:ro
       - ./server/static:/root/static:ro
       - ./posters:/root/data/posters
-      - /mnt/user/media:/data
+      - ${MEDIA_PATH:-/mnt/user/media}:/data
     networks:
       - arrgo-network
     restart: unless-stopped
@@ -53,11 +57,11 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-arrgo}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - ./data/db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arrgo} -d ${POSTGRES_DB:-arrgo}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arrgo} -d ${POSTGRES_DB:-arrgo}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -80,7 +84,7 @@ services:
       # VPN Provider - Private Internet Access (PIA) ONLY
       # IMPORTANT: You must manually download PIA OpenVPN config files:
       # 1. Download from: https://www.privateinternetaccess.com/openvpn/openvpn.zip
-      # 2. Extract the .ovpn files to: /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config/openvpn/
+      # 2. Extract the .ovpn files to: ./config/qbittorrent/openvpn/
       # 3. The container will use these files with your PIA credentials below
       - VPN_ENABLED=${VPN_ENABLED:-yes}
       - VPN_PROV=${VPN_PROV:-pia}
@@ -89,31 +93,27 @@ services:
       - VPN_PASS=${PIA_PASSWORD}
       # VPN Server selection (optional - leave empty for auto-select)
       # You can specify a specific server .ovpn file name, or leave empty for auto
-      - VPN_REMOTE=${PIA_REMOTE:-}  # e.g., "us-california.privacy.network" or leave empty for auto
+      - VPN_REMOTE=${PIA_REMOTE:-} # e.g., "us-california.privacy.network" or leave empty for auto
       # Port forwarding (PIA supports port forwarding)
       - ENABLE_PRIVOXY=no
-      - LAN_NETWORK=192.168.10.0/24
+      - LAN_NETWORK=${LAN_NETWORK:-192.168.1.0/24}
       # qBittorrent settings
       - WEBUI_PORT=8080
       - UMASK=000
       - PUID=99
       - PGID=100
       # Timezone
-      - TZ=America/Los_Angeles
+      - TZ=${TZ:-America/Los_Angeles}
     volumes:
-      - /mnt/user/appdata/dockge/stacks/arrgo/qbittorrent/config:/config
-      - /mnt/user/media/incoming:/data/incoming
+      - ./config/qbittorrent:/config
+      - ${MEDIA_PATH:-/mnt/user/media}/incoming:/data/incoming
     networks:
       - arrgo-network
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: qbittorrentvpn
-      net.unraid.docker.webui: http://192.168.10.11:8080
+      net.unraid.docker.webui: http://${SERVER_IP:-localhost}:8080
 
 networks:
   arrgo-network:
     driver: bridge
-
-volumes:
-  db-data:
-

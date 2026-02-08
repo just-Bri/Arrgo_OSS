@@ -10,7 +10,7 @@ import (
 func SeedAdminUser() error {
 	// Get admin credentials from environment variables
 	adminUsername := config.GetEnv("ADMIN_USERNAME", "admin")
-	adminPassword := config.GetEnv("ADMIN_PASSWORD", "")
+	adminPassword := config.GetEnv("ADMIN_PASSWORD", "admin")
 	adminEmail := config.GetEnv("ADMIN_EMAIL", "admin@arrgo.local")
 
 	// If no password is set, skip seeding (user should set ADMIN_PASSWORD)
