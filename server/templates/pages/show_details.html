@@ -1,0 +1,468 @@
+{{define "title"}}{{.Show.Title}} - Details{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <div style="margin-bottom: 15px;">
+        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color); font-size: 14px;">&larr; Back</a>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px; background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 25px;">
+        <div style="align-self: center;">
+            {{if .Show.PosterPath}}
+                {{if hasPrefix .Show.PosterPath "http"}}
+                    <img src="{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{else if gt .Show.ID 0}}
+                    <img src="/images/shows/{{.Show.ID}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{else}}
+                    <img src="/images/tmdb/{{.Show.PosterPath}}" alt="{{.Show.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{end}}
+            {{else}}
+                <div style="width: 260px; height: 390px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+            {{end}}
+        </div>
+
+        <div style="flex: 1; min-width: 0;">
+            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 28px;">{{.Show.Title}} {{if .Show.Year}}({{.Show.Year}}){{end}}</h1>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                {{if .Show.Genres}}
+                    {{range (split .Show.Genres ", ")}}
+                        <span style="background: var(--bg-color); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
+                    {{end}}
+                {{end}}
+                <span style="background: var(--badge-bg); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--badge-text);">{{.Show.Status}}</span>
+            </div>
+
+            <h3 style="color: var(--text-color); margin-bottom: 8px; font-size: 18px;">Overview</h3>
+            <p style="color: var(--text-color); line-height: 1.5; margin-bottom: 25px; font-size: 15px;">{{.Show.Overview}}</p>
+
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 16px;">Show Info</h4>
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px;">
+                    <div style="color: var(--muted-text);">Path:</div>
+                    <div style="color: var(--text-color); word-break: break-all;">{{if .Show.Path}}{{.Show.Path}}{{else}}N/A{{end}}</div>
+                    
+                    <div style="color: var(--muted-text);">TVDB ID:</div>
+                    <div style="color: var(--text-color);">{{if .Show.TVDBID}}{{.Show.TVDBID}}{{else}}N/A{{end}}</div>
+                </div>
+            </div>
+
+            {{if .IsAdmin}}
+                {{if gt .Show.ID 0}}
+                    <div style="margin-top: 25px;">
+                        <button class="show-alternatives-btn" data-id="{{.Show.ID}}" data-type="show" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                            Fix Mismatch
+                        </button>
+                    </div>
+                {{end}}
+            {{end}}
+
+            {{if or (eq .Show.Status "External") (eq .Show.Status "search_result") (eq .Show.Status "Show exists but no seasons found") (hasPrefix .Show.Status "Partial") .LibraryStatus.Exists}}
+                <div style="margin-top: 25px;">
+                    <h3 style="color: var(--text-color); margin-bottom: 10px; font-size: 18px;">Request Seasons</h3>
+                    <div id="season-selector" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                        {{range .Seasons}}
+                            {{$allInLibrary := true}}
+                            {{range .Episodes}}
+                                {{if not .InLibrary}}{{$allInLibrary = false}}{{end}}
+                            {{end}}
+                            
+                            {{$isRequested := containsInt $.LibraryStatus.RequestedSeasons .SeasonNumber}}
+                            {{$isDisabled := or $allInLibrary $isRequested}}
+                            
+                            <label class="season-checkbox-label{{if $isRequested}} season-requested{{end}}{{if $isDisabled}} season-disabled{{end}}" style="display: flex; align-items: center; gap: 8px; background: var(--bg-color); padding: 8px 12px; border-radius: 4px; font-size: 14px; position: relative;">
+                                <input type="checkbox" name="requested_seasons" value="{{.SeasonNumber}}" {{if $isDisabled}}disabled{{end}} class="season-checkbox-input">
+                                <span style="color: var(--text-color);">S{{.SeasonNumber}}</span>
+                                {{if $isRequested}}
+                                    <span style="position: absolute; top: -8px; right: -5px; background: var(--accent-color); color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: bold;">REQ</span>
+                                {{end}}
+                            </label>
+                        {{end}}
+                    </div>
+                    <button id="request-btn" class="submit-season-request-btn" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        Request Selected
+                    </button>
+                </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Hidden element with show data for JavaScript -->
+    <div id="show-data" 
+         data-title="{{js .Show.Title}}"
+         data-media-type="show"
+         data-id="{{.Show.TVDBID}}"
+         data-year="{{.Show.Year}}"
+         data-poster-path="{{.Show.PosterPath}}"
+         data-overview="{{js .Show.Overview}}"
+         style="display: none;">
+    </div>
+
+    {{if .Seasons}}
+    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
+        <h2 style="color: var(--text-color); margin-bottom: 15px; font-size: 20px;">Seasons & Episodes</h2>
+        
+        {{range .Seasons}}
+        <div style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+            <div class="toggle-season-btn" data-season-id="season-{{.SeasonNumber}}" style="background: var(--bg-color); padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                <h3 style="margin: 0; color: var(--text-color); font-size: 16px;">Season {{.SeasonNumber}}</h3>
+                <span style="color: var(--muted-text); font-size: 12px;">{{len .Episodes}} Ep &darr;</span>
+            </div>
+            <div id="season-{{.SeasonNumber}}" style="padding: 0 10px; display: none; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; margin: 10px 0; min-width: 400px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">#</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Title</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Status</th>
+                            <th style="text-align: left; padding: 8px; color: var(--muted-text); font-size: 12px;">Subtitles</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Episodes}}
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 8px; color: var(--text-color); font-size: 13px;">{{.Number}}</td>
+                            <td style="padding: 8px; color: var(--text-color); font-size: 13px;">{{.Title}}</td>
+                            <td style="padding: 8px;">
+                                {{if .InLibrary}}
+                                    <span style="color: var(--success-color); font-size: 12px;">&#10004;</span>
+                                {{else}}
+                                    <span style="color: var(--muted-text); font-size: 12px;">&#10006;</span>
+                                {{end}}
+                            </td>
+                            <td style="padding: 8px;">
+                                {{if .InLibrary}}
+                                    {{if .HasSubtitles}}
+                                        <span style="color: var(--success-color); font-size: 12px;">&#10004; EN</span>
+                                    {{else}}
+                                        <div style="display: flex; align-items: center; gap: 5px;" id="subtitle-status-episode-{{.ID}}">
+                                            <span style="color: var(--danger-color); font-size: 12px;">&#10006;</span>
+                                            {{if $.IsAdmin}}
+                                                <button class="download-subtitles-btn" data-type="episode" data-id="{{.ID}}" style="padding: 1px 5px; background: var(--accent-color); color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; display: flex; align-items: center; gap: 3px;">
+                                                    <span>Fix</span>
+                                                </button>
+                                            {{end}}
+                                        </div>
+                                    {{end}}
+                                {{else}}
+                                    -
+                                {{end}}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+
+<!-- Alternatives Modal -->
+<div id="alternatives-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto;">
+    <div style="max-width: 800px; margin: 50px auto; background: var(--container-bg); border-radius: 8px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: var(--text-color);">Select Correct Match</h2>
+            <button class="close-alternatives-modal-btn" style="background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+        </div>
+        <div id="alternatives-list" style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="text-align: center; padding: 20px; color: var(--muted-text);">
+                <div class="spinner" style="margin: 0 auto;"></div>
+                <p>Loading alternatives...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.season-checkbox-label {
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    opacity: 1;
+}
+
+.season-checkbox-label.season-requested {
+    border-color: var(--accent-color);
+}
+
+.season-checkbox-label.season-disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.season-checkbox-input {
+    cursor: pointer;
+}
+
+.season-checkbox-input:disabled {
+    cursor: not-allowed;
+}
+
+@media (min-width: 769px) {
+    .container > div:nth-child(2) {
+        flex-direction: row !important;
+        padding: 30px !important;
+        gap: 40px !important;
+    }
+    .container h1 {
+        font-size: 36px !important;
+    }
+    #request-btn {
+        width: auto !important;
+        padding-left: 30px !important;
+        padding-right: 30px !important;
+    }
+    #season-selector label {
+        padding: 8px 15px !important;
+    }
+}
+</style>
+
+<script>
+function toggleSeason(id) {
+    const el = document.getElementById(id);
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+async function submitSeasonRequest() {
+    const selectedSeasons = Array.from(document.querySelectorAll('input[name="requested_seasons"]:checked'))
+        .map(cb => cb.value);
+
+    if (selectedSeasons.length === 0) {
+        alert('Please select at least one season.');
+        return;
+    }
+
+    const showData = document.getElementById('show-data');
+    const item = {
+        title: showData.dataset.title,
+        media_type: showData.dataset.mediaType,
+        id: showData.dataset.id,
+        year: parseInt(showData.dataset.year) || 0,
+        poster_path: showData.dataset.posterPath,
+        overview: showData.dataset.overview
+    };
+
+    try {
+        const response = await fetch('/requests/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: item.title,
+                media_type: item.media_type,
+                tmdb_id: '',
+                tvdb_id: item.id,
+                year: item.year,
+                poster_path: item.poster_path,
+                overview: item.overview,
+                seasons: selectedSeasons.join(',')
+            }),
+        });
+
+        if (response.ok) {
+            alert('Request submitted successfully!');
+            window.location.href = '/requests';
+        } else {
+            const error = await response.text();
+            alert('Failed to submit request: ' + error);
+        }
+    } catch (error) {
+        console.error('Request failed:', error);
+        alert('An error occurred.');
+    }
+}
+
+async function downloadSubtitles(btn, type, id) {
+    const originalContent = btn.innerHTML;
+    const container = btn.parentElement;
+    
+    // Show spinner
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    
+    try {
+        const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            // Success: change container to checkmark
+            container.innerHTML = '<span style="color: var(--success-color); font-size: 12px;">&#10004; EN</span>';
+        } else {
+            // Error: change container to X with original button (or just X)
+            const errorText = await response.text();
+            console.error('Download failed:', errorText);
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            // Briefly show error state
+            const xIcon = container.querySelector('span');
+            if (xIcon) xIcon.style.color = 'var(--danger-color)';
+            alert('Failed to download subtitles: ' + errorText);
+        }
+    } catch (error) {
+        console.error('Download failed:', error);
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        alert('An error occurred during download.');
+    }
+}
+
+async function showAlternatives(id, type) {
+    const modal = document.getElementById('alternatives-modal');
+    const list = document.getElementById('alternatives-list');
+    
+    modal.style.display = 'block';
+    list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);"><div class="spinner" style="margin: 0 auto;"></div><p>Loading alternatives...</p></div>';
+    
+    try {
+        const endpoint = type === 'movie' ? '/api/movies/alternatives' : '/api/shows/alternatives';
+        const response = await fetch(`${endpoint}?id=${id}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch alternatives');
+        }
+        
+        const alternatives = await response.json();
+        
+        if (alternatives.length === 0) {
+            list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);">No alternatives found.</div>';
+            return;
+        }
+        
+        list.innerHTML = alternatives.map((alt, index) => {
+            const posterUrl = alt.poster_path 
+                ? (alt.poster_path.startsWith('http') ? alt.poster_path : `/images/tmdb/${alt.poster_path}`)
+                : '';
+            const genres = alt.genres ? alt.genres.join(', ') : '';
+            
+            return `
+                <div class="select-alternative-btn" data-original-id="${id}" data-type="${type}" data-new-id="${alt.id}" style="display: flex; gap: 15px; padding: 15px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s;" 
+                     onmouseover="this.style.borderColor='var(--accent-color)'; this.style.transform='translateX(5px)'" 
+                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateX(0)'">
+                    ${posterUrl ? `<img src="${posterUrl}" alt="${alt.title}" style="width: 80px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">` : '<div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>'}
+                    <div style="flex: 1; min-width: 0;">
+                        <h3 style="margin: 0 0 8px 0; color: var(--text-color); font-size: 18px;">${alt.title} ${alt.year ? `(${alt.year})` : ''}</h3>
+                        ${genres ? `<div style="margin-bottom: 8px;"><span style="color: var(--muted-text); font-size: 12px;">${genres}</span></div>` : ''}
+                        ${alt.overview ? `<p style="margin: 0; color: var(--text-color); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${alt.overview}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading alternatives:', error);
+        list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger-color);">Error loading alternatives. Please try again.</div>';
+    }
+}
+
+function closeAlternativesModal() {
+    document.getElementById('alternatives-modal').style.display = 'none';
+}
+
+async function selectAlternative(id, type, newId) {
+    if (!confirm('Are you sure you want to rematch this item?')) {
+        return;
+    }
+    
+    const endpoint = type === 'movie' ? '/api/movies/rematch' : '/api/shows/rematch';
+    const idField = type === 'movie' ? 'tmdb_id' : 'tvdb_id';
+    
+    try {
+        const response = await fetch(`${endpoint}?id=${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ [idField]: newId })
+        });
+        
+        if (response.ok) {
+            alert('Match updated successfully!');
+            closeAlternativesModal();
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert('Failed to update match: ' + error);
+        }
+    } catch (error) {
+        console.error('Rematch failed:', error);
+        alert('An error occurred while updating the match.');
+    }
+}
+
+// Close modal when clicking outside
+document.getElementById('alternatives-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeAlternativesModal();
+    }
+});
+
+// Event listeners for buttons with data attributes
+// Show alternatives buttons
+document.querySelectorAll('.show-alternatives-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        showAlternatives(parseInt(this.dataset.id), this.dataset.type);
+    });
+});
+
+// Submit season request button
+document.querySelectorAll('.submit-season-request-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        submitSeasonRequest();
+    });
+});
+
+// Toggle season buttons
+document.querySelectorAll('.toggle-season-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        toggleSeason(this.dataset.seasonId);
+    });
+});
+
+// Download subtitles buttons
+document.querySelectorAll('.download-subtitles-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        downloadSubtitles(this, this.dataset.type, parseInt(this.dataset.id));
+    });
+});
+
+// Close alternatives modal button
+document.querySelectorAll('.close-alternatives-modal-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        closeAlternativesModal();
+    });
+});
+
+// Select alternative buttons (dynamically created, use event delegation)
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.select-alternative-btn');
+    if (btn) {
+        selectAlternative(
+            parseInt(btn.dataset.originalId),
+            btn.dataset.type,
+            btn.dataset.newId
+        );
+    }
+});
+</script>
+{{end}}
