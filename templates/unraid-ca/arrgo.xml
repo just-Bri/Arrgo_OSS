@@ -1,0 +1,155 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Arrgo</Name>
+  <Repository>justbri/arrgo_oss:latest</Repository>
+  <Registry>https://hub.docker.com/r/justbri/arrgo_oss</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/justbri/Arrgo_OSS/issues</Support>
+  <Project>https://github.com/justbri/Arrgo_OSS</Project>
+  <Overview>
+    Arrgo is a lightweight, high-performance media management tool designed to provide a modern, consolidated alternative to the existing *arr stack. It is specifically optimized for home server environments like Unraid.&#xD;
+    &#xD;
+    [b]Key Features:[/b]&#xD;
+    - [b]Consolidated Management:[/b] Handle both movies and TV shows in one unified interface.&#xD;
+    - [b]Automated Workflows:[/b] Automated downloads via qBittorrent, intelligent seeding cleanup, and integrated subtitle fetching.&#xD;
+    - [b]Media Server Compatibility:[/b] Automatically organizes and renames files to follow Plex and Jellyfin conventions.&#xD;
+    - [b]Lightweight &amp; Fast:[/b] Built with Go and HTMX for minimal resource usage.&#xD;
+    &#xD;
+    [b]Requirements:[/b]&#xD;
+    - A PostgreSQL 16 database.&#xD;
+    - qBittorrent for downloads.&#xD;
+    - API keys for TMDB and TVDB.&#xD;
+  </Overview>
+  <Category>MediaApp:Video MediaApp:Management Downloaders:</Category>
+  <Changes>
+### 2026-02-08
+- Initial Unraid CA Template release.
+- Added support for PUID/PGID.
+- Configured persistent paths for posters and media.
+  </Changes>
+  <WebUI>http://[IP]:[PORT:5003]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/justbri/Arrgo_OSS/main/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Arrgo - The Consolidated Media Manager</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>5003</HostPort>
+        <ContainerPort>5003</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/arrgo/posters</HostDir>
+      <ContainerDir>/root/data/posters</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+    <Volume>
+      <HostDir>/mnt/user/media</HostDir>
+      <ContainerDir>/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value/>
+      <Name>DATABASE_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>SESSION_SECRET</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>5003</Value>
+      <Name>PORT</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>production</Value>
+      <Name>ENV</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>99</Value>
+      <Name>PUID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>100</Value>
+      <Name>PGID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/data/movies</Value>
+      <Name>MOVIES_PATH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/data/shows</Value>
+      <Name>SHOWS_PATH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/data/incoming/movies</Value>
+      <Name>INCOMING_MOVIES_PATH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/data/incoming/shows</Value>
+      <Name>INCOMING_SHOWS_PATH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>TMDB_API_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>TVDB_API_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>http://[SERVER_IP]:8080</Value>
+      <Name>QBITTORRENT_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>admin</Value>
+      <Name>ADMIN_USERNAME</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>ADMIN_PASSWORD</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Config Name="WebUI Port" Target="5003" Default="5003" Mode="tcp" Description="The port Arrgo will listen on." Type="Port" Display="always" Required="true" Mask="false">5003</Config>
+  <Config Name="Database URL" Target="DATABASE_URL" Default="" Mode="" Description="Connection string for PostgreSQL (e.g., postgres://arrgo:password@192.168.1.100:5432/arrgo)" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="TMDB API Key" Target="TMDB_API_KEY" Default="" Mode="" Description="API Key from TheMovieDB." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="TVDB API Key" Target="TVDB_API_KEY" Default="" Mode="" Description="API Key from TheTVDB." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Secure key for session management (generate a random string)." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Initial password for the seeded admin account." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Media Storage" Target="/data" Default="/mnt/user/media" Mode="rw" Description="Root path to your media library shares." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="AppData/Posters" Target="/root/data/posters" Default="/mnt/user/appdata/arrgo/posters" Mode="rw" Description="Storage for posters and metadata indices." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/arrgo/posters</Config>
+  <Config Name="qBittorrent WebUI URL" Target="QBITTORRENT_URL" Default="http://[SERVER_IP]:8080" Mode="" Description="Connection URL for qBittorrent." Type="Variable" Display="always" Required="false" Mask="false">http://[SERVER_IP]:8080</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions (Unraid default: 99)." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions (Unraid default: 100)." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Movies Subpath" Target="MOVIES_PATH" Default="/data/movies" Mode="" Description="Container subpath for movies." Type="Variable" Display="advanced" Required="false" Mask="false">/data/movies</Config>
+  <Config Name="TV Shows Subpath" Target="SHOWS_PATH" Default="/data/shows" Mode="" Description="Container subpath for shows." Type="Variable" Display="advanced" Required="false" Mask="false">/data/shows</Config>
+</Container>
