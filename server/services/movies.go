@@ -69,7 +69,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	// Scan paths based on preference
 	var paths []string
 	if onlyIncoming {
-		paths = []string{cfg.IncomingMoviesPath}
+		paths = []string{cfg.IncomingMoviesPath, cfg.IncomingShowsPath}
 	} else {
 		paths = []string{cfg.MoviesPath}
 	}
@@ -273,7 +273,15 @@ func findMainMovieFile(folderPath string, folderName string) string {
 
 		// Skip subdirectories (like SPs, Extras, etc.)
 		if d.IsDir() && path != folderPath {
-			subDirName := strings.ToLower(filepath.Base(path))
+			subDirName := strings.ToLower(d.Name())
+
+			// Detect show-like subdirectories
+			seasonRegex := regexp.MustCompile(`(?i)^(Season\s+\d+|S\d+)$`)
+			if seasonRegex.MatchString(subDirName) {
+				slog.Debug("Skipping show folder during movie scan", "subdir", subDirName, "path", path)
+				return filepath.SkipDir
+			}
+
 			skipDirs := map[string]bool{
 				"sps": true, "sp": true, "extras": true, "extra": true,
 				"bonus": true, "bonuses": true, "menus": true, "menu": true,
@@ -367,8 +375,18 @@ func findMainMovieFile(folderPath string, folderName string) string {
 	var bestSize int64
 	var foundFolderMatch bool
 
+	var foundEpisode bool
+	episodeRegex := regexp.MustCompile(`(?i)S\d+E\d+`)
+
 	for _, cand := range candidates {
 		filename := strings.ToLower(filepath.Base(cand.path))
+
+		// If ANY file in this folder looks like an episode, skip the folder for movie scan
+		if episodeRegex.MatchString(filename) {
+			foundEpisode = true
+			break
+		}
+
 		containsFolderName := strings.Contains(filename, strings.ToLower(folderName))
 
 		// Check if it's an extra (using word boundaries)
@@ -398,6 +416,11 @@ func findMainMovieFile(folderPath string, folderName string) string {
 				bestSize = cand.size
 			}
 		}
+	}
+
+	if foundEpisode {
+		slog.Debug("Skipping show folder (has episodes) during movie scan", "folder", folderName)
+		return ""
 	}
 
 	return bestCandidate
