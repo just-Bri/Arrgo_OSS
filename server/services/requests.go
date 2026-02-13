@@ -237,13 +237,13 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 			if cfg.TVDBAPIKey != "" {
 				expectedEpisodes, _ = GetTVDBShowEpisodes(cfg, externalID)
 			}
-			
+
 			// Build map of expected episode counts per season
 			expectedCountsBySeason := make(map[int]int)
 			for _, ep := range expectedEpisodes {
 				expectedCountsBySeason[ep.SeasonNumber]++
 			}
-			
+
 			rows, err := database.DB.Query("SELECT season_number FROM seasons WHERE show_id = $1 ORDER BY season_number", showID)
 			if err == nil {
 				defer rows.Close()
@@ -252,7 +252,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 					if err := rows.Scan(&sn); err == nil {
 						// Get expected episode count for this season
 						expectedCount := expectedCountsBySeason[sn]
-						
+
 						// Count actual episodes we have for this season
 						var actualCount int
 						err := database.DB.QueryRow(`
@@ -262,7 +262,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 							WHERE s.show_id = $1 AND s.season_number = $2
 							AND e.file_path IS NOT NULL 
 							AND e.file_path != ''`, showID, sn).Scan(&actualCount)
-						
+
 						if err == nil {
 							// Only mark season as "in library" if:
 							// 1. We have episodes (actualCount > 0)
@@ -312,7 +312,7 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 				status.Message = "Already requested (Status: " + reqStatus + ")"
 			}
 		}
-		
+
 		// Also check completed requests - if they're incomplete, don't block re-requesting
 		var completedReqSeasons sql.NullString
 		err = database.DB.QueryRow("SELECT seasons FROM requests WHERE tvdb_id = $1 AND media_type = 'show' AND status = 'completed'", externalID).Scan(&completedReqSeasons)
@@ -353,16 +353,13 @@ func StartCompletedRequestsCleanupWorker() {
 		ticker := time.NewTicker(1 * time.Hour) // Check every 1 hour
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				slog.Debug("Running completed requests cleanup check")
-				count, err := CleanupCompletedRequests()
-				if err != nil {
-					slog.Error("Error during completed requests cleanup", "error", err)
-				} else if count > 0 {
-					slog.Info("Completed requests cleanup finished", "requests_deleted", count)
-				}
+		for range ticker.C {
+			slog.Debug("Running completed requests cleanup check")
+			count, err := CleanupCompletedRequests()
+			if err != nil {
+				slog.Error("Error during completed requests cleanup", "error", err)
+			} else if count > 0 {
+				slog.Info("Completed requests cleanup finished", "requests_deleted", count)
 			}
 		}
 	}()

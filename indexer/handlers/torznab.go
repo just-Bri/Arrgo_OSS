@@ -170,7 +170,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	tvdbid := r.URL.Query().Get("tvdbid")
 	imdbid := r.URL.Query().Get("imdbid")
 	seasonStr := r.URL.Query().Get("season")
-	episodeStr := r.URL.Query().Get("ep")
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 	cat := r.URL.Query().Get("cat")
@@ -199,13 +198,6 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	if seasonStr != "" {
 		if s, err := strconv.Atoi(seasonStr); err == nil {
 			season = s
-		}
-	}
-
-	episode := 0
-	if episodeStr != "" {
-		if e, err := strconv.Atoi(episodeStr); err == nil {
-			episode = e
 		}
 	}
 
