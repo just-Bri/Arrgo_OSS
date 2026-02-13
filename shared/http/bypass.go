@@ -41,7 +41,7 @@ func FetchViaBypass(ctx context.Context, targetURL string) (string, error) {
 		"cmd":        "request.get",
 		"url":        targetURL,
 		"maxTimeout": 60000,
-		"wait":       2000, // Wait 2 seconds for JS to render
+		"wait":       10000, // Wait 10 seconds for JS to render
 	}
 
 	jsonData, err := json.Marshal(requestBody)

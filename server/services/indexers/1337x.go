@@ -56,7 +56,23 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 
 	// Parse HTML and extract torrent results
 	results := x.parseSearchResults(htmlContent)
-	slog.Info("1337x request successful", "query", query, "category", category, "results", len(results))
+
+	// Fallback: if no results found with specific season, try broader search with just the query
+	if len(results) == 0 && strings.Contains(query, " S") {
+		baseQuery := strings.Split(query, " S")[0]
+		slog.Info("No 1337x results for specific season, trying broad search", "base_query", baseQuery)
+		broadURL := fmt.Sprintf("https://1337x.to/search/%s/1/", url.PathEscape(baseQuery))
+		htmlContent, err = sharedhttp.FetchViaBypass(ctx, broadURL)
+		if err == nil {
+			results = x.parseSearchResults(htmlContent)
+		}
+	}
+
+	if len(results) == 0 {
+		slog.Info("1337x returned 0 results", "query", query, "html_preview", format.Preview(htmlContent, 200))
+	} else {
+		slog.Info("1337x request successful", "query", query, "results", len(results))
+	}
 	return results, nil
 }
 
