@@ -34,22 +34,27 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 		return ""
 	}
 
-	// Check if any torrent's save path matches the show directory
+	// Check if any torrent's file is inside the show directory
 	for _, torrent := range torrents {
 		normalizedHash := strings.ToLower(torrent.Hash)
-
-		// Check if this torrent's save path matches or contains the show directory
-		// Torrents can save to:
-		// 1. The exact show directory: /data/incoming/shows/ShowName
-		// 2. A parent directory: /data/incoming/shows (with ShowName as subdirectory)
-		// 3. The show directory itself matches the torrent save path
-		torrentSavePath := filepath.Clean(torrent.SavePath)
 		showPathClean := filepath.Clean(showPath)
 
-		pathMatches := torrentSavePath == showPathClean ||
-			strings.HasPrefix(showPathClean+string(filepath.Separator), torrentSavePath+string(filepath.Separator))
+		// Fetch files for this torrent
+		tFiles, err := qb.GetTorrentFiles(ctx, normalizedHash)
+		if err != nil {
+			continue
+		}
 
-		if pathMatches {
+		matched := false
+		for _, tf := range tFiles {
+			fullPath := filepath.Join(torrent.SavePath, tf.Name)
+			if strings.HasPrefix(fullPath, showPathClean) {
+				matched = true
+				break
+			}
+		}
+
+		if matched {
 			// Look up the request via downloads table
 			var requestTVDBID sql.NullString
 			err := database.DB.QueryRow(`
@@ -66,7 +71,6 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 				slog.Info("Found request TVDB ID from torrent hash",
 					"show_path", showPath,
 					"torrent_hash", normalizedHash,
-					"torrent_save_path", torrentSavePath,
 					"tvdb_id", requestTVDBID.String)
 				return requestTVDBID.String
 			}
@@ -233,7 +237,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	}
 
 	slog.Debug("Processing show", "title", title, "year", year, "path", showPath)
-	
+
 	// For incoming shows, check if a show with the same TVDB ID or title/year already exists
 	// This prevents creating duplicate show entries for different torrent folders
 	var showID int
@@ -255,7 +259,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 					"new_path", showPath)
 			}
 		}
-		
+
 		// If no match by TVDB ID, try matching by title and year
 		if showID == 0 && title != "" {
 			var existingID int
@@ -268,7 +272,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 				title, cfg.IncomingShowsPath).Scan(&existingID, &existingYear)
 			if err == nil && existingID > 0 {
 				// Match year if both have years and they match, or if neither has a year
-				yearMatch := (year == 0 && !existingYear.Valid) || 
+				yearMatch := (year == 0 && !existingYear.Valid) ||
 					(year != 0 && existingYear.Valid && year == int(existingYear.Int64))
 				if yearMatch {
 					showID = existingID
@@ -281,7 +285,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			}
 		}
 	}
-	
+
 	// If no existing show found, create/update normally
 	if showID == 0 {
 		var err error
@@ -655,7 +659,7 @@ func PurgeMissingShows() {
 func SearchShowsLocal(query string) ([]models.Show, error) {
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := GetSearchVariantsForDB(query)
-	
+
 	// Build SQL query with OR conditions for each variant
 	var conditions []string
 	args := make([]interface{}, len(variants))
@@ -663,14 +667,14 @@ func SearchShowsLocal(query string) ([]models.Show, error) {
 		conditions = append(conditions, fmt.Sprintf("(title ILIKE $%d OR overview ILIKE $%d OR genres ILIKE $%d)", i+1, i+1, i+1))
 		args[i] = variant
 	}
-	
+
 	dbQuery := fmt.Sprintf(`
 		SELECT id, title, year, tvdb_id, imdb_id, path, overview, poster_path, genres, status, created_at, updated_at 
 		FROM shows 
 		WHERE %s
 		ORDER BY title ASC
 	`, strings.Join(conditions, " OR "))
-	
+
 	rows, err := database.DB.Query(dbQuery, args...)
 	if err != nil {
 		return nil, err

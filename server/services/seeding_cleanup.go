@@ -502,11 +502,6 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 		return
 	}
 
-	// Get the directory containing the file (torrents usually save to a directory)
-	fileDir := filepath.Dir(filePath)
-	folderName := filepath.Base(fileDir)
-	fileName := filepath.Base(filePath)
-
 	// Try to find a torrent with matching save path
 	ctx := context.Background()
 	torrents, err := qb.GetTorrentsDetailed(ctx, "")
@@ -518,39 +513,31 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 	var matchedHash string
 	for _, torrent := range torrents {
 		normalizedHash := strings.ToLower(torrent.Hash)
-		torrentNameLower := strings.ToLower(torrent.Name)
 
-		// Method 1: Check if torrent's save path matches or contains the file directory
-		if strings.HasPrefix(fileDir, torrent.SavePath) || strings.HasPrefix(torrent.SavePath, fileDir) {
-			matchedHash = normalizedHash
-			slog.Debug("Linked torrent hash to file via path match",
-				"hash", normalizedHash,
-				"file_path", filePath,
-				"torrent_save_path", torrent.SavePath,
-				"media_type", mediaType)
-			break
-		}
-
-		// Method 2: Fallback - try matching folder name or file name to torrent name
-		// This helps when path matching fails but the torrent name contains the folder/file name
-		if matchedHash == "" {
-			folderNameLower := strings.ToLower(folderName)
-			fileNameLower := strings.ToLower(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
-
-			// Check if torrent name contains folder name or file name (without extension)
-			if strings.Contains(torrentNameLower, folderNameLower) || strings.Contains(torrentNameLower, fileNameLower) {
-				// Additional check: make sure it's a reasonable match (folder/file name should be substantial)
-				if len(folderNameLower) > 3 || len(fileNameLower) > 3 {
-					matchedHash = normalizedHash
-					slog.Debug("Linked torrent hash to file via name match",
-						"hash", normalizedHash,
-						"file_path", filePath,
-						"torrent_name", torrent.Name,
-						"folder_name", folderName,
-						"media_type", mediaType)
-					break
+		// Check if file is inside this torrent's save path
+		if strings.HasPrefix(filePath, torrent.SavePath) {
+			relPath, err := filepath.Rel(torrent.SavePath, filePath)
+			if err == nil {
+				// Fetch files for this torrent to see if our file is part of it
+				tFiles, err := qb.GetTorrentFiles(ctx, normalizedHash)
+				if err == nil {
+					for _, tf := range tFiles {
+						if tf.Name == relPath {
+							matchedHash = normalizedHash
+							slog.Debug("Linked torrent hash to file via exact file match",
+								"hash", normalizedHash,
+								"file_path", filePath,
+								"torrent_file", tf.Name,
+								"media_type", mediaType)
+							break
+						}
+					}
 				}
 			}
+		}
+
+		if matchedHash != "" {
+			break
 		}
 	}
 
@@ -593,7 +580,6 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 	} else {
 		slog.Debug("Could not find matching torrent for file",
 			"file_path", filePath,
-			"folder_name", folderName,
 			"media_type", mediaType,
 			"torrent_count", len(torrents))
 	}
