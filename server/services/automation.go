@@ -900,36 +900,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 	if r.MediaType == "show" {
 		searchType = "show"
-		// Parse seasons and enhance search query
-		if r.Seasons != "" {
-			seasons := strings.Split(r.Seasons, ",")
-			// Build query with season info: "Show Name S02" or "Show Name Season 2"
-			// For single season requests, use the specific season in the query
-			seasonNum := strings.TrimSpace(seasons[0])
-			if seasonNum != "" {
-				// Convert to int for proper zero-padding
-				if num, err := strconv.Atoi(seasonNum); err == nil {
-					// Format: "Show Name S02" (most common)
-					// Include year if available to distinguish between different versions (e.g., Matlock 1986 vs 2024)
-					if r.Year > 0 {
-						searchQuery = fmt.Sprintf("%s %d S%02d", r.Title, r.Year, num)
-					} else {
-						searchQuery = fmt.Sprintf("%s S%02d", r.Title, num)
-					}
-				} else {
-					// Fallback to string format if conversion fails
-					if r.Year > 0 {
-						searchQuery = fmt.Sprintf("%s %d S%s", r.Title, r.Year, seasonNum)
-					} else {
-						searchQuery = fmt.Sprintf("%s S%s", r.Title, seasonNum)
-					}
-				}
-			} else if r.Year > 0 {
-				// No season specified but year available - include year
-				searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
-			}
-		} else if r.Year > 0 {
-			// No seasons specified but year available - include year
+		// include year if available to distinguish between versions
+		if r.Year > 0 {
 			searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
 		}
 	} else if r.MediaType == "movie" && r.Year > 0 {
@@ -1647,24 +1619,21 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 
 	if len(filtered) == 0 {
 		if zeroSeedCount > 0 || titleMismatchCount > 0 {
-			slog.Warn("All results filtered out",
+			slog.Warn("All results filtered out by safety filters, will pick best scored anyway",
 				"total_results", len(results),
 				"zero_seed_count", zeroSeedCount,
 				"title_mismatch_count", titleMismatchCount)
 		}
-		// If all results have 0 seeds, still try to use the first one (might be a new torrent)
-		if len(results) > 0 {
-			slog.Info("Using first result despite filters", "title", results[0].Title, "seeds", results[0].Seeds)
-			return &results[0]
-		}
-		return nil
+		// If everything is filtered out, use the best scored one from the original list
+		// (instead of just picking the first one which might be a poor match)
+		filtered = results
+	} else {
+		slog.Debug("Filtered results",
+			"total_results", len(results),
+			"filtered_count", len(filtered),
+			"zero_seed_count", zeroSeedCount,
+			"title_mismatch_count", titleMismatchCount)
 	}
-
-	slog.Debug("Filtered results",
-		"total_results", len(results),
-		"filtered_count", len(filtered),
-		"zero_seed_count", zeroSeedCount,
-		"title_mismatch_count", titleMismatchCount)
 
 	// Score function: higher is better
 	scoreResult := func(r *TorrentSearchResult) int {
@@ -1750,6 +1719,40 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 			score += 300 // Bonus for having info hash directly
 		} else if r.MagnetLink != "" && strings.HasPrefix(r.MagnetLink, "magnet:") {
 			score += 200 // Bonus for direct magnet link (not a URL)
+		}
+
+		// Language check: penalize titles with many non-ASCII characters (e.g. Russian, Chinese)
+		// but only if the requested title is primarily ASCII
+		isRequestedASCII := true
+		for _, c := range requestedTitle {
+			if c > 127 {
+				isRequestedASCII = false
+				break
+			}
+		}
+
+		if isRequestedASCII {
+			nonASCIICount := 0
+			for _, c := range r.Title {
+				if c > 127 {
+					nonASCIICount++
+				}
+			}
+			if nonASCIICount > 5 {
+				score -= 8000 // Large penalty for multi-language or non-English titles
+			}
+		}
+
+		// Also look for explicit language tags that indicate non-English
+		lowerTitle := strings.ToLower(r.Title)
+		nonEnglishTags := []string{"russian", "rus", "ita", "fre", "ger", "spa", "chi", "jap", "kor"}
+		for _, tag := range nonEnglishTags {
+			if strings.Contains(lowerTitle, "["+tag+"]") ||
+				strings.Contains(lowerTitle, "("+tag+")") ||
+				strings.Contains(lowerTitle, " "+tag+" ") {
+				score -= 5000
+				break
+			}
 		}
 
 		// Seeds contribute to score (but less than quality/season/title match)
