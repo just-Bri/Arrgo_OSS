@@ -1,10 +1,8 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -239,7 +237,7 @@ func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
 // ValidateDownloadingRequests checks requests marked as "downloading" and resets them to "pending" if they don't have active torrents
 func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 	query := `SELECT id, title FROM requests WHERE status = 'downloading'`
-	
+
 	slog.Debug("Validating downloading requests on startup")
 	rows, err := database.DB.Query(query)
 	if err != nil {
@@ -270,8 +268,8 @@ func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 
 		if err != nil || existingHash == "" {
 			// No torrent hash in downloads table, reset to pending
-			slog.Warn("Downloading request has no torrent hash, resetting to pending", 
-				"request_id", requestID, 
+			slog.Warn("Downloading request has no torrent hash, resetting to pending",
+				"request_id", requestID,
 				"title", title)
 			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
 			resetCount++
@@ -289,9 +287,9 @@ func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 			var downloadTitle string
 			database.DB.QueryRow("SELECT year, tvdb_id FROM requests WHERE id = $1", requestID).Scan(&requestYear, &requestTVDBID)
 			database.DB.QueryRow("SELECT title FROM downloads WHERE request_id = $1 AND LOWER(torrent_hash) = $2 LIMIT 1", requestID, normalizedHash).Scan(&downloadTitle)
-			
-			slog.Warn("Downloading request has no active torrent in qBittorrent, resetting to pending", 
-				"request_id", requestID, 
+
+			slog.Warn("Downloading request has no active torrent in qBittorrent, resetting to pending",
+				"request_id", requestID,
 				"title", title,
 				"year", requestYear,
 				"tvdb_id", requestTVDBID,
@@ -425,9 +423,9 @@ func (s *AutomationService) ProcessPendingRequests(ctx context.Context) {
 				requiredWait = 24 * time.Hour
 			}
 			timeUntilReady := requiredWait - timeSinceLastSearch
-			slog.Debug("Request not ready for retry yet", 
-				"request_id", r.ID, 
-				"retry_count", r.RetryCount, 
+			slog.Debug("Request not ready for retry yet",
+				"request_id", r.ID,
+				"retry_count", r.RetryCount,
 				"last_search_at", r.LastSearchAt,
 				"time_since_last_search", timeSinceLastSearch,
 				"required_wait", requiredWait,
@@ -524,7 +522,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 
 					// Try to determine which season(s) this torrent covers by checking the title
 					torrentTitle := strings.ToLower(existingTorrent.Name)
-					
+
 					// First, check if this is a multi-season torrent (e.g., "Season 1-4", "S01-S04", "S1-S4")
 					multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
 					multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(torrentTitle)
@@ -551,7 +549,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 							continue // Skip individual season matching for multi-season torrents
 						}
 					}
-					
+
 					// Also check for patterns like "S01S02S03" or "S01 S02 S03"
 					allSeasonsRegex := regexp.MustCompile(`(?:s|season)\s*(\d+)`)
 					allSeasonsMatches := allSeasonsRegex.FindAllStringSubmatch(torrentTitle, -1)
@@ -579,7 +577,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 						}
 						continue // Skip individual season matching
 					}
-					
+
 					// Fallback: Check for individual season patterns
 					for _, seasonStr := range requestedSeasons {
 						seasonStr = strings.TrimSpace(seasonStr)
@@ -794,7 +792,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			defer rows.Close()
 			currentSeasonStr := strings.TrimSpace(strings.Split(r.Seasons, ",")[0])
 			currentSeasonNum, _ := strconv.Atoi(currentSeasonStr)
-			
+
 			// Get all requested seasons for this request to check if ALL are covered
 			var allRequestedSeasons []int
 			allRequestedSeasonsStr := r.Seasons
@@ -809,7 +807,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 					allRequestedSeasons = append(allRequestedSeasons, sn)
 				}
 			}
-			
+
 			for rows.Next() {
 				var hash string
 				if err := rows.Scan(&hash); err == nil {
@@ -820,7 +818,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 						continue
 					}
 					torrentTitle := strings.ToLower(existingTorrent.Name)
-					
+
 					// Check if this is a multi-season torrent that covers the current season
 					multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
 					multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(torrentTitle)
@@ -855,7 +853,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 							}
 						}
 					}
-					
+
 					// Also check for multiple season numbers in title (e.g., "S01S02S03" or "S01 S02 S03")
 					allSeasonsRegex := regexp.MustCompile(`(?:s|season)\s*(\d+)`)
 					allSeasonsMatches := allSeasonsRegex.FindAllStringSubmatch(torrentTitle, -1)
@@ -1026,7 +1024,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		bestTitleLower := strings.ToLower(best.Title)
 		currentSeasonStr := strings.TrimSpace(strings.Split(r.Seasons, ",")[0])
 		currentSeasonNum, _ := strconv.Atoi(currentSeasonStr)
-		
+
 		// Check if this is a multi-season torrent
 		multiSeasonRegex := regexp.MustCompile(`(?:season|s)\s*(\d+)\s*[-–]\s*(?:season|s)?\s*(\d+)`)
 		multiSeasonMatch := multiSeasonRegex.FindStringSubmatch(bestTitleLower)
@@ -1048,8 +1046,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 							// Torrent already exists - check if it covers all needed seasons
 							existingTitleLower := strings.ToLower(existingTorrent.Name)
 							// If the existing torrent is the same multi-season torrent, skip
-							if strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", startSeason)) && 
-							   strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", endSeason)) {
+							if strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", startSeason)) &&
+								strings.Contains(existingTitleLower, fmt.Sprintf("s%02d", endSeason)) {
 								slog.Info("Multi-season torrent already exists, skipping download",
 									"request_id", r.ID,
 									"season", currentSeasonStr,
@@ -1177,7 +1175,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 		var conflictYear int
 		var conflictTVDBID string
 		database.DB.QueryRow("SELECT title, year, tvdb_id FROM requests WHERE id = $1", existingRequestID).Scan(&conflictTitle, &conflictYear, &conflictTVDBID)
-		
+
 		slog.Warn("Torrent hash collision detected - same torrent hash for different requests",
 			"current_request_id", r.ID,
 			"current_title", r.Title,
@@ -1189,14 +1187,14 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			"conflict_tvdb_id", conflictTVDBID,
 			"torrent_hash", infoHash,
 			"torrent_title", best.Title)
-		
+
 		// Rollback transaction - don't mark this request as downloading
 		tx.Rollback()
 		// Reset request to pending so it can retry with better matching
 		database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", r.ID)
 		return fmt.Errorf("torrent hash collision: hash %s already used by request %d (%s %d)", infoHash, existingRequestID, conflictTitle, conflictYear)
 	}
-	
+
 	result, err := tx.Exec(`
 		INSERT INTO downloads (request_id, torrent_hash, title, status, updated_at)
 		VALUES ($1, $2, $3, 'downloading', NOW())
@@ -1205,7 +1203,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	if err != nil {
 		return fmt.Errorf("failed to insert download record: %w", err)
 	}
-	
+
 	// Check if insert actually succeeded (not skipped due to conflict)
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
@@ -1812,8 +1810,8 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 	// Try using Cloudflare bypass service if available (for sites like 1337x.to)
 	bypassURL := sharedconfig.GetEnv("CLOUDFLARE_BYPASS_URL", "")
 	if bypassURL != "" {
-		slog.Debug("Fetching URL via bypass service", "url", targetURL, "bypass_url", bypassURL)
-		htmlContent, err = fetchViaBypass(ctx, bypassURL, targetURL)
+		slog.Debug("Fetching URL via bypass service", "url", targetURL)
+		htmlContent, err = sharedhttp.FetchViaBypass(ctx, targetURL)
 		if err != nil {
 			if is1337x {
 				// For 1337x, bypass service is required - don't fall back to direct request
@@ -1881,16 +1879,16 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 	// Look for 40-character hex strings (info hash) in various contexts
 	// Try multiple patterns: standalone hash, hash in magnet link format, hash in data attributes
 	infoHashPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`[0-9a-fA-F]{40}`),                                    // Standalone 40-char hex
-		regexp.MustCompile(`btih:([0-9a-fA-F]{40})`),                            // In magnet link format
-		regexp.MustCompile(`info hash[:\s]+([0-9a-fA-F]{40})`),                  // After "info hash:"
-		regexp.MustCompile(`hash[:\s]+([0-9a-fA-F]{40})`),                       // After "hash:"
-		regexp.MustCompile(`data-hash=["']([0-9a-fA-F]{40})["']`),               // In data-hash attribute
-		regexp.MustCompile(`data-info-hash=["']([0-9a-fA-F]{40})["']`),          // In data-info-hash attribute
-		regexp.MustCompile(`"([0-9a-fA-F]{40})"`),                               // Quoted hash
-		regexp.MustCompile(`'([0-9a-fA-F]{40})'`),                               // Single-quoted hash
+		regexp.MustCompile(`[0-9a-fA-F]{40}`),                          // Standalone 40-char hex
+		regexp.MustCompile(`btih:([0-9a-fA-F]{40})`),                   // In magnet link format
+		regexp.MustCompile(`info hash[:\s]+([0-9a-fA-F]{40})`),         // After "info hash:"
+		regexp.MustCompile(`hash[:\s]+([0-9a-fA-F]{40})`),              // After "hash:"
+		regexp.MustCompile(`data-hash=["']([0-9a-fA-F]{40})["']`),      // In data-hash attribute
+		regexp.MustCompile(`data-info-hash=["']([0-9a-fA-F]{40})["']`), // In data-info-hash attribute
+		regexp.MustCompile(`"([0-9a-fA-F]{40})"`),                      // Quoted hash
+		regexp.MustCompile(`'([0-9a-fA-F]{40})'`),                      // Single-quoted hash
 	}
-	
+
 	var infoHash string
 	for _, pattern := range infoHashPatterns {
 		matches := pattern.FindStringSubmatch(htmlContent)
@@ -1908,7 +1906,7 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 			infoHash = "" // Reset if invalid length
 		}
 	}
-	
+
 	if infoHash != "" {
 		// Extract title from page if possible for better magnet link
 		titleRegex := regexp.MustCompile(`<title[^>]*>([^<]+)</title>`)
@@ -1920,7 +1918,7 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 			title = strings.Split(title, " - ")[0]
 			title = strings.Split(title, " | ")[0]
 		}
-		
+
 		magnetLink := fmt.Sprintf("magnet:?xt=urn:btih:%s", infoHash)
 		if title != "" {
 			// URL encode the title
@@ -1950,16 +1948,16 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 					}
 				}
 			}
-			
+
 			// Check button elements and other elements for data attributes
 			for _, attr := range n.Attr {
 				// Check data-magnet, data-url, data-href, etc.
-				if (attr.Key == "data-magnet" || attr.Key == "data-url" || attr.Key == "data-href" || 
+				if (attr.Key == "data-magnet" || attr.Key == "data-url" || attr.Key == "data-href" ||
 					attr.Key == "data-link" || attr.Key == "href") && strings.HasPrefix(attr.Val, "magnet:") {
 					magnetLink = attr.Val
 					return
 				}
-				
+
 				// Check onclick handlers for magnet links
 				if attr.Key == "onclick" && strings.Contains(attr.Val, "magnet:") {
 					// Extract magnet link from onclick handler
@@ -1971,7 +1969,7 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 				}
 			}
 		}
-		
+
 		// Also check text nodes for magnet links (in case they're in script tags or comments)
 		if n.Type == html.TextNode && strings.Contains(n.Data, "magnet:") {
 			magnetMatch := magnetRegex.FindString(n.Data)
@@ -1980,7 +1978,7 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 				return
 			}
 		}
-		
+
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			findMagnetLink(c)
 		}
@@ -2002,68 +2000,6 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 	}
 
 	return magnetLink, nil
-}
-
-// fetchViaBypass uses the Cloudflare bypass service (Flaresolverr-compatible) to fetch a URL
-func fetchViaBypass(ctx context.Context, bypassURL, targetURL string) (string, error) {
-	// Ensure no trailing slash
-	bypassURL = strings.TrimSuffix(bypassURL, "/")
-
-	// Flaresolverr-compatible API format
-	// POST to /v1 with JSON body
-	requestBody := map[string]interface{}{
-		"cmd":        "request.get",
-		"url":        targetURL,
-		"maxTimeout": 60000,
-	}
-
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Make POST request to bypass service
-	req, err := http.NewRequestWithContext(ctx, "POST", bypassURL+"/v1", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Use a longer timeout client for Flaresolverr requests (can take up to 60s + buffer)
-	// Flaresolverr maxTimeout is 60000ms, so we need at least 90s to account for network overhead
-	client := &http.Client{
-		Timeout: 90 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to call bypass service: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("bypass service returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse Flaresolverr response
-	var bypassResp struct {
-		Status   string `json:"status"`
-		Solution struct {
-			URL      string        `json:"url"`
-			Response string        `json:"response"`
-			Cookies  []interface{} `json:"cookies"`
-		} `json:"solution"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&bypassResp); err != nil {
-		return "", fmt.Errorf("failed to decode bypass response: %w", err)
-	}
-
-	if bypassResp.Status != "ok" || bypassResp.Solution.Response == "" {
-		return "", fmt.Errorf("bypass service returned invalid response")
-	}
-
-	return bypassResp.Solution.Response, nil
 }
 
 // extractInfoHashFromMagnet extracts the info hash from a magnet link
@@ -2175,7 +2111,7 @@ func fetchTorrentFile(ctx context.Context, infoHash string) []byte {
 					}
 				}
 			}
-			
+
 			// Log debug info if validation failed
 			debugLen := 50
 			if len(body) < debugLen {
