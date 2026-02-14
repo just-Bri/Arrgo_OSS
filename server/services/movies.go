@@ -140,6 +140,7 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		"scenes": true, "scene": true, "deleted": true, "deleted scenes": true,
 		"featurettes": true, "featurette": true, "behind": true, "behind the scenes": true,
 		"specials": true, "special": true, "bonus content": true,
+		"plex versions": true, "plex optimized": true,
 	}
 
 	// Check if folder name matches skip patterns (exact match or contains pattern)
@@ -259,7 +260,7 @@ func findMainMovieFile(folderPath string, folderName string) string {
 		"cm", "pv", "iv", "tvsp", "menu", "trailer", "sample",
 		"deleted", "behind", "featurette", "interview", "promo",
 		"promotional", "teaser", "preview", "intro", "outro",
-		"credit", "credits", "opening",
+		"credit", "credits", "opening", "plex versions", "plex optimized",
 	}
 
 	slog.Debug("Searching for movie files", "folder_path", folderPath, "folder_name", folderName)
@@ -286,6 +287,7 @@ func findMainMovieFile(folderPath string, folderName string) string {
 				"sps": true, "sp": true, "extras": true, "extra": true,
 				"bonus": true, "bonuses": true, "menus": true, "menu": true,
 				"trailers": true, "trailer": true, "samples": true, "sample": true,
+				"plex versions": true, "plex optimized": true,
 			}
 			if skipDirs[subDirName] {
 				slog.Debug("Skipping subdirectory", "subdir", subDirName, "path", path)
