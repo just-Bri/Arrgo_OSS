@@ -1,32 +1,47 @@
 # Arrgo 🏴‍☠️
 
 Arrgo is a lightweight, high-performance media management tool designed to provide a modern, consolidated alternative to the existing *arr stack.  
-Built for speed and simplicity, it is specifically optimized for home server environments like **Unraid**.
 
-## 🚀 Key Features & Goals
+**Built for Unraid from the ground up**, Arrgo is optimized for home server environments that value speed, simplicity, and low resource overhead.
 
-- **Consolidated Management**: Handle both movies and tv shows in one unified interface.
+---
+
+## 🚀 Key Features
+
+- **Consolidated Management**: Handle both movies and TV shows in one unified interface.
 - **Automated Workflows**: Automated downloads via qBittorrent, intelligent seeding cleanup, and integrated subtitle fetching.
 - **Media Server Compatibility**: Automatically organizes and renames files to follow [Plex](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/) and [Jellyfin](https://jellyfin.org/docs/general/server/media/movies/) conventions.
 - **Deep Metadata**: Powered by TMDB and TVDB for rich posters, descriptions, and episode-level library status.
-- **Lightweight & Fast**: Built with Go and HTMX for minimal resource usage and a snappy UI.
-- **Home Server First**: Designed with Unraid in mind, featuring native PUID/PGID support and simple Docker deployment.
+- **Lightweight & Fast**: Built with Go and HTMX for minimal resource usage—perfect for the Unraid ecosystem.
+- **Unraid First**: Native PUID/PGID support, simple path mapping, and a dedicated XML template for the Community Applications store.
 
-## 🛠 Tech Stack
+---
 
-- **Backend**: [Go](https://go.dev/)
-- **Frontend**: [HTMX](https://htmx.org/)
-- **Database**: [PostgreSQL 16](https://www.postgresql.org/)
-- **Infrastructure**: [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
+## 🛠 Installation
 
-## ⚡ Quick Start
+### 1. Unraid (Recommended)
+The easiest way to install Arrgo is via the **Unraid Community Applications (CA)** store.
 
-### 1. Deployment
+Search for **Arrgo** in the "Apps" tab. The official image is hosted at `justbri/arrgo_oss`.
+
+1. Configure the required environment variables:
+   - `TMDB_API_KEY`: [TheMovieDB API Key](https://www.themoviedb.org/documentation/api)
+   - `TVDB_API_KEY`: [TheTVDB API Key](https://thetvdb.com/api-information)
+   - `DATABASE_URL`: Connection string for a PostgreSQL 16 database (e.g., `postgres://user:pass@192.168.1.100:5432/arrgo`)
+   - `SESSION_SECRET`: A random string for session locking.
+   - `ADMIN_PASSWORD`: Your initial login password.
+2. Map your **Media** and **AppData** paths.
+
+> [!NOTE]  
+> Arrgo requires a **PostgreSQL 16** database. If you don't have one, we recommend the Official Postgres image from the App Store.
+
+### 2. Dockge / Docker Compose (Advanced)
+If you prefer managing stacks via **Dockge** or the **Docker Compose Manager** plugin:
 
 ```bash
 # Clone the repository
-git clone https://github.com/justbri/Arrgo.git
-cd Arrgo
+git clone https://github.com/justbri/Arrgo_OSS.git
+cd Arrgo_OSS
 
 # Configure environment
 cp .env.example .env
@@ -36,28 +51,25 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-The application will be available at `http://localhost:5003`.
+---
 
-### 2. Required Environment Variables
+## ⚡ Configuration Details
 
-Ensure these are set in your `.env` file for core functionality:
+### Required Environment Variables
 
 | Variable | Description |
 | :--- | :--- |
 | `SESSION_SECRET` | Secure key for session management (generate a random string) |
-| `POSTGRES_PASSWORD` | Password for the PostgreSQL container |
+| `DATABASE_URL` | PostgreSQL connection string |
 | `TMDB_API_KEY` | [TheMovieDB API Key](https://www.themoviedb.org/documentation/api) |
 | `TVDB_API_KEY` | [TheTVDB API Key](https://thetvdb.com/api-information) |
 | `ADMIN_PASSWORD` | Initial password for the seeded admin account |
 
-### 3. Optional Configuration
+### Optional Variables
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `SERVER_IP` | `localhost` | IP address of your server (e.g. 192.168.1.100) |
-| `MEDIA_PATH` | `/mnt/user/media` | **Host** path to your media library |
-| `MOVIES_PATH` | `/data/movies` | **Container** path for processed movies |
-| `SHOWS_PATH` | `/data/shows` | **Container** path for processed shows |
+| `SERVER_IP` | `localhost` | IP of your Unraid server (for qBittorrent links) |
 | `PUID/PGID` | `99`/`100` | User/Group ID for file permissions (Unraid defaults) |
 | `QBITTORRENT_URL` | `http://qbittorrent:8080` | URL for qBittorrent WebUI |
 | `DEBUG` | `false` | Set to `true` for verbose logging |
@@ -66,35 +78,29 @@ Ensure these are set in your `.env` file for core functionality:
 
 ## 🛡 VPN Configuration (PIA Only)
 
-Arrgo includes a pre-configured qBittorrent VPN stack (based on `binhex/arch-qbittorrentvpn`) optimized for Private Internet Access.
+Arrgo's default stack includes a pre-configured qBittorrent VPN container (based on `binhex/arch-qbittorrentvpn`) optimized for Private Internet Access.
 
 1. **Download PIA OpenVPN configs**:
    ```bash
    wget https://www.privateinternetaccess.com/openvpn/openvpn.zip
-   # Create directory if it doesn't exist
    mkdir -p ./config/qbittorrent/openvpn
    unzip openvpn.zip -d ./config/qbittorrent/openvpn/
    ```
-2. **Clean up**: Remove any non-PIA `.ovpn` files from the directory.
+2. **Clean up**: Remove any non-PIA `.ovpn` files.
 3. **Credentials**: Set `PIA_USER` and `PIA_PASSWORD` in your `.env`.
 
 ---
 
 ## 💡 Tips for Unraid Users
 
-### Deployment Method
-Unraid does not support Docker Compose natively in the "Docker" tab. To deploy Arrgo, you should use:
-- **[Dockge](https://github.com/louislam/dockge)** (Highly Recommended): A beautiful, easy-to-use self-hosted manager for Docker Compose stacks.
-- **Docker Compose Manager Plugin**: Available via the Unraid Community Applications (CA) store.
+### Paths & Permissions
+- **Media Shares**: Always map your root media share (e.g., `/mnt/user/media`) to the container's `/data` path for optimal performance and atomic moves.
+- **Hardlinks**: Arrgo supports hardlinking if your downloads and media library share the same Unraid share and Docker volume mapping.
 
-### Configuration
-- **Network**: Set `SERVER_IP` in `.env` to your Unraid server's IP (e.g., `192.168.1.100`) so the qBittorrent button works correctly.
-- **Media**: Set `MEDIA_PATH` in `.env` to your share (e.g., `/mnt/user/media`).
-- **Database**: The database is mapped to `./data/db` within the project folder. You can add this path to your backup solution.
+### Troubleshooting: Force Rebuild
+If you are developing or testing updates on an SMB share and changes aren't reflecting, increment the `BUILD_VERSION` in your `docker-compose.yml` (or App configuration) to force a fresh Docker layer build.
 
-## 🛠 Troubleshooting: Force Rebuild
-
-If your deployment is stuck using old code (common with SMB shares), click **Edit** on your stack in Dockge, increment the `BUILD_VERSION` number in the `docker-compose.yml` section, and click **Deploy**. This forces a fresh build by invalidating the Docker cache.
+---
 
 ## 🗺 Roadmap
 
@@ -105,6 +111,8 @@ If your deployment is stuck using old code (common with SMB shares), click **Edi
 - [x] Subtitle Management (OpenSubtitles)
 - [x] qBittorrent Integration & Automation
 - [ ] Advanced Library Filtering & Bulk Actions
+
+---
 
 ## ⚖️ License
 
