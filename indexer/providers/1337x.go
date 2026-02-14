@@ -1,36 +1,24 @@
 package providers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/justbri/arrgo/shared/config"
 	"github.com/justbri/arrgo/shared/format"
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 	"golang.org/x/net/html"
 )
 
 type X1337Indexer struct {
-	bypassURL string
 }
 
 func NewX1337Indexer() *X1337Indexer {
-	// Get Cloudflare bypass service URL from environment
-	bypassURL := config.GetEnv("CLOUDFLARE_BYPASS_URL", "http://192.168.10.11:8191")
-	// Ensure no trailing slash
-	bypassURL = strings.TrimSuffix(bypassURL, "/")
-	return &X1337Indexer{
-		bypassURL: bypassURL,
-	}
+	return &X1337Indexer{}
 }
 
 func (x *X1337Indexer) GetName() string {
@@ -59,7 +47,7 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 
 	slog.Info("Fetching from 1337x", "query", query, "category", category, "url", searchURL)
 	// Use Cloudflare bypass service to fetch the page
-	htmlContent, err := x.fetchViaBypass(ctx, searchURL)
+	htmlContent, err := sharedhttp.FetchViaBypass(ctx, searchURL)
 	if err != nil {
 		slog.Warn("1337x request failed", "query", query, "category", category, "error", err)
 		// Graceful degradation - return empty results instead of error
@@ -70,65 +58,6 @@ func (x *X1337Indexer) search(ctx context.Context, query string, category string
 	results := x.parseSearchResults(htmlContent)
 	slog.Info("1337x request successful", "query", query, "category", category, "results", len(results))
 	return results, nil
-}
-
-// fetchViaBypass uses the Cloudflare bypass service (Flaresolverr-compatible) to fetch a URL
-func (x *X1337Indexer) fetchViaBypass(ctx context.Context, targetURL string) (string, error) {
-	// Flaresolverr-compatible API format
-	// POST to /v1 with JSON body
-	requestBody := map[string]interface{}{
-		"cmd":        "request.get",
-		"url":        targetURL,
-		"maxTimeout": 60000,
-	}
-
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Make POST request to bypass service
-	req, err := http.NewRequestWithContext(ctx, "POST", x.bypassURL+"/v1", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Use a longer timeout client for Flaresolverr requests (can take up to 60s + buffer)
-	// Flaresolverr maxTimeout is 60000ms, so we need at least 90s to account for network overhead
-	client := &http.Client{
-		Timeout: 90 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to call bypass service: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("bypass service returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse Flaresolverr response
-	var bypassResp struct {
-		Status   string `json:"status"`
-		Solution struct {
-			URL      string        `json:"url"`
-			Response string        `json:"response"`
-			Cookies  []interface{} `json:"cookies"`
-		} `json:"solution"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&bypassResp); err != nil {
-		return "", fmt.Errorf("failed to decode bypass response: %w", err)
-	}
-
-	if bypassResp.Status != "ok" || bypassResp.Solution.Response == "" {
-		return "", fmt.Errorf("bypass service returned invalid response")
-	}
-
-	return bypassResp.Solution.Response, nil
 }
 
 // parseSearchResults parses HTML from 1337x search results page

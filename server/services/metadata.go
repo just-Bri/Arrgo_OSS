@@ -676,18 +676,46 @@ func MatchShow(cfg *config.Config, showID int) error {
 		slog.Info("Searching TVDB for show", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
 		results, err := SearchTVDB(cfg, cleanedTitle)
 		if err == nil && len(results) > 0 {
-			// If year is provided, try to find a result with matching year
-			if s.Year > 0 {
-				for _, res := range results {
+			// Select the best matching result
+			// Prefer exact title matches, then matches that contain the search title
+			cleanedTitleLower := strings.ToLower(cleanedTitle)
+			bestMatch := results[0]
+			bestScore := -1
+
+			for _, res := range results {
+				resTitleLower := strings.ToLower(res.Title)
+				score := 0
+
+				// Exact match gets highest score
+				if resTitleLower == cleanedTitleLower {
+					score = 100
+				} else if strings.Contains(resTitleLower, cleanedTitleLower) {
+					// Contains match gets medium score
+					score = 50
+				} else if strings.Contains(cleanedTitleLower, resTitleLower) {
+					// Search title contains result title (partial match)
+					score = 25
+				}
+
+				// Bonus points if year matches
+				if s.Year > 0 && res.Year > 0 {
 					if res.Year == s.Year {
-						matchedTVDBID = res.ID
-						break
+						score += 10
+					} else if res.Year >= s.Year-1 && res.Year <= s.Year+1 {
+						// Small bonus for being close (sometimes metadata has slight variant years)
+						score += 5
 					}
 				}
+
+				if score > bestScore {
+					bestScore = score
+					bestMatch = res
+				}
 			}
-			// If still no match and we have results, take the first one
-			if matchedTVDBID == "" {
-				matchedTVDBID = results[0].ID
+
+			if bestScore >= 0 {
+				matchedTVDBID = bestMatch.ID
+				slog.Debug("Selected TVDB result", "tvdb_id", matchedTVDBID, "title", bestMatch.Title, "score", bestScore)
 			}
 		}
 	}

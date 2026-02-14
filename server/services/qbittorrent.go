@@ -436,3 +436,37 @@ func (q *QBittorrentClient) batchAction(ctx context.Context, action string, hash
 
 	return nil
 }
+
+type TorrentFile struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+func (q *QBittorrentClient) GetTorrentFiles(ctx context.Context, hash string) ([]TorrentFile, error) {
+	if err := q.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+
+	filesURL := fmt.Sprintf("%s/api/v2/torrents/files?hash=%s", q.cfg.QBittorrentURL, hash)
+	req, err := http.NewRequestWithContext(ctx, "GET", filesURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := q.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get torrent files: status %d", resp.StatusCode)
+	}
+
+	var files []TorrentFile
+	if err := json.NewDecoder(resp.Body).Decode(&files); err != nil {
+		return nil, fmt.Errorf("failed to decode torrent files: %w", err)
+	}
+
+	return files, nil
+}
