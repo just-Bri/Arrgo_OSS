@@ -1,0 +1,325 @@
+{{define "title"}}{{.Movie.Title}} - Details{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <div style="margin-bottom: 15px;">
+        <a href="javascript:history.back()" style="text-decoration: none; color: var(--accent-color); font-size: 14px;">&larr; Back</a>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 20px; background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow);">
+        <div style="align-self: center;">
+            {{if .Movie.PosterPath}}
+                {{if hasPrefix .Movie.PosterPath "http"}}
+                    <img src="{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{else if gt .Movie.ID 0}}
+                    <img src="/images/movie/{{.Movie.ID}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{else}}
+                    <img src="/images/tmdb/{{.Movie.PosterPath}}" alt="{{.Movie.Title}}" style="width: 100%; max-width: 260px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                {{end}}
+            {{else}}
+                <div style="width: 260px; height: 390px; background: var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted-text);">No Poster</div>
+            {{end}}
+        </div>
+
+        <div style="flex: 1; min-width: 0;">
+            <h1 style="margin: 0 0 10px 0; color: var(--text-color); font-size: 28px;">{{.Movie.Title}} {{if .Movie.Year}}({{.Movie.Year}}){{end}}</h1>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                {{if .Movie.Genres}}
+                    {{range (split .Movie.Genres ", ")}}
+                        <span style="background: var(--bg-color); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--text-color); border: 1px solid var(--border-color);">{{.}}</span>
+                    {{end}}
+                {{end}}
+                <span style="background: var(--badge-bg); padding: 3px 10px; border-radius: 15px; font-size: 12px; color: var(--badge-text);">{{.Movie.Status}}</span>
+            </div>
+
+            <h3 style="color: var(--text-color); margin-bottom: 8px; font-size: 18px;">Overview</h3>
+            <p style="color: var(--text-color); line-height: 1.5; margin-bottom: 25px; font-size: 15px;">{{.Movie.Overview}}</p>
+
+            <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 16px;">File Info</h4>
+                <div style="display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px;">
+                    <div style="color: var(--muted-text);">Path:</div>
+                    <div style="color: var(--text-color); word-break: break-all;">{{if .Movie.Path}}{{.Movie.Path}}{{else}}N/A{{end}}</div>
+                    
+                    <div style="color: var(--muted-text);">Quality:</div>
+                    <div style="color: var(--text-color);">{{if .Movie.Quality}}{{.Movie.Quality}}{{else}}N/A{{end}}</div>
+                    
+                    <div style="color: var(--muted-text);">Size:</div>
+                    <div style="color: var(--text-color);">{{if .Movie.Size}}{{formatSize .Movie.Size}}{{else}}N/A{{end}}</div>
+
+                    <div style="color: var(--muted-text);">Subtitles:</div>
+                    <div style="color: var(--text-color);" id="subtitle-status-container">
+                        {{if .HasSubtitles}}
+                            <span style="color: var(--success-color);">English (Found)</span>
+                        {{else if .Movie.Path}}
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="color: var(--danger-color);">Missing</span>
+                                {{if .IsAdmin}}
+                                    <button class="download-subtitles-btn" data-type="movie" data-id="{{.Movie.ID}}" style="padding: 2px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 5px;">
+                                        <span>Download Now</span>
+                                    </button>
+                                {{end}}
+                            </div>
+                        {{else}}
+                            N/A
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+
+            {{if .IsAdmin}}
+                {{if gt .Movie.ID 0}}
+                    <div style="margin-top: 25px;">
+                        <button class="show-alternatives-btn" data-id="{{.Movie.ID}}" data-type="movie" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                            Fix Mismatch
+                        </button>
+                    </div>
+                {{end}}
+            {{end}}
+
+            {{if or (eq .Movie.Status "External") (eq .Movie.Status "search_result")}}
+                <div style="margin-top: 25px;">
+                    <button class="submit-request-btn" 
+                            data-title="{{js .Movie.Title}}"
+                            data-media-type="movie"
+                            data-id="{{.Movie.TMDBID}}"
+                            data-year="{{.Movie.Year}}"
+                            data-poster-path="{{.Movie.PosterPath}}"
+                            data-overview="{{js .Movie.Overview}}"
+                            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        Request Movie
+                    </button>
+                </div>
+            {{end}}
+        </div>
+    </div>
+</div>
+
+<!-- Alternatives Modal -->
+<div id="alternatives-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto;">
+    <div style="max-width: 800px; margin: 50px auto; background: var(--container-bg); border-radius: 8px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: var(--text-color);">Select Correct Match</h2>
+            <button onclick="closeAlternativesModal()" style="background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+        </div>
+        <div id="alternatives-list" style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="text-align: center; padding: 20px; color: var(--muted-text);">
+                <div class="spinner" style="margin: 0 auto;"></div>
+                <p>Loading alternatives...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (min-width: 769px) {
+    .container > div:last-child {
+        flex-direction: row !important;
+        padding: 30px !important;
+        gap: 40px !important;
+    }
+    .container h1 {
+        font-size: 36px !important;
+    }
+}
+</style>
+
+<script>
+async function submitRequest(item) {
+    try {
+        const response = await fetch('/requests/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: item.title,
+                media_type: item.media_type,
+                tmdb_id: item.media_type === 'movie' ? item.id : '',
+                tvdb_id: item.media_type === 'show' ? item.id : '',
+                year: item.year,
+                poster_path: item.poster_path,
+                overview: item.overview
+            }),
+        });
+
+        if (response.ok) {
+            alert('Request submitted successfully!');
+            window.location.href = '/requests';
+        } else {
+            const error = await response.text();
+            alert('Failed to submit request: ' + error);
+        }
+    } catch (error) {
+        console.error('Request failed:', error);
+        alert('An error occurred.');
+    }
+}
+
+async function downloadSubtitles(btn, type, id) {
+    const originalContent = btn.innerHTML;
+    const container = btn.parentElement;
+    
+    // Show spinner
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    
+    try {
+        const response = await fetch(`/subtitles/download?type=${type}&id=${id}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            // Success: change container to success text
+            container.parentElement.innerHTML = '<span style="color: var(--success-color);">English (Found)</span>';
+        } else {
+            // Error
+            const errorText = await response.text();
+            console.error('Download failed:', errorText);
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            alert('Failed to download subtitles: ' + errorText);
+        }
+    } catch (error) {
+        console.error('Download failed:', error);
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        alert('An error occurred during download.');
+    }
+}
+
+async function showAlternatives(id, type) {
+    const modal = document.getElementById('alternatives-modal');
+    const list = document.getElementById('alternatives-list');
+    
+    modal.style.display = 'block';
+    list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);"><div class="spinner" style="margin: 0 auto;"></div><p>Loading alternatives...</p></div>';
+    
+    try {
+        const endpoint = type === 'movie' ? '/api/movies/alternatives' : '/api/shows/alternatives';
+        const response = await fetch(`${endpoint}?id=${id}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch alternatives');
+        }
+        
+        const alternatives = await response.json();
+        
+        if (alternatives.length === 0) {
+            list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--muted-text);">No alternatives found.</div>';
+            return;
+        }
+        
+        list.innerHTML = alternatives.map((alt, index) => {
+            const posterUrl = alt.poster_path 
+                ? (alt.poster_path.startsWith('http') ? alt.poster_path : `/images/tmdb/${alt.poster_path}`)
+                : '';
+            const genres = alt.genres ? alt.genres.join(', ') : '';
+            
+            return `
+                <div style="display: flex; gap: 15px; padding: 15px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s;" 
+                     onmouseover="this.style.borderColor='var(--accent-color)'; this.style.transform='translateX(5px)'" 
+                     onmouseout="this.style.borderColor='var(--border-color)'; this.style.transform='translateX(0)'"
+                     onclick="selectAlternative(${id}, '${type}', '${alt.id}')">
+                    ${posterUrl ? `<img src="${posterUrl}" alt="${alt.title}" style="width: 80px; height: 120px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">` : '<div style="width: 80px; height: 120px; background: var(--border-color); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px;">No Poster</div>'}
+                    <div style="flex: 1; min-width: 0;">
+                        <h3 style="margin: 0 0 8px 0; color: var(--text-color); font-size: 18px;">${alt.title} ${alt.year ? `(${alt.year})` : ''}</h3>
+                        ${genres ? `<div style="margin-bottom: 8px;"><span style="color: var(--muted-text); font-size: 12px;">${genres}</span></div>` : ''}
+                        ${alt.overview ? `<p style="margin: 0; color: var(--text-color); font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${alt.overview}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading alternatives:', error);
+        list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger-color);">Error loading alternatives. Please try again.</div>';
+    }
+}
+
+function closeAlternativesModal() {
+    document.getElementById('alternatives-modal').style.display = 'none';
+}
+
+async function selectAlternative(id, type, newId) {
+    if (!confirm('Are you sure you want to rematch this item?')) {
+        return;
+    }
+    
+    const endpoint = type === 'movie' ? '/api/movies/rematch' : '/api/shows/rematch';
+    const idField = type === 'movie' ? 'tmdb_id' : 'tvdb_id';
+    
+    try {
+        const response = await fetch(`${endpoint}?id=${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ [idField]: newId })
+        });
+        
+        if (response.ok) {
+            alert('Match updated successfully!');
+            closeAlternativesModal();
+            window.location.reload();
+        } else {
+            const error = await response.text();
+            alert('Failed to update match: ' + error);
+        }
+    } catch (error) {
+        console.error('Rematch failed:', error);
+        alert('An error occurred while updating the match.');
+    }
+}
+
+// Close modal when clicking outside
+document.getElementById('alternatives-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeAlternativesModal();
+    }
+});
+
+// Event listeners for buttons with data attributes
+// Download subtitles buttons
+document.querySelectorAll('.download-subtitles-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        downloadSubtitles(this, this.dataset.type, parseInt(this.dataset.id));
+    });
+});
+
+// Show alternatives buttons
+document.querySelectorAll('.show-alternatives-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        showAlternatives(parseInt(this.dataset.id), this.dataset.type);
+    });
+});
+
+// Submit request buttons
+document.querySelectorAll('.submit-request-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        submitRequest({
+            title: this.dataset.title,
+            media_type: this.dataset.mediaType,
+            id: this.dataset.id,
+            year: parseInt(this.dataset.year) || 0,
+            poster_path: this.dataset.posterPath,
+            overview: this.dataset.overview
+        });
+    });
+});
+</script>
+{{end}}

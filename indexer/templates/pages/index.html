@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Arrgo Indexer</title>
+        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-900 text-white min-h-screen">
+        <nav class="bg-gray-800 p-4 shadow-lg">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-blue-400">Arrgo Indexer</h1>
+                <div class="space-x-4">
+                    <a href="/" class="hover:text-blue-400">Home</a>
+                    <a href="/status" class="hover:text-blue-400">Status</a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="container mx-auto mt-10 p-4">
+            <div class="max-w-3xl mx-auto">
+                <div class="text-center mb-10">
+                    <h2 class="text-4xl font-extrabold mb-2">
+                        Search Torrents
+                    </h2>
+                    <p class="text-gray-400">
+                        Searching across: {{range $i, $s := .Sources}} {{if $i}}
+                        • {{end}}<span class="text-blue-400">{{$s}}</span>
+                        {{end}}
+                    </p>
+                </div>
+
+                <div
+                    class="bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-700"
+                >
+                    <form
+                        hx-get="/search"
+                        hx-target="#results"
+                        hx-indicator="#spinner"
+                        class="flex flex-col gap-6"
+                    >
+                        <div class="flex gap-2">
+                            <input
+                                type="text"
+                                name="q"
+                                placeholder="Search for movies or TV shows..."
+                                autofocus
+                                class="flex-1 bg-gray-900 text-white p-4 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                            />
+                            <button
+                                type="submit"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg font-bold transition-all transform active:scale-95 shadow-lg"
+                            >
+                                Search
+                            </button>
+                        </div>
+                        <div
+                            class="flex gap-8 justify-center bg-gray-900/50 p-3 rounded-lg border border-gray-700/50"
+                        >
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
+                            >
+                                <input
+                                    type="radio"
+                                    name="type"
+                                    value="movie"
+                                    checked
+                                    class="w-4 h-4 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600"
+                                />
+                                <span
+                                    class="group-hover:text-blue-400 transition"
+                                    >Movies</span
+                                >
+                            </label>
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
+                            >
+                                <input
+                                    type="radio"
+                                    name="type"
+                                    value="show"
+                                    class="w-4 h-4 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600"
+                                />
+                                <span
+                                    class="group-hover:text-blue-400 transition"
+                                    >TV Shows</span
+                                >
+                            </label>
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
+                            >
+                                <input
+                                    type="radio"
+                                    name="type"
+                                    value="solid"
+                                    class="w-4 h-4 text-blue-600 focus:ring-blue-500 bg-gray-700 border-gray-600"
+                                />
+                                <span
+                                    class="group-hover:text-blue-400 transition"
+                                    >Everything</span
+                                >
+                            </label>
+                        </div>
+                    </form>
+                </div>
+
+                <div
+                    id="spinner"
+                    class="htmx-indicator mt-8 flex justify-center"
+                >
+                    <div
+                        class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"
+                    ></div>
+                </div>
+
+                <div id="results" class="mt-8 space-y-4">
+                    <!-- Search results will appear here -->
+                    <p class="text-gray-400 text-center">
+                        Ready to search across multiple indexers.
+                    </p>
+                </div>
+            </div>
+        </main>
+    </body>
+</html>

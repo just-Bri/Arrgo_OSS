@@ -1,0 +1,507 @@
+{{define "title"}}Admin - Arrgo{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <h1 style="margin-bottom: 20px; color: var(--text-color); font-size: 24px;">Admin Dashboard</h1>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+        <!-- Library Management -->
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Management</h2>
+            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Detect new files and fetch
+                metadata from TMDB/TVDB.</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;"
+                id="scan-buttons">
+                <div id="incoming-shows-button">
+                    {{if .ScanningIncomingShows}}
+                    <form action="/scan/stop?type=incoming_shows" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Incoming Shows
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/incoming/shows" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            📥 Scan Incoming Shows
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+
+                <div id="incoming-movies-button">
+                    {{if .ScanningIncomingMovies}}
+                    <form action="/scan/stop?type=incoming_movies" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Incoming Movies
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/incoming/movies" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            📥 Scan Incoming Movies
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+
+                <div id="show-library-button">
+                    {{if .ScanningShowLibrary}}
+                    <form action="/scan/stop?type=show_library" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Show Library Scan
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/shows" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            🚀 Scan Show Library
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+
+                <div id="movie-library-button">
+                    {{if .ScanningMovieLibrary}}
+                    <form action="/scan/stop?type=movie_library" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            ⏹️ Stop Movie Library Scan
+                        </button>
+                    </form>
+                    {{else}}
+                    <form action="/scan/movies" method="POST">
+                        <button type="submit"
+                            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                            🚀 Scan Movie Library
+                        </button>
+                    </form>
+                    {{end}}
+                </div>
+            </div>
+            <script>
+                let pollInterval = 60000; // Start with 60 seconds
+                let intervalId = null;
+
+                function updateScanButtons() {
+                    fetch('/api/scan/status')
+                        .then(response => response.json())
+                        .then(status => {
+                            // Check if any scan is running
+                            const anyScanRunning = status.incoming_shows || status.incoming_movies ||
+                                status.show_library || status.movie_library;
+
+                            // Adjust polling interval: faster when scans are running, slower when idle
+                            const newInterval = anyScanRunning ? 5000 : 60000;
+                            if (newInterval !== pollInterval) {
+                                pollInterval = newInterval;
+                                if (intervalId) {
+                                    clearInterval(intervalId);
+                                }
+                                intervalId = setInterval(updateScanButtons, pollInterval);
+                            }
+
+                            // Update Incoming Shows button
+                            const incomingShowsBtn = document.getElementById('incoming-shows-button');
+                            if (status.incoming_shows) {
+                                incomingShowsBtn.innerHTML = `
+                                <form action="/scan/stop?type=incoming_shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Incoming Shows
+                                    </button>
+                                </form>
+                            `;
+                            } else {
+                                incomingShowsBtn.innerHTML = `
+                                <form action="/scan/incoming/shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        📥 Scan Incoming Shows
+                                    </button>
+                                </form>
+                            `;
+                            }
+
+                            // Update Incoming Movies button
+                            const incomingMoviesBtn = document.getElementById('incoming-movies-button');
+                            if (status.incoming_movies) {
+                                incomingMoviesBtn.innerHTML = `
+                                <form action="/scan/stop?type=incoming_movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Incoming Movies
+                                    </button>
+                                </form>
+                            `;
+                            } else {
+                                incomingMoviesBtn.innerHTML = `
+                                <form action="/scan/incoming/movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        📥 Scan Incoming Movies
+                                    </button>
+                                </form>
+                            `;
+                            }
+
+                            // Update Show Library button
+                            const showLibraryBtn = document.getElementById('show-library-button');
+                            if (status.show_library) {
+                                showLibraryBtn.innerHTML = `
+                                <form action="/scan/stop?type=show_library" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Show Library Scan
+                                    </button>
+                                </form>
+                            `;
+                            } else {
+                                showLibraryBtn.innerHTML = `
+                                <form action="/scan/shows" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        🚀 Scan Show Library
+                                    </button>
+                                </form>
+                            `;
+                            }
+
+                            // Update Movie Library button
+                            const movieLibraryBtn = document.getElementById('movie-library-button');
+                            if (status.movie_library) {
+                                movieLibraryBtn.innerHTML = `
+                                <form action="/scan/stop?type=movie_library" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        ⏹️ Stop Movie Library Scan
+                                    </button>
+                                </form>
+                            `;
+                            } else {
+                                movieLibraryBtn.innerHTML = `
+                                <form action="/scan/movies" method="POST">
+                                    <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                                        🚀 Scan Movie Library
+                                    </button>
+                                </form>
+                            `;
+                            }
+                        })
+                        .catch(err => console.error('Error fetching scan status:', err));
+                }
+
+                // Initial call and start polling
+                updateScanButtons();
+                intervalId = setInterval(updateScanButtons, pollInterval);
+            </script>
+        </div>
+
+        <script>
+            function scanSubtitles(event) {
+                const btn = document.getElementById('scan-subtitles-btn');
+                const resultDiv = document.getElementById('subtitle-scan-result');
+                const resultContent = document.getElementById('scan-result-content');
+
+                // Check if shift key is pressed for force refresh
+                const forceRefresh = event && event.shiftKey;
+                const url = forceRefresh ? '/admin/subtitles/scan?force=true' : '/admin/subtitles/scan';
+
+                btn.disabled = true;
+                btn.textContent = forceRefresh ? '⏳ Scanning (force refresh)...' : '⏳ Scanning...';
+                resultDiv.style.display = 'none';
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        const cacheNote = forceRefresh ? '' : '<div style="margin-top: 8px; font-size: 11px; color: var(--muted-text); font-style: italic;">Results cached for 24 hours</div>';
+                        resultContent.innerHTML = `
+                        <div style="margin-bottom: 4px;">Movies: ${data.movies_with_subs || 0} with subtitles, ${data.movies_missing || 0} missing (Total: ${data.total_movies || 0})</div>
+                        <div>Episodes: ${data.episodes_with_subs || 0} with subtitles, ${data.episodes_missing || 0} missing (Total: ${data.total_episodes || 0})</div>
+                        ${cacheNote}
+                    `;
+                        resultDiv.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = '🔍 Scan All Media for Subtitles';
+                    })
+                    .catch(err => {
+                        console.error('Error scanning subtitles:', err);
+                        alert('Error scanning subtitles: ' + err.message);
+                        btn.disabled = false;
+                        btn.textContent = '🔍 Scan All Media for Subtitles';
+                    });
+            }
+
+            function queueMissingSubtitles() {
+                const btn = document.getElementById('queue-subtitles-btn');
+
+                btn.disabled = true;
+                btn.textContent = '⏳ Queueing...';
+
+                fetch('/admin/subtitles/queue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message || `Queued ${data.queued_count || 0} media items for subtitle download`);
+                        btn.disabled = false;
+                        btn.textContent = '📥 Queue Missing Subtitles';
+                    })
+                    .catch(err => {
+                        console.error('Error queueing subtitles:', err);
+                        alert('Error queueing subtitles: ' + err.message);
+                        btn.disabled = false;
+                        btn.textContent = '📥 Queue Missing Subtitles';
+                    });
+            }
+        </script>
+
+        <!-- Subtitle Management -->
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Subtitle Management</h2>
+            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Scan media items and queue
+                missing subtitles for download. Scan results are cached for 24 hours. Hold Shift while clicking to force
+                a fresh scan.</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <button id="scan-subtitles-btn" onclick="scanSubtitles(event)"
+                    style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                    🔍 Scan All Media for Subtitles
+                </button>
+                <button id="queue-subtitles-btn" onclick="queueMissingSubtitles()"
+                    style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                    📥 Queue Missing Subtitles
+                </button>
+            </div>
+            <div id="subtitle-scan-result"
+                style="margin-top: 15px; padding: 12px; background: var(--border-color); border-radius: 4px; display: none;">
+                <div style="color: var(--text-color); font-size: 13px;">
+                    <div style="margin-bottom: 8px;"><strong>Scan Results:</strong></div>
+                    <div id="scan-result-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">User Info</h2>
+            <div style="color: var(--text-color); font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="color: var(--muted-text);">Current User:</span>
+                    <span style="font-weight: 500;">{{.Username}}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--muted-text);">Role:</span>
+                    <span style="color: var(--accent-color); font-weight: bold;">Administrator</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--danger-color);">
+            <h2 style="margin: 0 0 12px 0; color: var(--danger-color); font-size: 18px;">Danger Zone</h2>
+            <p style="color: var(--muted-text); font-size: 12px; margin-bottom: 15px;">These actions are permanent and
+                cannot be undone.</p>
+            <form action="/admin/nuke" method="POST"
+                onsubmit="return confirm('WARNING: This will permanently delete ALL movies, shows, and requests from the database. This cannot be undone. Are you absolutely sure?')">
+                <button type="submit"
+                    style="width: 100%; padding: 10px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">
+                    ☢️ Nuke Database (Library & Requests)
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {{if or .IncomingMovies .IncomingShows}}
+    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin: 30px 0 20px 0;">
+        <h1 style="margin: 0; color: var(--text-color); font-size: 24px;">Incoming Media</h1>
+        <div style="display: flex; gap: 10px;">
+            {{if .IncomingMovies}}
+            <form action="/import/movies/all" method="POST">
+                <button type="submit"
+                    style="padding: 8px 15px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                    🎬 Import All Movies
+                </button>
+            </form>
+            {{end}}
+            {{if .IncomingShows}}
+            <form action="/import/shows/all" method="POST">
+                <button type="submit"
+                    style="padding: 8px 15px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                    📺 Import All Shows
+                </button>
+            </form>
+            {{end}}
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 15px;">
+        <!-- Incoming Movies -->
+        {{if .IncomingMovies}}
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--accent-color);">
+            <h2 style="margin: 0 0 15px 0; font-size: 18px; color: var(--accent-color);">Movies ({{len
+                .IncomingMovies}})</h2>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                {{range .IncomingMovies}}
+                <li
+                    style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                    {{if .PosterPath}}
+                    <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
+                        <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75"
+                            style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    </a>
+                    {{else}}
+                    <div
+                        style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">
+                        No Poster</div>
+                    {{end}}
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
+                            <div style="min-width: 0;">
+                                <a href="/movies/details?id={{.ID}}" style="text-decoration: none;">
+                                    <div
+                                        style="font-size: 14px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        {{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                                </a>
+                                <div
+                                    style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                                    <span
+                                        style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
+                                    {{if .Quality}}
+                                    <span
+                                        style="background: var(--quality-bg); padding: 1px 4px; border-radius: 4px; color: var(--quality-text);">{{.Quality}}</span>
+                                    {{end}}
+                                    {{if .SeedingStatus}}
+                                    {{if .SeedingStatus.TorrentExists}}
+                                    {{if .SeedingStatus.IsSeeding}}
+                                    {{if .SeedingStatus.MeetsCriteria}}
+                                    <span
+                                        style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                        title="Seeding complete ({{printf " %.1f" .SeedingStatus.Ratio}} ratio,
+                                        {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                    {{else}}
+                                    <span
+                                        style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                        title="Ratio: {{printf " %.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f"
+                                        .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                    {{end}}
+                                    {{else}}
+                                    <span
+                                        style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸
+                                        Not Seeding</span>
+                                    {{end}}
+                                    {{end}}
+                                    {{end}}
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                                {{if eq .Status "matched"}}
+                                <form action="/rename/movie?id={{.ID}}" method="POST">
+                                    <button type="submit"
+                                        style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Import</button>
+                                </form>
+                                {{else if eq .Status "discovered"}}
+                                <form action="/movies/details?id={{.ID}}" method="GET">
+                                    <button type="submit"
+                                        style="padding: 4px 8px; background: var(--warning-color, #ff9800); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Match</button>
+                                </form>
+                                {{end}}
+                            </div>
+                        </div>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+
+        <!-- Incoming Shows -->
+        {{if .IncomingShows}}
+        <div
+            style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--success-color);">
+            <h2 style="margin: 0 0 15px 0; font-size: 18px; color: var(--success-color);">Shows ({{len .IncomingShows}})
+            </h2>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                {{range .IncomingShows}}
+                <li
+                    style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                    {{if .PosterPath}}
+                    <a href="/shows/details?id={{.ID}}" style="flex-shrink: 0;">
+                        <img src="/images/shows/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75"
+                            style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                    </a>
+                    {{else}}
+                    <div
+                        style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">
+                        No Poster</div>
+                    {{end}}
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
+                            <div style="min-width: 0;">
+                                <a href="/shows/details?id={{.ID}}" style="text-decoration: none;">
+                                    <div
+                                        style="font-size: 14px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        {{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                                </a>
+                                <div
+                                    style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                                    <span
+                                        style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
+                                    {{if .Seasons}}
+                                    <span
+                                        style="background: var(--accent-color); padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">
+                                        Seasons: {{range $i, $s := .Seasons}}{{if $i}}, {{end}}S{{printf "%02d"
+                                        $s}}{{end}}
+                                    </span>
+                                    {{end}}
+                                    {{if .SeedingStatus}}
+                                    {{if .SeedingStatus.TorrentExists}}
+                                    {{if .SeedingStatus.IsSeeding}}
+                                    {{if .SeedingStatus.MeetsCriteria}}
+                                    <span
+                                        style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                        title="Seeding complete ({{printf " %.1f" .SeedingStatus.Ratio}} ratio,
+                                        {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                    {{else}}
+                                    <span
+                                        style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                        title="Ratio: {{printf " %.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f"
+                                        .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                    {{end}}
+                                    {{else}}
+                                    <span
+                                        style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸
+                                        Not Seeding</span>
+                                    {{end}}
+                                    {{end}}
+                                    {{end}}
+                                </div>
+                            </div>
+                            {{if eq .Status "matched"}}
+                            <form action="/rename/show?id={{.ID}}" method="POST">
+                                <button type="submit"
+                                    style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
+                            </form>
+                            {{end}}
+                        </div>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}
