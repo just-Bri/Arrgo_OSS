@@ -104,7 +104,8 @@ If your deployment is stuck using old code (common with SMB shares), click **Edi
 - [x] Show/Season/Episode Support
 - [x] Subtitle Management (OpenSubtitles)
 - [x] qBittorrent Integration & Automation
-- [ ] Advanced Library Filtering & Bulk Actions
+- [ ] Advanced Library Filtering
+- [ ] Request multiple items at once via multiselect
 
 ## ⚖️ License
 
