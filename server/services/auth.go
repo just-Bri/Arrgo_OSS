@@ -92,3 +92,30 @@ func GetUserByID(userID int64) (*models.User, error) {
 
 	return &user, nil
 }
+
+func GetAllUsers() ([]models.User, error) {
+	rows, err := database.DB.Query("SELECT id, username, email, is_admin, created_at, updated_at FROM users ORDER BY username ASC")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.IsAdmin,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}

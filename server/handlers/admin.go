@@ -36,7 +36,7 @@ type IncomingMovieWithSeeding struct {
 
 type IncomingShowWithSeasons struct {
 	models.Show
-	Seasons []int // Season numbers that are in incoming
+	Seasons       []int                   // Season numbers that are in incoming
 	SeedingStatus *services.SeedingStatus // Seeding status (from any episode with torrent_hash)
 }
 
@@ -47,6 +47,7 @@ type AdminPageData struct {
 	SearchQuery    string
 	IncomingMovies []IncomingMovieWithSeeding
 	IncomingShows  []IncomingShowWithSeasons
+	Users          []models.User
 
 	ScanningIncomingMovies bool
 	ScanningIncomingShows  bool
@@ -113,7 +114,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	incomingShows := make([]IncomingShowWithSeasons, 0, len(incomingShowsRaw))
 	for _, show := range incomingShowsRaw {
 		seasons := getIncomingSeasonsForShow(show.ID, cfg.IncomingShowsPath)
-		
+
 		// Get seeding status from any episode with a torrent hash
 		var seedingStatus *services.SeedingStatus
 		if qb != nil {
@@ -132,12 +133,18 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		
+
 		incomingShows = append(incomingShows, IncomingShowWithSeasons{
 			Show:          show,
 			Seasons:       seasons,
 			SeedingStatus: seedingStatus,
 		})
+	}
+
+	allUsers, err := services.GetAllUsers()
+	if err != nil {
+		slog.Error("Error getting all users for admin", "error", err)
+		allUsers = []models.User{}
 	}
 
 	data := AdminPageData{
@@ -147,6 +154,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		SearchQuery:    "",
 		IncomingMovies: incomingMovies,
 		IncomingShows:  incomingShows,
+		Users:          allUsers,
 
 		ScanningIncomingMovies: services.IsScanning(services.ScanIncomingMovies),
 		ScanningIncomingShows:  services.IsScanning(services.ScanIncomingShows),

@@ -290,7 +290,7 @@
             </div>
         </div>
 
-        <!-- System Info -->
+        <!-- User Info -->
         <div
             style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">User Info</h2>
@@ -299,9 +299,32 @@
                     <span style="color: var(--muted-text);">Current User:</span>
                     <span style="font-weight: 500;">{{.Username}}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
                     <span style="color: var(--muted-text);">Role:</span>
                     <span style="color: var(--accent-color); font-weight: bold;">Administrator</span>
+                </div>
+
+                <h3
+                    style="margin: 0 0 12px 0; color: var(--text-color); font-size: 14px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    Registered Users ({{len .Users}})</h3>
+                <div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 5px;"
+                    class="custom-scrollbar">
+                    {{range .Users}}
+                    <div
+                        style="padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 500; font-size: 13px;">{{.Username}}</span>
+                            {{if .IsAdmin}}
+                            <span
+                                style="font-size: 10px; background: var(--accent-color); color: white; padding: 1px 6px; border-radius: 10px; font-weight: bold;">ADMIN</span>
+                            {{end}}
+                        </div>
+                        <div style="color: var(--muted-text); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                            title="{{.Email}}">
+                            {{.Email}}
+                        </div>
+                    </div>
+                    {{end}}
                 </div>
             </div>
         </div>
