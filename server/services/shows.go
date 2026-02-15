@@ -248,12 +248,11 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			err := database.DB.QueryRow(`
 				SELECT id FROM shows 
 				WHERE tvdb_id = $1 
-				AND path LIKE $2 || '%'
 				LIMIT 1`,
-				tvdbID, cfg.IncomingShowsPath).Scan(&existingID)
+				tvdbID).Scan(&existingID)
 			if err == nil && existingID > 0 {
 				showID = existingID
-				slog.Debug("Reusing existing incoming show by TVDB ID",
+				slog.Debug("Reusing existing show by TVDB ID",
 					"show_id", showID,
 					"tvdb_id", tvdbID,
 					"new_path", showPath)
@@ -267,9 +266,8 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			err := database.DB.QueryRow(`
 				SELECT id, year FROM shows 
 				WHERE LOWER(title) = LOWER($1)
-				AND path LIKE $2 || '%'
 				LIMIT 1`,
-				title, cfg.IncomingShowsPath).Scan(&existingID, &existingYear)
+				title).Scan(&existingID, &existingYear)
 			if err == nil && existingID > 0 {
 				// Match year if both have years and they match, or if neither has a year
 				yearMatch := (year == 0 && !existingYear.Valid) ||
@@ -599,7 +597,9 @@ func upsertEpisode(seasonID int, episodeNum int, title string, path string, qual
 			size = EXCLUDED.size,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	database.DB.Exec(query, seasonID, episodeNum, title, path, quality, size)
+	if _, err := database.DB.Exec(query, seasonID, episodeNum, title, path, quality, size); err != nil {
+		slog.Error("Error upserting episode", "season_id", seasonID, "episode", episodeNum, "path", path, "error", err)
+	}
 }
 
 func GetShowCount(excludeIncomingPath string) (int, error) {

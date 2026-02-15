@@ -81,8 +81,7 @@ func InitSchema() error {
 		torrent_hash VARCHAR(255),
 		imported_at TIMESTAMP,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		UNIQUE(season_id, episode_number)
+		UNIQUE(file_path)
 	);
 
 	-- Requests table

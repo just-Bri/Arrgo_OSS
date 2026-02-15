@@ -69,7 +69,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	// Scan paths based on preference
 	var paths []string
 	if onlyIncoming {
-		paths = []string{cfg.IncomingMoviesPath, cfg.IncomingShowsPath}
+		paths = []string{cfg.IncomingMoviesPath}
 	} else {
 		paths = []string{cfg.MoviesPath}
 	}
