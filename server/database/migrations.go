@@ -160,9 +160,15 @@ func InitSchema() error {
 	ON CONFLICT (name, type) DO NOTHING;
 	`
 
-	_, err := DB.Exec(schemaSQL)
-	if err != nil {
+	if _, err := DB.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("failed to initialize database schema: %w", err)
+	}
+
+	// Drop the old constraint if it exists to allow for duplicate episode numbers (mislabeled files)
+	// This ensures existing installations are updated automatically.
+	dropConstraintSQL := "ALTER TABLE episodes DROP CONSTRAINT IF EXISTS episodes_season_id_episode_number_key;"
+	if _, err := DB.Exec(dropConstraintSQL); err != nil {
+		fmt.Printf("Warning: failed to drop episodes constraint: %v\n", err)
 	}
 
 	return nil
