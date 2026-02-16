@@ -54,12 +54,37 @@ func CreateRequest(req models.Request) error {
 		}
 	}
 
-	slog.Info("Creating new request", "title", req.Title, "media_type", req.MediaType, "seasons", req.Seasons, "user_id", req.UserID)
+	// For TV shows, try to fetch English title from TVDB before creating the request
+	// This allows torrent searches to use both the localized and English titles
+	originalTitle := ""
+	if req.MediaType == "show" && req.TVDBID != "" {
+		cfg := config.Load()
+		if cfg.TVDBAPIKey != "" {
+			details, err := GetTVDBShowDetails(cfg, req.TVDBID)
+			if err == nil {
+				// Extract English title from translations
+				for _, trans := range details.Translations.NameTranslations {
+					if trans.Language == "eng" && trans.Name != "" {
+						originalTitle = trans.Name
+						slog.Info("Found English title for new show request",
+							"tvdb_id", req.TVDBID,
+							"primary_title", req.Title,
+							"english_title", originalTitle)
+						break
+					}
+				}
+			} else {
+				slog.Warn("Failed to fetch TVDB details for new request", "tvdb_id", req.TVDBID, "error", err)
+			}
+		}
+	}
+
+	slog.Info("Creating new request", "title", req.Title, "original_title", originalTitle, "media_type", req.MediaType, "seasons", req.Seasons, "user_id", req.UserID)
 	query := `
-		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		INSERT INTO requests (user_id, title, original_title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
-	_, err := database.DB.Exec(query, req.UserID, req.Title, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
+	_, err := database.DB.Exec(query, req.UserID, req.Title, originalTitle, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
 	if err == nil {
 		slog.Info("Successfully created new request", "title", req.Title, "media_type", req.MediaType, "status", "pending")
 	}
