@@ -91,6 +91,12 @@ type TVDBShowDetails struct {
 		ID   string `json:"id"`
 		Type int    `json:"type"`
 	} `json:"remoteIds"`
+	Translations struct {
+		NameTranslations []struct {
+			Name     string `json:"name"`
+			Language string `json:"language"`
+		} `json:"nameTranslations"`
+	} `json:"translations"`
 }
 
 type TVDBSeasonEpisodesResponse struct {
@@ -769,6 +775,41 @@ func MatchShow(cfg *config.Config, showID int) error {
 	if err != nil {
 		slog.Error("Error updating DB for show", "title", s.Title, "error", err)
 		return err
+	}
+
+	// 5.5. Extract English title from translations and update related requests
+	// This is crucial for non-English shows where the primary title is in another language
+	englishTitle := ""
+	for _, trans := range details.Translations.NameTranslations {
+		// Look for English translation (language code "eng")
+		if trans.Language == "eng" && trans.Name != "" {
+			englishTitle = trans.Name
+			slog.Info("Found English translation for show",
+				"tvdb_id", matchedTVDBID,
+				"primary_title", details.Name,
+				"english_title", englishTitle)
+			break
+		}
+	}
+
+	// Update any pending/downloading requests for this show with the English title
+	if englishTitle != "" && englishTitle != details.Name {
+		_, err = database.DB.Exec(`
+			UPDATE requests 
+			SET original_title = $1, updated_at = CURRENT_TIMESTAMP 
+			WHERE tvdb_id = $2 
+			AND media_type = 'show' 
+			AND status IN ('pending', 'downloading')
+			AND (original_title IS NULL OR original_title = '')`,
+			englishTitle, matchedTVDBID)
+		if err != nil {
+			slog.Warn("Failed to update requests with English title", "tvdb_id", matchedTVDBID, "error", err)
+		} else {
+			slog.Info("Updated requests with English title",
+				"tvdb_id", matchedTVDBID,
+				"primary_title", details.Name,
+				"english_title", englishTitle)
+		}
 	}
 
 	// 6. Sync episode titles from TVDB

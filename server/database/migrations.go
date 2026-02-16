@@ -89,6 +89,7 @@ func InitSchema() error {
 		id SERIAL PRIMARY KEY,
 		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 		title VARCHAR(255) NOT NULL,
+		original_title VARCHAR(255),
 		media_type VARCHAR(20) NOT NULL,
 		tmdb_id VARCHAR(50),
 		tvdb_id VARCHAR(50),

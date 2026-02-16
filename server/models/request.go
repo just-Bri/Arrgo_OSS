@@ -3,21 +3,22 @@ package models
 import "time"
 
 type Request struct {
-	ID           int        `json:"id"`
-	UserID       int        `json:"user_id"`
-	Username     string     `json:"username,omitempty"` // For display
-	Title        string     `json:"title"`
-	MediaType    string     `json:"media_type"` // "movie" or "show"
-	TMDBID       string     `json:"tmdb_id,omitempty"`
-	TVDBID       string     `json:"tvdb_id,omitempty"`
-	IMDBID       string     `json:"imdb_id,omitempty"`
-	Year         int        `json:"year"`
-	PosterPath   string     `json:"poster_path"`
-	Overview     string     `json:"overview"`
-	Seasons      string     `json:"seasons,omitempty"` // Comma-separated list of season numbers
-	Status       string     `json:"status"`            // "pending", "downloading", "completed", "cancelled", "not_found"
-	RetryCount   int        `json:"retry_count"`
-	LastSearchAt *time.Time `json:"last_search_at,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID            int        `json:"id"`
+	UserID        int        `json:"user_id"`
+	Username      string     `json:"username,omitempty"` // For display
+	Title         string     `json:"title"`
+	OriginalTitle string     `json:"original_title,omitempty"` // English/original language title for torrent searches
+	MediaType     string     `json:"media_type"`               // "movie" or "show"
+	TMDBID        string     `json:"tmdb_id,omitempty"`
+	TVDBID        string     `json:"tvdb_id,omitempty"`
+	IMDBID        string     `json:"imdb_id,omitempty"`
+	Year          int        `json:"year"`
+	PosterPath    string     `json:"poster_path"`
+	Overview      string     `json:"overview"`
+	Seasons       string     `json:"seasons,omitempty"` // Comma-separated list of season numbers
+	Status        string     `json:"status"`            // "pending", "downloading", "completed", "cancelled", "not_found"
+	RetryCount    int        `json:"retry_count"`
+	LastSearchAt  *time.Time `json:"last_search_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }

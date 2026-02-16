@@ -68,7 +68,7 @@ func CreateRequest(req models.Request) error {
 
 func GetRequests() ([]models.Request, error) {
 	query := `
-		SELECT r.id, r.user_id, u.username, r.title, r.media_type, r.tmdb_id, r.tvdb_id, r.imdb_id, r.year, r.poster_path, r.overview, r.seasons, r.status, r.retry_count, r.last_search_at, r.created_at, r.updated_at
+		SELECT r.id, r.user_id, u.username, r.title, r.original_title, r.media_type, r.tmdb_id, r.tvdb_id, r.imdb_id, r.year, r.poster_path, r.overview, r.seasons, r.status, r.retry_count, r.last_search_at, r.created_at, r.updated_at
 		FROM requests r
 		JOIN users u ON r.user_id = u.id
 		ORDER BY r.created_at DESC
@@ -82,14 +82,15 @@ func GetRequests() ([]models.Request, error) {
 	var requests []models.Request
 	for rows.Next() {
 		var req models.Request
-		var tmdbID, tvdbID, imdbID, seasons sql.NullString
+		var originalTitle, tmdbID, tvdbID, imdbID, seasons sql.NullString
 		var lastSearchAt sql.NullTime
-		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &req.MediaType, &tmdbID, &tvdbID, &imdbID, &req.Year, &req.PosterPath, &req.Overview, &seasons, &req.Status, &req.RetryCount, &lastSearchAt, &req.CreatedAt, &req.UpdatedAt)
+		err := rows.Scan(&req.ID, &req.UserID, &req.Username, &req.Title, &originalTitle, &req.MediaType, &tmdbID, &tvdbID, &imdbID, &req.Year, &req.PosterPath, &req.Overview, &seasons, &req.Status, &req.RetryCount, &lastSearchAt, &req.CreatedAt, &req.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 		// Decode unicode escape sequences in title (e.g., \u0026 -> &)
 		req.Title = decodeUnicodeEscapes(req.Title)
+		req.OriginalTitle = originalTitle.String
 		req.TMDBID = tmdbID.String
 		req.TVDBID = tvdbID.String
 		req.IMDBID = imdbID.String

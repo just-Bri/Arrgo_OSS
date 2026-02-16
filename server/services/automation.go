@@ -913,6 +913,24 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	// Get search variants (e.g., "In & Out" -> ["In & Out", "In and Out"])
 	variants := ExpandSearchQuery(searchQuery)
 
+	// If we have an original title (English title for non-English content), add it as a search variant
+	// This is crucial for shows like "Como Agua Para Chocolate" which should also search for "Like Water For Chocolate"
+	if r.OriginalTitle != "" && r.OriginalTitle != r.Title {
+		slog.Info("Adding original title as search variant",
+			"request_id", r.ID,
+			"localized_title", r.Title,
+			"original_title", r.OriginalTitle)
+
+		originalQuery := r.OriginalTitle
+		if r.Year > 0 {
+			originalQuery = fmt.Sprintf("%s %d", r.OriginalTitle, r.Year)
+		}
+
+		// Add original title variants to the search
+		originalVariants := ExpandSearchQuery(originalQuery)
+		variants = append(variants, originalVariants...)
+	}
+
 	// Track seen results by info hash to avoid duplicates
 	seenHashes := make(map[string]bool)
 	allResults := make([]TorrentSearchResult, 0)
