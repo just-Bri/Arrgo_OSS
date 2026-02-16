@@ -172,5 +172,12 @@ func InitSchema() error {
 		fmt.Printf("Warning: failed to drop episodes constraint: %v\n", err)
 	}
 
+	// Add original_title column to requests table if it doesn't exist
+	// This is needed for dual-title torrent searching (English + localized titles)
+	addOriginalTitleSQL := "ALTER TABLE requests ADD COLUMN IF NOT EXISTS original_title VARCHAR(255);"
+	if _, err := DB.Exec(addOriginalTitleSQL); err != nil {
+		fmt.Printf("Warning: failed to add original_title column: %v\n", err)
+	}
+
 	return nil
 }
