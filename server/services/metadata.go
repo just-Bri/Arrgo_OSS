@@ -97,6 +97,10 @@ type TVDBShowDetails struct {
 			Language string `json:"language"`
 		} `json:"nameTranslations"`
 	} `json:"translations"`
+	Aliases []struct {
+		Name     string `json:"name"`
+		Language string `json:"language"`
+	} `json:"aliases"`
 }
 
 type TVDBSeasonEpisodesResponse struct {
@@ -784,16 +788,27 @@ func MatchShow(cfg *config.Config, showID int) error {
 		// Look for English translation (language code "eng")
 		if trans.Language == "eng" && trans.Name != "" {
 			englishTitle = trans.Name
-			slog.Info("Found English translation for show",
-				"tvdb_id", matchedTVDBID,
-				"primary_title", details.Name,
-				"english_title", englishTitle)
 			break
+		}
+	}
+
+	// Fallback to aliases if translation is missing or same as primary title
+	if englishTitle == "" || englishTitle == details.Name {
+		for _, alias := range details.Aliases {
+			if alias.Language == "eng" && alias.Name != "" {
+				englishTitle = alias.Name
+				break
+			}
 		}
 	}
 
 	// Update any pending/downloading requests for this show with the English title
 	if englishTitle != "" && englishTitle != details.Name {
+		slog.Info("Updating related requests with English title",
+			"tvdb_id", matchedTVDBID,
+			"primary_title", details.Name,
+			"english_title", englishTitle)
+
 		_, err = database.DB.Exec(`
 			UPDATE requests 
 			SET original_title = $1, updated_at = CURRENT_TIMESTAMP 
@@ -805,9 +820,8 @@ func MatchShow(cfg *config.Config, showID int) error {
 		if err != nil {
 			slog.Warn("Failed to update requests with English title", "tvdb_id", matchedTVDBID, "error", err)
 		} else {
-			slog.Info("Updated requests with English title",
+			slog.Info("Successfully updated requests with English title",
 				"tvdb_id", matchedTVDBID,
-				"primary_title", details.Name,
 				"english_title", englishTitle)
 		}
 	}

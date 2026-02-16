@@ -62,19 +62,34 @@ func CreateRequest(req models.Request) error {
 		if cfg.TVDBAPIKey != "" {
 			details, err := GetTVDBShowDetails(cfg, req.TVDBID)
 			if err == nil {
-				// Extract English title from translations
+				// 1. Try translations first
 				for _, trans := range details.Translations.NameTranslations {
 					if trans.Language == "eng" && trans.Name != "" {
 						originalTitle = trans.Name
-						slog.Info("Found English title for new show request",
-							"tvdb_id", req.TVDBID,
-							"primary_title", req.Title,
-							"english_title", originalTitle)
 						break
 					}
 				}
+
+				// 2. Fallback to aliases if translation is missing or same as localized title
+				if originalTitle == "" || originalTitle == req.Title {
+					for _, alias := range details.Aliases {
+						if alias.Language == "eng" && alias.Name != "" {
+							originalTitle = alias.Name
+							break
+						}
+					}
+				}
+
+				if originalTitle != "" {
+					slog.Info("Found English title for new show request",
+						"tvdb_id", req.TVDBID,
+						"primary_title", req.Title,
+						"english_title", originalTitle)
+				} else {
+					slog.Debug("No English title found in TVDB translations or aliases", "tvdb_id", req.TVDBID)
+				}
 			} else {
-				slog.Warn("Failed to fetch TVDB details for new request", "tvdb_id", req.TVDBID, "error", err)
+				slog.Warn("Failed to fetch TVDB details for new request - check network/API key", "tvdb_id", req.TVDBID, "error", err)
 			}
 		}
 	}
@@ -85,10 +100,13 @@ func CreateRequest(req models.Request) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	`
 	_, err := database.DB.Exec(query, req.UserID, req.Title, originalTitle, req.MediaType, req.TMDBID, req.TVDBID, req.Year, req.PosterPath, req.Overview, req.Seasons)
-	if err == nil {
-		slog.Info("Successfully created new request", "title", req.Title, "media_type", req.MediaType, "status", "pending")
+	if err != nil {
+		slog.Error("Failed to insert request into database", "error", err, "title", req.Title)
+		return err
 	}
-	return err
+
+	slog.Info("Successfully created new request", "title", req.Title, "original_title", originalTitle, "media_type", req.MediaType, "status", "pending")
+	return nil
 }
 
 func GetRequests() ([]models.Request, error) {
