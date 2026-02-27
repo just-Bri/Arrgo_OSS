@@ -372,14 +372,19 @@ func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := config.Load()
-	count := 0
 
-	// Trigger sync in background for all movies that have subtitles but aren't synced
+	// Gather all movies and episodes that need syncing
+	type syncTask struct {
+		isMovie bool
+		id      int
+	}
+	var tasks []syncTask
+
+	// Movies
 	movies, _ := services.GetMovies()
 	for _, m := range movies {
 		if m.Path != "" && services.HasSubtitles(m.Path) && !m.SubtitlesSynced {
-			count++
-			go services.SyncSubtitlesForMovie(cfg, m.ID)
+			tasks = append(tasks, syncTask{isMovie: true, id: m.ID})
 		}
 	}
 
@@ -393,16 +398,32 @@ func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			var synced bool
 			if err := rows.Scan(&id, &path, &synced); err == nil {
 				if path != "" && services.HasSubtitles(path) && !synced {
-					count++
-					go services.SyncSubtitlesForEpisode(cfg, id)
+					tasks = append(tasks, syncTask{isMovie: false, id: id})
 				}
 			}
 		}
 	}
 
+	// Process tasks sequentially in a single background goroutine
+	go func(cfg *config.Config, tasks []syncTask) {
+		slog.Info("Starting sequential background subtitle sync", "total_tasks", len(tasks))
+		for _, task := range tasks {
+			var err error
+			if task.isMovie {
+				err = services.SyncSubtitlesForMovie(cfg, task.id)
+			} else {
+				err = services.SyncSubtitlesForEpisode(cfg, task.id)
+			}
+			if err != nil {
+				slog.Error("Sequential background subtitle sync failed", "is_movie", task.isMovie, "id", task.id, "error", err)
+			}
+		}
+		slog.Info("Finished sequential background subtitle sync", "total_tasks", len(tasks))
+	}(cfg, tasks)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": fmt.Sprintf("Triggered background sync for %d items", count),
-		"count":   count,
+		"message": fmt.Sprintf("Started sequential background sync for %d items", len(tasks)),
+		"count":   len(tasks),
 	})
 }

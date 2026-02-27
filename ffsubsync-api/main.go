@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 	"path/filepath"
+	"sync" // Added for mutex
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -14,6 +15,11 @@ type SyncRequest struct {
 	Video    string `json:"video"`
 	Subtitle string `json:"subtitle"`
 }
+
+var (
+	// syncMutex ensures only one ffsubsync process runs at a time to prevent CPU exhaustion.
+	syncMutex sync.Mutex
+)
 
 func main() {
 	e := echo.New()
@@ -31,17 +37,22 @@ func main() {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing video or subtitle path"})
 		}
 
-		// Use the absolute path provided in the request as they are mapped in the same way 
+		// Use the absolute path provided in the request as they are mapped in the same way
 		// between Arrgo and this container via the shared media volume.
 		videoPath := req.Video
 		subtitlePath := req.Subtitle
+
+		// Acquire lock to serialize sync tasks
+		syncMutex.Lock()
+		defer syncMutex.Unlock()
 
 		log.Printf("Starting subtitle sync for video: %s, subtitle: %s", filepath.Base(videoPath), filepath.Base(subtitlePath))
 
 		// ffsubsync <video> -i <subtitle> -o <subtitle>
 		// We use the same path for input and output, directly overwriting the file.
-		cmd := exec.Command("ffsubsync", videoPath, "-i", subtitlePath, "-o", subtitlePath)
-		
+		// Wrapped in 'nice -n 15' to give it lower CPU priority.
+		cmd := exec.Command("nice", "-n", "15", "ffsubsync", videoPath, "-i", subtitlePath, "-o", subtitlePath)
+
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("ffsubsync failed: %v\nOutput: %s", err, string(output))
