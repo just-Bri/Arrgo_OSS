@@ -35,12 +35,14 @@ func init() {
 type IncomingMovieWithSeeding struct {
 	models.Movie
 	SeedingStatus *services.SeedingStatus
+	IsDownloading bool
 }
 
 type IncomingShowWithSeasons struct {
 	models.Show
 	Seasons       []int                   // Season numbers that are in incoming
 	SeedingStatus *services.SeedingStatus // Seeding status (from any episode with torrent_hash)
+	IsDownloading bool
 }
 
 type AdminPageData struct {
@@ -104,12 +106,15 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	incomingMovies := make([]IncomingMovieWithSeeding, 0, len(incomingMoviesRaw))
 	for _, movie := range incomingMoviesRaw {
 		var seedingStatus *services.SeedingStatus
+		isDownloading := false
 		if movie.TorrentHash != "" && allTorrents != nil {
 			seedingStatus = services.GetSeedingStatusFromList(allTorrents, movie.TorrentHash)
+			isDownloading = services.IsTorrentStillDownloadingFromList(allTorrents, movie.TorrentHash)
 		}
 		incomingMovies = append(incomingMovies, IncomingMovieWithSeeding{
 			Movie:         movie,
 			SeedingStatus: seedingStatus,
+			IsDownloading: isDownloading,
 		})
 	}
 
@@ -192,6 +197,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 			Show:          show,
 			Seasons:       seasons,
 			SeedingStatus: seedingStatus,
+			IsDownloading: downloadingShowMap[show.ID],
 		})
 	}
 

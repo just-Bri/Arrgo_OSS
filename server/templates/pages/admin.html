@@ -296,7 +296,7 @@
                 const btn = document.getElementById(btnId);
                 const resultDiv = document.getElementById('dedupe-result');
                 const resultContent = document.getElementById('dedupe-result-content');
-                
+
                 const url = type === 'movies' ? '/api/admin/dedupe/movies' : '/api/admin/dedupe/shows';
 
                 btn.disabled = true;
@@ -339,7 +339,8 @@
         <div
             style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
             <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Maintenance</h2>
-            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Deduplicate movies and shows by merging duplicate folders and keeping the largest video files when duplicates exist.</p>
+            <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Deduplicate movies and shows by
+                merging duplicate folders and keeping the largest video files when duplicates exist.</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
                 <button id="dedupe-movies-btn" onclick="deduplicate('movies')"
                     style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
@@ -499,6 +500,11 @@
                                 </div>
                             </div>
                             <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                                {{if .IsDownloading}}
+                                <button type="button" disabled
+                                    style="padding: 4px 8px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; font-size: 11px; cursor: not-allowed;"
+                                    title="Wait for download to finish">Downloading...</button>
+                                {{else}}
                                 {{if eq .Status "matched"}}
                                 <form action="/rename/movie?id={{.ID}}" method="POST">
                                     <button type="submit"
@@ -509,6 +515,7 @@
                                     <button type="submit"
                                         style="padding: 4px 8px; background: var(--warning-color, #ff9800); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Match</button>
                                 </form>
+                                {{end}}
                                 {{end}}
                             </div>
                         </div>
@@ -581,12 +588,20 @@
                                     {{end}}
                                 </div>
                             </div>
-                            {{if eq .Status "matched"}}
-                            <form action="/rename/show?id={{.ID}}" method="POST">
-                                <button type="submit"
-                                    style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
-                            </form>
-                            {{end}}
+                            <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                                {{if .IsDownloading}}
+                                <button type="button" disabled
+                                    style="padding: 4px 8px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; font-size: 11px; cursor: not-allowed;"
+                                    title="Wait for download to finish">Downloading...</button>
+                                {{else}}
+                                {{if eq .Status "matched"}}
+                                <form action="/rename/show?id={{.ID}}" method="POST">
+                                    <button type="submit"
+                                        style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
+                                </form>
+                                {{end}}
+                                {{end}}
+                            </div>
                         </div>
                     </div>
                 </li>

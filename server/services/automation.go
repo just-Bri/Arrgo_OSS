@@ -704,11 +704,90 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 			"season_index", i+1,
 			"total_seasons", len(seasonsToProcess),
 			"title", r.Title)
-		if err := s.processSingleSeason(ctx, singleSeasonReq); err != nil {
-			slog.Error("Failed to process season",
+
+		err := s.processSingleRequest(ctx, singleSeasonReq)
+		if err != nil {
+			slog.Warn("Failed to find/process season pack, attempting fallback to individual episodes",
 				"request_id", r.ID,
 				"season", seasonStr,
 				"error", err)
+
+			// Fallback: fetch TVDB episodes for this season and search for them individually
+			if r.TVDBID != "" {
+				episodes, epErr := GetTVDBShowEpisodes(s.cfg, r.TVDBID)
+				if epErr == nil && len(episodes) > 0 {
+					seasonNum, _ := strconv.Atoi(seasonStr)
+
+					// Get existing downloaded episodes for this request to avoid re-downloading
+					existingEpisodes := make(map[int]bool)
+					rows, hashErr := database.DB.Query(`SELECT torrent_hash FROM downloads WHERE request_id = $1 AND status != 'cancelled'`, r.ID)
+					if hashErr == nil {
+						defer rows.Close()
+						for rows.Next() {
+							var hash string
+							if err := rows.Scan(&hash); err == nil {
+								// Check if torrent title indicates an episode
+								normalizedHash := strings.ToLower(hash)
+								torrent, tErr := s.qb.GetTorrentByHash(ctx, normalizedHash)
+								if tErr == nil && torrent != nil {
+									titleLower := strings.ToLower(torrent.Name)
+									// Quick scan for S01E05 patterns
+									epRegex := regexp.MustCompile(fmt.Sprintf(`s%02de(\d{1,2})|\b%dx(\d{1,2})\b`, seasonNum, seasonNum))
+									matches := epRegex.FindAllStringSubmatch(titleLower, -1)
+									for _, match := range matches {
+										if len(match) > 1 && match[1] != "" {
+											if epNum, err := strconv.Atoi(match[1]); err == nil {
+												existingEpisodes[epNum] = true
+											}
+										} else if len(match) > 2 && match[2] != "" {
+											if epNum, err := strconv.Atoi(match[2]); err == nil {
+												existingEpisodes[epNum] = true
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					fallbackSuccess := false
+					for _, ep := range episodes {
+						if ep.SeasonNumber == seasonNum && ep.Number > 0 {
+							if existingEpisodes[ep.Number] {
+								slog.Debug("Skipping individual episode, already downloading or completed", "request_id", r.ID, "season", seasonNum, "episode", ep.Number)
+								fallbackSuccess = true
+								continue
+							}
+
+							epReq := singleSeasonReq
+							// Clear Seasons field so it does not trigger season logic over again
+							epReq.Seasons = ""
+							// Format the title to search exactly for SXXEYY
+							epReq.Title = fmt.Sprintf("%s S%02dE%02d", r.Title, seasonNum, ep.Number)
+							epReq.OriginalTitle = ""
+							if r.OriginalTitle != "" && r.OriginalTitle != r.Title {
+								epReq.OriginalTitle = fmt.Sprintf("%s S%02dE%02d", r.OriginalTitle, seasonNum, ep.Number)
+							}
+
+							slog.Info("Attempting fallback search for individual episode", "request_id", r.ID, "title", epReq.Title)
+							if epErr := s.processSingleRequest(ctx, epReq); epErr == nil {
+								fallbackSuccess = true
+								anyProcessed = true
+							} else {
+								slog.Warn("Failed to find/process individual episode", "request_id", r.ID, "title", epReq.Title, "error", epErr)
+							}
+						}
+					}
+
+					if fallbackSuccess {
+						slog.Info("Successfully processed some or all individual episodes for season", "request_id", r.ID, "season", seasonStr)
+					}
+				} else {
+					slog.Warn("Failed to fetch episodes from TVDB for fallback", "request_id", r.ID, "tvdb_id", r.TVDBID, "error", epErr)
+				}
+			} else {
+				slog.Warn("Cannot fallback to individual episodes without TVDB ID", "request_id", r.ID)
+			}
 			// Continue with other seasons even if one fails
 		} else {
 			anyProcessed = true
@@ -1382,9 +1461,45 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			if err == nil && requestID > 0 {
 				// Check if request was already completed to avoid duplicate processing
 				var currentStatus string
-				err = database.DB.QueryRow("SELECT status FROM requests WHERE id = $1", requestID).Scan(&currentStatus)
-				if err == nil {
-					if currentStatus != "completed" {
+				var reqType string
+				var seasons string
+				err = database.DB.QueryRow("SELECT status, media_type, seasons FROM requests WHERE id = $1", requestID).Scan(&currentStatus, &reqType, &seasons)
+				if err == nil && currentStatus != "completed" {
+					// For movies, one completed torrent is enough.
+					// For shows, we might have multiple torrents downloaded (e.g. single episodes).
+					// We need to ensure all torrents associated with this request are actually finished.
+					allCompleted := true
+
+					// First, verify all torrents belonging to this request are completed
+					rows, err := database.DB.Query(`
+						SELECT torrent_hash FROM downloads WHERE request_id = $1
+					`, requestID)
+					if err == nil {
+						defer rows.Close()
+						for rows.Next() {
+							var hash string
+							if err := rows.Scan(&hash); err == nil {
+								normalizedCheckHash := strings.ToLower(hash)
+								torrent, err := s.qb.GetTorrentByHash(ctx, normalizedCheckHash)
+								if err != nil || torrent == nil {
+									allCompleted = false
+									break
+								}
+								if torrent.Progress < 1.0 && torrent.State != "uploading" && torrent.State != "stalledUP" {
+									allCompleted = false
+									break
+								}
+							}
+						}
+					} else {
+						allCompleted = false
+					}
+
+					if allCompleted {
+						// For shows without a full season pack, it's possible we only downloaded some episodes
+						// We'll mark it complete for now if all active torrents are done, but it might get picked up again
+						// by processSingleSeason if it checks for missing episodes later.
+						// This at least ensures we don't mark a request complete while an episode is actively downloading.
 						_, err = database.DB.Exec(`
 							UPDATE requests
 							SET status = 'completed', updated_at = NOW()
@@ -1658,6 +1773,19 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		score := 0
 		titleLower := strings.ToLower(r.Title)
 		resolutionLower := strings.ToLower(r.Resolution)
+
+		// Penalize single-episode torrents if we actually want a season pack
+		// E.g., matched "S01E03" or "1x03"
+		if mediaType == "show" {
+			singleEpRegex := regexp.MustCompile(`[sS]\d{1,2}[eE]\d{1,2}|\b\d{1,2}x\d{1,2}\b`)
+			if singleEpRegex.MatchString(titleLower) {
+				// If requestedSeasons contains a single season and no specific episodes,
+				// we are looking for a season pack. Penalize single episodes to avoid picking them.
+				if len(requestedSeasonNums) > 0 {
+					score -= 5000 // Huge penalty to avoid mistaking a single episode for a season pack
+				}
+			}
+		}
 
 		// Quality priority: 1080p > 4K > 720p > anything else
 		// Quality scores are set high enough to ensure quality is always the primary factor
