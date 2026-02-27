@@ -28,7 +28,7 @@ COPY server/ .
 RUN sed -i 's|=> ../shared|=> ./shared|g' go.mod
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o arrgo .
+RUN GOMAXPROCS=4 CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o arrgo .
 
 # Final stage
 FROM alpine:3.20
