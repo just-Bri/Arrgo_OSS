@@ -64,7 +64,8 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := requestsTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Error rendering requests template", "error", err)
+		return
 	}
 }
 

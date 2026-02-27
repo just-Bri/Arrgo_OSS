@@ -93,6 +93,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := dashboardTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Error rendering dashboard template", "error", err)
+		return
 	}
 }

@@ -297,6 +297,21 @@ type SeedingStatus struct {
 
 // GetSeedingStatus gets the seeding status for a torrent hash
 func GetSeedingStatus(ctx context.Context, cfg *config.Config, qb *QBittorrentClient, torrentHash string) (*SeedingStatus, error) {
+	if qb == nil || torrentHash == "" {
+		return &SeedingStatus{}, nil
+	}
+
+	// Get detailed info with ratio and seeding time
+	torrents, err := qb.GetTorrentsDetailed(ctx, "")
+	if err != nil {
+		return &SeedingStatus{}, err
+	}
+
+	return GetSeedingStatusFromList(torrents, torrentHash), nil
+}
+
+// GetSeedingStatusFromList gets the seeding status for a torrent hash using a provided list of torrents
+func GetSeedingStatusFromList(torrents []TorrentStatus, torrentHash string) *SeedingStatus {
 	status := &SeedingStatus{
 		IsSeeding:          false,
 		Ratio:              0.0,
@@ -305,14 +320,8 @@ func GetSeedingStatus(ctx context.Context, cfg *config.Config, qb *QBittorrentCl
 		TorrentExists:      false,
 	}
 
-	if qb == nil || torrentHash == "" {
-		return status, nil
-	}
-
-	// Get detailed info with ratio and seeding time
-	torrents, err := qb.GetTorrentsDetailed(ctx, "")
-	if err != nil {
-		return status, err
+	if torrentHash == "" {
+		return status
 	}
 
 	var detailedTorrent *TorrentStatus
@@ -326,7 +335,7 @@ func GetSeedingStatus(ctx context.Context, cfg *config.Config, qb *QBittorrentCl
 
 	if detailedTorrent == nil {
 		// Torrent not found, might already be deleted
-		return status, nil
+		return status
 	}
 
 	status.TorrentExists = true
@@ -348,7 +357,7 @@ func GetSeedingStatus(ctx context.Context, cfg *config.Config, qb *QBittorrentCl
 	meetsRatioThreshold := status.Ratio >= SeedingThresholdRatio
 	status.MeetsCriteria = meetsTimeThreshold || meetsRatioThreshold
 
-	return status, nil
+	return status
 }
 
 // CheckSeedingCriteriaOnImport checks if a torrent should be deleted when importing

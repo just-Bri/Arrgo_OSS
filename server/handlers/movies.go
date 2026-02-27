@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
+	"context"
 	"fmt"
 	"html/template"
 	"log"
@@ -78,7 +79,14 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	selectedSize := r.URL.Query().Get("size")
 
 	// Separate incoming and library movies
-	libraryMovies, incomingMovies := SeparateIncomingMovies(allMovies, cfg, user.IsAdmin)
+	var allTorrents []services.TorrentStatus
+	if user.IsAdmin {
+		qb, err := services.NewQBittorrentClient(cfg)
+		if err == nil {
+			allTorrents, _ = qb.GetTorrentsDetailed(context.Background(), "")
+		}
+	}
+	libraryMovies, incomingMovies := SeparateIncomingMovies(allMovies, cfg, user.IsAdmin, allTorrents)
 
 	// Extract unique values for filters BEFORE filtering (so all options are available)
 	allGenres := ExtractGenresFromMovies(libraryMovies)
@@ -152,7 +160,8 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := moviesTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Error rendering movies template", "error", err)
+		return
 	}
 }
 

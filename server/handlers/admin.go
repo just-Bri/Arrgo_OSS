@@ -77,25 +77,29 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		qb = nil
 	}
 
+	var allTorrents []services.TorrentStatus
+	if qb != nil {
+		allTorrents, err = qb.GetTorrentsDetailed(ctx, "")
+		if err != nil {
+			slog.Warn("Failed to get torrents from qBittorrent", "error", err)
+			allTorrents = nil
+		}
+	}
+
 	// Get incoming movies and shows using shared helpers
 	allMovies, err := services.GetMovies()
 	if err != nil {
 		slog.Error("Error getting movies for admin", "error", err)
 		allMovies = []models.Movie{}
 	}
-	_, incomingMoviesRaw := SeparateIncomingMovies(allMovies, cfg, true)
+	_, incomingMoviesRaw := SeparateIncomingMovies(allMovies, cfg, true, allTorrents)
 
 	// Add seeding status to incoming movies
 	incomingMovies := make([]IncomingMovieWithSeeding, 0, len(incomingMoviesRaw))
 	for _, movie := range incomingMoviesRaw {
 		var seedingStatus *services.SeedingStatus
-		if movie.TorrentHash != "" && qb != nil {
-			status, err := services.GetSeedingStatus(ctx, cfg, qb, movie.TorrentHash)
-			if err != nil {
-				slog.Debug("Failed to get seeding status for movie", "movie_id", movie.ID, "error", err)
-			} else {
-				seedingStatus = status
-			}
+		if movie.TorrentHash != "" && allTorrents != nil {
+			seedingStatus = services.GetSeedingStatusFromList(allTorrents, movie.TorrentHash)
 		}
 		incomingMovies = append(incomingMovies, IncomingMovieWithSeeding{
 			Movie:         movie,
@@ -108,7 +112,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Error getting shows for admin", "error", err)
 		allShows = []models.Show{}
 	}
-	_, incomingShowsRaw := SeparateIncomingShows(allShows, cfg, true)
+	_, incomingShowsRaw := SeparateIncomingShows(allShows, cfg, true, allTorrents)
 
 	// Add season information and seeding status to incoming shows
 	incomingShows := make([]IncomingShowWithSeasons, 0, len(incomingShowsRaw))
@@ -117,7 +121,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Get seeding status from any episode with a torrent hash
 		var seedingStatus *services.SeedingStatus
-		if qb != nil {
+		if allTorrents != nil {
 			var torrentHash string
 			err := database.DB.QueryRow(`
 				SELECT e.torrent_hash FROM episodes e
@@ -125,12 +129,7 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 				WHERE s.show_id = $1 AND e.torrent_hash IS NOT NULL AND e.torrent_hash != ''
 				LIMIT 1`, show.ID).Scan(&torrentHash)
 			if err == nil && torrentHash != "" {
-				status, err := services.GetSeedingStatus(ctx, cfg, qb, torrentHash)
-				if err != nil {
-					slog.Debug("Failed to get seeding status for show", "show_id", show.ID, "error", err)
-				} else {
-					seedingStatus = status
-				}
+				seedingStatus = services.GetSeedingStatusFromList(allTorrents, torrentHash)
 			}
 		}
 
@@ -164,7 +163,8 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := adminTmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("Error rendering admin template", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Don't call http.Error if we've already started writing to w
+		return
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/models"
 	"Arrgo/services"
+	"context"
 	"fmt"
 	"html/template"
 	"log"
@@ -73,7 +74,14 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	selectedStatus := r.URL.Query().Get("status")
 
 	// Separate incoming and library shows
-	libraryShows, incomingShows := SeparateIncomingShows(allShows, cfg, user.IsAdmin)
+	var allTorrents []services.TorrentStatus
+	if user.IsAdmin {
+		qb, err := services.NewQBittorrentClient(cfg)
+		if err == nil {
+			allTorrents, _ = qb.GetTorrentsDetailed(context.Background(), "")
+		}
+	}
+	libraryShows, incomingShows := SeparateIncomingShows(allShows, cfg, user.IsAdmin, allTorrents)
 
 	// Extract unique values for filters BEFORE filtering (so all options are available)
 	allGenres := ExtractGenresFromShows(libraryShows)
@@ -120,7 +128,8 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := showsTmpl.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Error rendering shows template", "error", err)
+		return
 	}
 }
 
@@ -334,6 +343,6 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := showDetailsTmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("Error executing show details template", "error", err, "show_id", show.ID)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 }

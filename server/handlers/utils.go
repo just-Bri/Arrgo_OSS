@@ -174,8 +174,15 @@ func ExtractStatusesFromShows(shows []models.Show) []string {
 // SeparateIncomingMovies separates incoming and library movies based on path prefixes
 // Shows items in incoming if they haven't been imported yet and are seeding or have no torrent
 // Items that have been imported (even if still seeding) are excluded from incoming view
-func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmin bool) (libraryMovies []models.Movie, incomingMovies []models.Movie) {
+func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmin bool, torList ...[]services.TorrentStatus) (libraryMovies []models.Movie, incomingMovies []models.Movie) {
 	ctx := context.Background()
+
+	var torrents []services.TorrentStatus
+	provided := false
+	if len(torList) > 0 {
+		torrents = torList[0]
+		provided = true
+	}
 
 	for _, m := range allMovies {
 		isIncoming := strings.HasPrefix(m.Path, cfg.IncomingMoviesPath)
@@ -206,7 +213,11 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 				hasHash := torrentHash.Valid && torrentHash.String != ""
 				isDownloading := false
 				if hasHash {
-					isDownloading = services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String)
+					if provided {
+						isDownloading = services.IsTorrentStillDownloadingFromList(torrents, torrentHash.String)
+					} else {
+						isDownloading = services.IsTorrentStillDownloading(ctx, cfg, torrentHash.String)
+					}
 					slog.Debug("Checking torrent status for movie",
 						"movie_id", m.ID,
 						"title", m.Title,
@@ -238,8 +249,15 @@ func SeparateIncomingMovies(allMovies []models.Movie, cfg *config.Config, isAdmi
 // SeparateIncomingShows separates incoming and library shows based on path prefixes
 // Shows shows in incoming if they have episodes that haven't been imported yet and are seeding or have no torrent
 // Episodes that have been imported (even if still seeding) are excluded from incoming view
-func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin bool) (libraryShows []models.Show, incomingShows []models.Show) {
+func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin bool, torList ...[]services.TorrentStatus) (libraryShows []models.Show, incomingShows []models.Show) {
 	ctx := context.Background()
+
+	var torrents []services.TorrentStatus
+	provided := false
+	if len(torList) > 0 {
+		torrents = torList[0]
+		provided = true
+	}
 
 	for _, s := range allShows {
 		isIncoming := strings.HasPrefix(s.Path, cfg.IncomingShowsPath)
@@ -250,7 +268,12 @@ func SeparateIncomingShows(allShows []models.Show, cfg *config.Config, isAdmin b
 				if hasEpisodesInIncoming {
 					// Check if any episodes in incoming are still downloading
 					// Only show if episodes have no torrent OR torrents are seeding (not downloading)
-					hasDownloadingEpisodes := checkShowHasDownloadingEpisodes(ctx, s.ID, cfg.IncomingShowsPath, cfg)
+					var hasDownloadingEpisodes bool
+					if provided {
+						hasDownloadingEpisodes = checkShowHasDownloadingEpisodesFromList(ctx, s.ID, cfg.IncomingShowsPath, cfg, torrents)
+					} else {
+						hasDownloadingEpisodes = checkShowHasDownloadingEpisodes(ctx, s.ID, cfg.IncomingShowsPath, cfg)
+					}
 					if !hasDownloadingEpisodes {
 						incomingShows = append(incomingShows, s)
 					}
@@ -306,6 +329,34 @@ func checkShowHasDownloadingEpisodes(ctx context.Context, showID int, incomingSh
 		var torrentHash string
 		if err := rows.Scan(&torrentHash); err == nil {
 			if services.IsTorrentStillDownloading(ctx, cfg, torrentHash) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkShowHasDownloadingEpisodesFromList checks if a show has any episodes in incoming that are still downloading using a provided list
+func checkShowHasDownloadingEpisodesFromList(ctx context.Context, showID int, incomingShowsPath string, cfg *config.Config, torrents []services.TorrentStatus) bool {
+	query := `
+		SELECT e.torrent_hash
+		FROM episodes e
+		JOIN seasons s ON e.season_id = s.id
+		WHERE s.show_id = $1 
+		AND e.file_path LIKE $2 || '%'
+		AND e.torrent_hash IS NOT NULL
+		AND e.torrent_hash != ''
+	`
+	rows, err := database.DB.Query(query, showID, incomingShowsPath)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var torrentHash string
+		if err := rows.Scan(&torrentHash); err == nil {
+			if services.IsTorrentStillDownloadingFromList(torrents, torrentHash) {
 				return true
 			}
 		}

@@ -191,6 +191,6 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := searchTmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("Error rendering search template", "error", err, "query", query)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 }

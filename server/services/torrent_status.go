@@ -25,6 +25,15 @@ func IsTorrentStillDownloading(ctx context.Context, cfg *config.Config, torrentH
 		return false
 	}
 
+	return IsTorrentStillDownloadingFromList(torrents, torrentHash)
+}
+
+// IsTorrentStillDownloadingFromList checks if a torrent is still downloading using a provided list of torrents
+func IsTorrentStillDownloadingFromList(torrents []TorrentStatus, torrentHash string) bool {
+	if torrentHash == "" {
+		return false
+	}
+
 	normalizedHash := strings.ToLower(torrentHash)
 	for _, torrent := range torrents {
 		if strings.ToLower(torrent.Hash) == normalizedHash {
@@ -70,7 +79,5 @@ func IsTorrentStillDownloading(ctx context.Context, cfg *config.Config, torrentH
 		}
 	}
 
-	// Torrent not found in qBittorrent - might be deleted or not yet added
-	// Assume it's not downloading (safer to show it)
 	return false
 }
