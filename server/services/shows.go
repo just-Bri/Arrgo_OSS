@@ -725,6 +725,39 @@ func GetShows() ([]models.Show, error) {
 	return shows, nil
 }
 
+func GetIncomingShows(incomingPath string) ([]models.Show, error) {
+	// A show is "incoming" if it has episodes in the incoming path that haven't been imported
+	query := `
+		SELECT DISTINCT s.id, s.title, s.year, s.tvdb_id, s.imdb_id, s.path, s.overview, s.poster_path, s.genres, s.status, s.created_at, s.updated_at
+		FROM shows s
+		JOIN seasons sn ON s.id = sn.show_id
+		JOIN episodes e ON sn.id = e.season_id
+		WHERE e.file_path LIKE $1 || '%' AND e.imported_at IS NULL
+		ORDER BY s.title ASC`
+	rows, err := database.DB.Query(query, incomingPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	shows := []models.Show{}
+	for rows.Next() {
+		var s models.Show
+		var tvdbID, imdbID, overview, posterPath, genres sql.NullString
+		err := rows.Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &imdbID, &s.Path, &overview, &posterPath, &genres, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		s.TVDBID = tvdbID.String
+		s.IMDBID = imdbID.String
+		s.Overview = overview.String
+		s.PosterPath = posterPath.String
+		s.Genres = genres.String
+		shows = append(shows, s)
+	}
+	return shows, nil
+}
+
 func GetShowByID(id int) (*models.Show, error) {
 	query := `SELECT id, title, year, tvdb_id, imdb_id, path, overview, poster_path, genres, status, created_at, updated_at FROM shows WHERE id = $1`
 	var s models.Show

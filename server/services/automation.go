@@ -1897,34 +1897,40 @@ func extractMagnetLinkFromURL(ctx context.Context, targetURL string) (string, er
 	}
 
 	// Also check for info hash patterns that we can construct into magnet links
-	// Look for 40-character hex strings (info hash) in various contexts
-	// Try multiple patterns: standalone hash, hash in magnet link format, hash in data attributes
-	infoHashPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`[0-9a-fA-F]{40}`),                          // Standalone 40-char hex
-		regexp.MustCompile(`btih:([0-9a-fA-F]{40})`),                   // In magnet link format
-		regexp.MustCompile(`info hash[:\s]+([0-9a-fA-F]{40})`),         // After "info hash:"
-		regexp.MustCompile(`hash[:\s]+([0-9a-fA-F]{40})`),              // After "hash:"
-		regexp.MustCompile(`data-hash=["']([0-9a-fA-F]{40})["']`),      // In data-hash attribute
-		regexp.MustCompile(`data-info-hash=["']([0-9a-fA-F]{40})["']`), // In data-info-hash attribute
-		regexp.MustCompile(`"([0-9a-fA-F]{40})"`),                      // Quoted hash
-		regexp.MustCompile(`'([0-9a-fA-F]{40})'`),                      // Single-quoted hash
+	// Try multiple patterns: magnet link in data attributes,standalone hash, hash in magnet link format, hash in markers
+	infoHashPatterns := []struct {
+		re   *regexp.Regexp
+		name string
+	}{
+		{regexp.MustCompile(`magnet:\?xt=urn:btih:([0-9a-fA-F]{40})`), "magnet link"},
+		{regexp.MustCompile(`data-magnet=["']magnet:\?xt=urn:btih:([0-9a-fA-F]{40})`), "data-magnet attribute"},
+		{regexp.MustCompile(`infohash[:\s]+([0-9a-fA-F]{40})`), "infohash label"},
+		{regexp.MustCompile(`hash[:\s]+([0-9a-fA-F]{40})`), "hash label"},
+		{regexp.MustCompile(`data-hash=["']([0-9a-fA-F]{40})["']`), "data-hash attribute"},
+		{regexp.MustCompile(`data-info-hash=["']([0-9a-fA-F]{40})["']`), "data-info-hash attribute"},
 	}
 
 	var infoHash string
-	for _, pattern := range infoHashPatterns {
-		matches := pattern.FindStringSubmatch(htmlContent)
-		if len(matches) > 0 {
-			// Use the captured group if available, otherwise the full match
-			if len(matches) > 1 {
-				infoHash = strings.ToLower(matches[1])
-			} else {
-				infoHash = strings.ToLower(matches[0])
-			}
-			// Validate it's actually 40 characters
+	for _, p := range infoHashPatterns {
+		matches := p.re.FindStringSubmatch(htmlContent)
+		if len(matches) > 1 {
+			infoHash = strings.ToLower(matches[1])
 			if len(infoHash) == 40 {
+				slog.Debug("Extracted info hash via pattern", "pattern", p.name, "hash", infoHash)
 				break
 			}
-			infoHash = "" // Reset if invalid length
+			infoHash = ""
+		}
+	}
+
+	// Last resort: standalone 40-char hex (only if it looks like it's in a relevant place)
+	if infoHash == "" {
+		standaloneRe := regexp.MustCompile(`\b([0-9a-fA-F]{40})\b`)
+		matches := standaloneRe.FindAllStringSubmatch(htmlContent, -1)
+		// If we find multiple, we might want to be careful, but often there's only one actual infohash on the page
+		if len(matches) > 0 {
+			infoHash = strings.ToLower(matches[0][1])
+			slog.Debug("Extracted standalone info hash (last resort)", "hash", infoHash)
 		}
 	}
 

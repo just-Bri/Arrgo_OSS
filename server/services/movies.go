@@ -481,6 +481,42 @@ func GetMovies() ([]models.Movie, error) {
 	return movies, nil
 }
 
+func GetIncomingMovies(incomingPath string) ([]models.Movie, error) {
+	query := `
+		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, created_at, updated_at 
+		FROM movies 
+		WHERE path LIKE $1 || '%' AND imported_at IS NULL
+		ORDER BY created_at DESC`
+	rows, err := database.DB.Query(query, incomingPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	movies := []models.Movie{}
+	for rows.Next() {
+		var m models.Movie
+		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
+		var importedAt sql.NullTime
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.CreatedAt, &m.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		m.TMDBID = tmdbID.String
+		m.IMDBID = imdbID.String
+		m.Overview = overview.String
+		m.PosterPath = posterPath.String
+		if importedAt.Valid {
+			m.ImportedAt = &importedAt.Time
+		}
+		m.Quality = quality.String
+		m.Genres = genres.String
+		m.TorrentHash = torrentHash.String
+		movies = append(movies, m)
+	}
+	return movies, nil
+}
+
 func GetMovieByID(id int) (*models.Movie, error) {
 	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, created_at, updated_at FROM movies WHERE id = $1`
 	var m models.Movie

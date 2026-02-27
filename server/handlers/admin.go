@@ -6,12 +6,15 @@ import (
 	"Arrgo/models"
 	"Arrgo/services"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
 	"net/http"
+	"sort"
+	"time"
 )
 
 var adminTmpl *template.Template
@@ -79,20 +82,23 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 
 	var allTorrents []services.TorrentStatus
 	if qb != nil {
-		allTorrents, err = qb.GetTorrentsDetailed(ctx, "")
+		// Set a timeout for qBittorrent call to avoid hanging the handler
+		qbCtx, qbCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer qbCancel()
+
+		allTorrents, err = qb.GetTorrentsDetailed(qbCtx, "")
 		if err != nil {
-			slog.Warn("Failed to get torrents from qBittorrent", "error", err)
+			slog.Warn("Failed to get torrents from qBittorrent within timeout", "error", err)
 			allTorrents = nil
 		}
 	}
 
-	// Get incoming movies and shows using shared helpers
-	allMovies, err := services.GetMovies()
+	// Get incoming movies and shows using optimized service calls
+	incomingMoviesRaw, err := services.GetIncomingMovies(cfg.IncomingMoviesPath)
 	if err != nil {
-		slog.Error("Error getting movies for admin", "error", err)
-		allMovies = []models.Movie{}
+		slog.Error("Error getting incoming movies for admin", "error", err)
+		incomingMoviesRaw = []models.Movie{}
 	}
-	_, incomingMoviesRaw := SeparateIncomingMovies(allMovies, cfg, true, allTorrents)
 
 	// Add seeding status to incoming movies
 	incomingMovies := make([]IncomingMovieWithSeeding, 0, len(incomingMoviesRaw))
@@ -107,28 +113,77 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	allShows, err := services.GetShows()
+	incomingShowsRaw, err := services.GetIncomingShows(cfg.IncomingShowsPath)
 	if err != nil {
-		slog.Error("Error getting shows for admin", "error", err)
-		allShows = []models.Show{}
+		slog.Error("Error getting incoming shows for admin", "error", err)
+		incomingShowsRaw = []models.Show{}
 	}
-	_, incomingShowsRaw := SeparateIncomingShows(allShows, cfg, true, allTorrents)
 
-	// Add season information and seeding status to incoming shows
-	incomingShows := make([]IncomingShowWithSeasons, 0, len(incomingShowsRaw))
+	// Optimization: Batch fetch all season/torrent info for incoming shows in one query
+	showSeasonsMap := make(map[int][]int)
+	showTorrentHashMap := make(map[int]string)
+
+	// We'll also build the downloading status map in the same pass
+	downloadingShowMap := make(map[int]bool)
+
+	if user.IsAdmin {
+		query := `
+			SELECT s.show_id, s.season_number, e.torrent_hash
+			FROM episodes e
+			JOIN seasons s ON e.season_id = s.id
+			WHERE e.file_path LIKE $1 || '%'
+			AND e.imported_at IS NULL
+		`
+		rows, err := database.DB.Query(query, cfg.IncomingShowsPath)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var sid, snum int
+				var thash sql.NullString
+				if err := rows.Scan(&sid, &snum, &thash); err == nil {
+					// Add season if not already there
+					exists := false
+					for _, s := range showSeasonsMap[sid] {
+						if s == snum {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						showSeasonsMap[sid] = append(showSeasonsMap[sid], snum)
+					}
+
+					// Important: if it has a hash, check if it's still downloading
+					if thash.Valid && thash.String != "" {
+						if showTorrentHashMap[sid] == "" {
+							showTorrentHashMap[sid] = thash.String
+						}
+
+						isDownloading := false
+						if allTorrents != nil {
+							// Use provided list for speed
+							isDownloading = services.IsTorrentStillDownloadingFromList(allTorrents, thash.String)
+						}
+						if isDownloading {
+							downloadingShowMap[sid] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Filter and build results
+	incomingShows := make([]IncomingShowWithSeasons, 0)
 	for _, show := range incomingShowsRaw {
-		seasons := getIncomingSeasonsForShow(show.ID, cfg.IncomingShowsPath)
+		seasons := showSeasonsMap[show.ID]
+		sort.Ints(seasons)
 
 		// Get seeding status from any episode with a torrent hash
 		var seedingStatus *services.SeedingStatus
 		if allTorrents != nil {
-			var torrentHash string
-			err := database.DB.QueryRow(`
-				SELECT e.torrent_hash FROM episodes e
-				JOIN seasons s ON e.season_id = s.id
-				WHERE s.show_id = $1 AND e.torrent_hash IS NOT NULL AND e.torrent_hash != ''
-				LIMIT 1`, show.ID).Scan(&torrentHash)
-			if err == nil && torrentHash != "" {
+			torrentHash := showTorrentHashMap[show.ID]
+			if torrentHash != "" {
 				seedingStatus = services.GetSeedingStatusFromList(allTorrents, torrentHash)
 			}
 		}
