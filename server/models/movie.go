@@ -3,21 +3,22 @@ package models
 import "time"
 
 type Movie struct {
-	ID          int        `json:"id"`
-	Title       string     `json:"title"`
-	Year        int        `json:"year"`
-	TMDBID      string     `json:"tmdb_id"`
-	IMDBID      string     `json:"imdb_id"`
-	Path        string     `json:"path"`
-	Quality     string     `json:"quality"`
-	Size        int64      `json:"size"`
-	Overview    string     `json:"overview"`
-	PosterPath  string     `json:"poster_path"`
-	Genres      string     `json:"genres"`
-	Status      string     `json:"status"` // e.g., "discovered", "matching", "ready"
-	RawMetadata []byte     `json:"raw_metadata"`
-	TorrentHash string     `json:"torrent_hash,omitempty"` // Torrent hash for seeding status
-	ImportedAt  *time.Time `json:"imported_at,omitempty"` // Timestamp when imported to library
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID              int        `json:"id"`
+	Title           string     `json:"title"`
+	Year            int        `json:"year"`
+	TMDBID          string     `json:"tmdb_id"`
+	IMDBID          string     `json:"imdb_id"`
+	Path            string     `json:"path"`
+	Quality         string     `json:"quality"`
+	Size            int64      `json:"size"`
+	Overview        string     `json:"overview"`
+	PosterPath      string     `json:"poster_path"`
+	Genres          string     `json:"genres"`
+	Status          string     `json:"status"` // e.g., "discovered", "matching", "ready"
+	RawMetadata     []byte     `json:"raw_metadata"`
+	TorrentHash     string     `json:"torrent_hash,omitempty"` // Torrent hash for seeding status
+	ImportedAt      *time.Time `json:"imported_at,omitempty"`  // Timestamp when imported to library
+	SubtitlesSynced bool       `json:"subtitles_synced"`       // Whether subtitles have been synced
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }

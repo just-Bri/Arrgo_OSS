@@ -262,6 +262,36 @@
                         btn.textContent = '📥 Queue Missing Subtitles';
                     });
             }
+
+            function syncAllSubtitles() {
+                const btn = document.getElementById('sync-subtitles-btn');
+
+                if (!confirm('This will trigger ffsubsync for all movies and episodes that have subtitles. This process runs in the background. Continue?')) {
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = '⏳ Syncing...';
+
+                fetch('/api/admin/subtitles/sync/all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message || `Started background sync for ${data.count || 0} items`);
+                        btn.disabled = false;
+                        btn.textContent = '🔄 Sync All Subtitles';
+                    })
+                    .catch(err => {
+                        console.error('Error syncing subtitles:', err);
+                        alert('Error syncing subtitles: ' + err.message);
+                        btn.disabled = false;
+                        btn.textContent = '🔄 Sync All Subtitles';
+                    });
+            }
         </script>
 
         <!-- Subtitle Management -->
@@ -279,6 +309,10 @@
                 <button id="queue-subtitles-btn" onclick="queueMissingSubtitles()"
                     style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
                     📥 Queue Missing Subtitles
+                </button>
+                <button id="sync-subtitles-btn" onclick="syncAllSubtitles()"
+                    style="width: 100%; padding: 12px; background: var(--warning-color, #ff9800); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+                    🔄 Sync All Subtitles
                 </button>
             </div>
             <div id="subtitle-scan-result"

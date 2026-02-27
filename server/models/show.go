@@ -29,15 +29,16 @@ type Season struct {
 }
 
 type Episode struct {
-	ID            int        `json:"id"`
-	SeasonID      int        `json:"season_id"`
-	EpisodeNumber int        `json:"episode_number"`
-	Title         string     `json:"title"`
-	FilePath      string     `json:"file_path"`
-	Quality       string     `json:"quality"`
-	Size          int64      `json:"size"`
-	TorrentHash   string     `json:"torrent_hash,omitempty"` // Torrent hash for seeding status
-	ImportedAt    *time.Time `json:"imported_at,omitempty"` // Timestamp when imported to library
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID              int        `json:"id"`
+	SeasonID        int        `json:"season_id"`
+	EpisodeNumber   int        `json:"episode_number"`
+	Title           string     `json:"title"`
+	FilePath        string     `json:"file_path"`
+	Quality         string     `json:"quality"`
+	Size            int64      `json:"size"`
+	TorrentHash     string     `json:"torrent_hash,omitempty"` // Torrent hash for seeding status
+	ImportedAt      *time.Time `json:"imported_at,omitempty"`  // Timestamp when imported to library
+	SubtitlesSynced bool       `json:"subtitles_synced"`       // Whether subtitles have been synced
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }

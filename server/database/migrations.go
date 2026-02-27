@@ -179,5 +179,16 @@ func InitSchema() error {
 		fmt.Printf("Warning: failed to add original_title column: %v\n", err)
 	}
 
+	// Add subtitles_synced column to movies and episodes
+	addMovieSyncedSQL := "ALTER TABLE movies ADD COLUMN IF NOT EXISTS subtitles_synced BOOLEAN DEFAULT FALSE;"
+	if _, err := DB.Exec(addMovieSyncedSQL); err != nil {
+		fmt.Printf("Warning: failed to add movie subtitles_synced column: %v\n", err)
+	}
+
+	addEpisodeSyncedSQL := "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS subtitles_synced BOOLEAN DEFAULT FALSE;"
+	if _, err := DB.Exec(addEpisodeSyncedSQL); err != nil {
+		fmt.Printf("Warning: failed to add episode subtitles_synced column: %v\n", err)
+	}
+
 	return nil
 }

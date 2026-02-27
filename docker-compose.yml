@@ -31,6 +31,8 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@arrgo.local}
+      - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}
+      - FFSUBSYNC_URL=${FFSUBSYNC_URL:-http://ffsubsync-api:8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -113,6 +115,18 @@ services:
     labels:
       net.unraid.docker.managed: qbittorrentvpn
       net.unraid.docker.webui: http://${SERVER_IP:-localhost}:8080
+
+  ffsubsync-api:
+    build:
+      context: ./ffsubsync-api
+    container_name: ffsubsync-api
+    profiles:
+      - subsync
+    volumes:
+      - ${MEDIA_PATH:-/mnt/user/media}:/data
+    networks:
+      - arrgo-network
+    restart: unless-stopped
 
 networks:
   arrgo-network:

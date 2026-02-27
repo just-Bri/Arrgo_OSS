@@ -422,6 +422,16 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	slog.Info("Successfully downloaded subtitle for movie", "title", title, "dest_path", destPath)
+
+	// Trigger automatic sync if enabled
+	if cfg.EnableSubSync {
+		go func() {
+			if err := SyncSubtitlesForMovie(cfg, movieID); err != nil {
+				slog.Error("Automatic subtitle sync failed for movie", "movie_id", movieID, "error", err)
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -611,7 +621,125 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	slog.Info("Successfully downloaded subtitle for episode", "show_title", showTitle, "season", season, "episode", episode, "dest_path", destPath)
+
+	// Trigger automatic sync if enabled
+	if cfg.EnableSubSync {
+		go func() {
+			if err := SyncSubtitlesForEpisode(cfg, episodeID); err != nil {
+				slog.Error("Automatic subtitle sync failed for episode", "episode_id", episodeID, "error", err)
+			}
+		}()
+	}
+
 	return nil
+}
+
+func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
+	if !cfg.EnableSubSync {
+		return nil
+	}
+
+	var videoPath string
+	err := database.DB.QueryRow("SELECT path FROM movies WHERE id = $1", movieID).Scan(&videoPath)
+	if err != nil {
+		return err
+	}
+
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+	checks := []string{
+		base + ".en.srt",
+		base + ".en.sdh.srt",
+		base + ".eng.srt",
+		base + ".eng.sdh.srt",
+	}
+
+	var subPath string
+	for _, c := range checks {
+		if _, err := os.Stat(c); err == nil {
+			subPath = c
+			break
+		}
+	}
+
+	if subPath == "" {
+		return fmt.Errorf("no English subtitle found to sync for movie %d", movieID)
+	}
+
+	slog.Info("Syncing subtitles for movie", "movie_id", movieID, "video", videoPath, "subtitle", subPath)
+
+	payload, _ := json.Marshal(map[string]string{
+		"video":    videoPath,
+		"subtitle": subPath,
+	})
+
+	resp, err := http.Post(cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to call subsync api: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	// Update DB
+	_, err = database.DB.Exec("UPDATE movies SET subtitles_synced = TRUE WHERE id = $1", movieID)
+	return err
+}
+
+func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
+	if !cfg.EnableSubSync {
+		return nil
+	}
+
+	var videoPath string
+	err := database.DB.QueryRow("SELECT file_path FROM episodes WHERE id = $1", episodeID).Scan(&videoPath)
+	if err != nil {
+		return err
+	}
+
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+	checks := []string{
+		base + ".en.srt",
+		base + ".en.sdh.srt",
+		base + ".eng.srt",
+		base + ".eng.sdh.srt",
+	}
+
+	var subPath string
+	for _, c := range checks {
+		if _, err := os.Stat(c); err == nil {
+			subPath = c
+			break
+		}
+	}
+
+	if subPath == "" {
+		return fmt.Errorf("no English subtitle found to sync for episode %d", episodeID)
+	}
+
+	slog.Info("Syncing subtitles for episode", "episode_id", episodeID, "video", videoPath, "subtitle", subPath)
+
+	payload, _ := json.Marshal(map[string]string{
+		"video":    videoPath,
+		"subtitle": subPath,
+	})
+
+	resp, err := http.Post(cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to call subsync api: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	// Update DB
+	_, err = database.DB.Exec("UPDATE episodes SET subtitles_synced = TRUE WHERE id = $1", episodeID)
+	return err
 }
 
 func HasSubtitles(videoPath string) bool {

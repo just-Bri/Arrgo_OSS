@@ -300,3 +300,109 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+func MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	movieID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.SyncSubtitlesForMovie(cfg, movieID); err != nil {
+		slog.Error("Manual subtitle sync failed for movie", "movie_id", movieID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Subtitle sync completed"))
+}
+
+func EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	episodeID, err := ParseIDFromQuery(r, "id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.SyncSubtitlesForEpisode(cfg, episodeID); err != nil {
+		slog.Error("Manual subtitle sync failed for episode", "episode_id", episodeID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Subtitle sync completed"))
+}
+
+func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := config.Load()
+	count := 0
+
+	// Trigger sync in background for all movies that have subtitles but aren't synced
+	movies, _ := services.GetMovies()
+	for _, m := range movies {
+		if m.Path != "" && services.HasSubtitles(m.Path) && !m.SubtitlesSynced {
+			count++
+			go services.SyncSubtitlesForMovie(cfg, m.ID)
+		}
+	}
+
+	// Episodes
+	rows, err := database.DB.Query("SELECT id, file_path, subtitles_synced FROM episodes")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			var path string
+			var synced bool
+			if err := rows.Scan(&id, &path, &synced); err == nil {
+				if path != "" && services.HasSubtitles(path) && !synced {
+					count++
+					go services.SyncSubtitlesForEpisode(cfg, id)
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": fmt.Sprintf("Triggered background sync for %d items", count),
+		"count":   count,
+	})
+}
