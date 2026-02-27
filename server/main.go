@@ -68,7 +68,9 @@ func setupRoutes() *http.ServeMux {
 		"/api/movies/rematch":      handlers.RematchMovieHandler,
 		"/api/shows/rematch":       handlers.RematchShowHandler,
 		"/admin/subtitles/scan":    handlers.ScanSubtitlesHandler,
-		"/admin/subtitles/queue":    handlers.QueueMissingSubtitlesHandler,
+		"/admin/subtitles/queue":   handlers.QueueMissingSubtitlesHandler,
+		"/api/admin/dedupe/movies": handlers.DeduplicateMoviesHandler,
+		"/api/admin/dedupe/shows":  handlers.DeduplicateShowsHandler,
 	}
 
 	for path, handler := range protectedRoutes {
