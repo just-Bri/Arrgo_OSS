@@ -1,5 +1,4 @@
 FROM golang:1.24-bookworm AS builder
-Arkansas
 
 # Build the Go API
 WORKDIR /app
