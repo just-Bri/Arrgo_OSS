@@ -35,3 +35,5 @@ go.work.sum
 indexer/indexer
 server/server
 arrgo
+
+ffsubsync-api/tmp_verify
