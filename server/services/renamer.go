@@ -419,6 +419,10 @@ func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 }
 
 func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanup bool) error {
+	return renameAndMoveEpisodeInternal(cfg, episodeID, doCleanup, false)
+}
+
+func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup bool, skipRescan bool) error {
 	var e models.Episode
 	var s models.Season
 	var sh models.Show
@@ -542,15 +546,17 @@ func RenameAndMoveEpisodeWithCleanup(cfg *config.Config, episodeID int, doCleanu
 
 	// Rescan the show directory to ensure all episodes are detected and added to the database
 	// This is important after importing episodes so the library is up-to-date
-	go func() {
-		showDirPath := filepath.Join(cfg.ShowsPath, showDirName)
-		scanSeasons(sh.ID, showDirPath)
-		slog.Info("Rescanned show directory after episode import",
-			"show_id", sh.ID,
-			"show_title", sh.Title,
-			"season", s.SeasonNumber,
-			"episode", e.EpisodeNumber)
-	}()
+	if !skipRescan {
+		go func() {
+			showDirPath := filepath.Join(cfg.ShowsPath, showDirName)
+			scanSeasons(sh.ID, showDirPath)
+			slog.Info("Rescanned show directory after episode import",
+				"show_id", sh.ID,
+				"show_title", sh.Title,
+				"season", s.SeasonNumber,
+				"episode", e.EpisodeNumber)
+		}()
+	}
 
 	// Check seeding criteria and clean up torrent if needed (only if we moved, not copied)
 	if !shouldCopyInsteadOfMove && torrentHash.Valid && torrentHash.String != "" && strings.HasPrefix(oldPath, cfg.IncomingShowsPath) {
@@ -630,7 +636,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		}
 	}
 
-	// Fetch all episodes for this show
+	// Fetch all episodes for this show before processing to release the DB connection early
 	query := `
 		SELECT e.id
 		FROM episodes e
@@ -641,15 +647,19 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 
+	var epIDs []int
 	for rows.Next() {
 		var epID int
-		if err := rows.Scan(&epID); err != nil {
-			continue
+		if err := rows.Scan(&epID); err == nil {
+			epIDs = append(epIDs, epID)
 		}
+	}
+	rows.Close()
+
+	for _, epID := range epIDs {
 		// Pass doCleanup flag to episodes so they clean up empty directories as they're moved
-		if err := RenameAndMoveEpisodeWithCleanup(cfg, epID, doCleanup); err != nil {
+		if err := renameAndMoveEpisodeInternal(cfg, epID, doCleanup, true); err != nil {
 			slog.Error("Error renaming episode", "episode_id", epID, "error", err)
 		}
 	}
@@ -661,25 +671,35 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		// Merge: another show already exists at this destination path
 		slog.Info("Destination path already exists in DB, merging show", "dest_path", destShowPath, "existing_id", existingID, "show_id", showID)
 
-		// Move seasons to the existing show
+		// Collect seasons first
+		type seasonData struct {
+			id  int
+			num int
+		}
+		var seasons []seasonData
 		sRows, err := database.DB.Query("SELECT id, season_number FROM seasons WHERE show_id = $1", showID)
 		if err == nil {
-			defer sRows.Close()
 			for sRows.Next() {
 				var oldSeasonID, seasonNum int
 				if err := sRows.Scan(&oldSeasonID, &seasonNum); err == nil {
-					// Check if existing show already has this season
-					var newSeasonID int
-					errS := database.DB.QueryRow("SELECT id FROM seasons WHERE show_id = $1 AND season_number = $2", existingID, seasonNum).Scan(&newSeasonID)
-					if errS == nil {
-						// Merge episodes from old season to new season
-						database.DB.Exec("UPDATE episodes SET season_id = $1 WHERE season_id = $2", newSeasonID, oldSeasonID)
-						database.DB.Exec("DELETE FROM seasons WHERE id = $1", oldSeasonID)
-					} else {
-						// Just point the old season to the new show
-						database.DB.Exec("UPDATE seasons SET show_id = $1 WHERE id = $2", existingID, oldSeasonID)
-					}
+					seasons = append(seasons, seasonData{id: oldSeasonID, num: seasonNum})
 				}
+			}
+			sRows.Close()
+		}
+
+		// Move seasons to the existing show
+		for _, s := range seasons {
+			// Check if existing show already has this season
+			var newSeasonID int
+			errS := database.DB.QueryRow("SELECT id FROM seasons WHERE show_id = $1 AND season_number = $2", existingID, s.num).Scan(&newSeasonID)
+			if errS == nil {
+				// Merge episodes from old season to new season
+				database.DB.Exec("UPDATE episodes SET season_id = $1 WHERE season_id = $2", newSeasonID, s.id)
+				database.DB.Exec("DELETE FROM seasons WHERE id = $1", s.id)
+			} else {
+				// Just point the old season to the new show
+				database.DB.Exec("UPDATE seasons SET show_id = $1 WHERE id = $2", existingID, s.id)
 			}
 		}
 
@@ -705,6 +725,12 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 	if strings.HasPrefix(sh.Path, cfg.IncomingShowsPath) {
 		CleanupEmptyDirs(cfg.IncomingShowsPath)
 	}
+
+	// Rescan the show directory once for all imported episodes
+	go func() {
+		scanSeasons(showID, destShowPath)
+		slog.Info("Rescanned show directory after full show import", "show_id", showID)
+	}()
 
 	return nil
 }

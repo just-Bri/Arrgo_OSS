@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"Arrgo/config"
 
@@ -21,6 +22,11 @@ func Connect(cfg *config.Config) error {
 	if err = DB.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
+
+	// Configure connection pool limits to prevent "too many clients" errors from PostgreSQL
+	DB.SetMaxOpenConns(25) // 25 max open connections
+	DB.SetMaxIdleConns(5)  // Keep 5 idle connections
+	DB.SetConnMaxLifetime(5 * time.Minute)
 
 	return nil
 }

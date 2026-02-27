@@ -464,7 +464,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	if imdbID == "" {
-		slog.Info("No parent IMDB ID for show, skipping subtitle search", "show_title", showTitle, "episode_id", episodeID)
+		slog.Debug("No parent IMDB ID for show, skipping subtitle search", "show_title", showTitle, "episode_id", episodeID)
 		return nil
 	}
 
