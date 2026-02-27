@@ -127,7 +127,3 @@ services:
     networks:
       - arrgo-network
     restart: unless-stopped
-
-networks:
-  arrgo-network:
-    driver: bridge
