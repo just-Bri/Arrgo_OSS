@@ -124,6 +124,7 @@ If you are developing or testing updates on an SMB share and changes aren't refl
 - [x] Show/Season/Episode Support
 - [x] Subtitle Management (OpenSubtitles)
 - [x] qBittorrent Integration & Automation
+- [x] Subtitle sync
 - [ ] Advanced Library Filtering & Bulk Actions
 
 ---
