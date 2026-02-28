@@ -680,7 +680,12 @@ func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, "Unable to detect speech") {
+			slog.Warn("SubSync: Unable to detect speech, marking as synced to skip future attempts", "movie_id", movieID, "video", videoPath)
+		} else {
+			return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, bodyStr)
+		}
 	}
 
 	// Update DB
@@ -737,7 +742,12 @@ func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, "Unable to detect speech") {
+			slog.Warn("SubSync: Unable to detect speech, marking as synced to skip future attempts", "episode_id", episodeID, "video", videoPath)
+		} else {
+			return fmt.Errorf("subsync api returned error (%d): %s", resp.StatusCode, bodyStr)
+		}
 	}
 
 	// Update DB
