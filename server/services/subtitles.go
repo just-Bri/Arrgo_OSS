@@ -684,8 +684,11 @@ func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// Update DB
-	_, err = database.DB.Exec("UPDATE movies SET subtitles_synced = TRUE WHERE id = $1", movieID)
-	return err
+	if _, err = database.DB.Exec("UPDATE movies SET subtitles_synced = TRUE WHERE id = $1", movieID); err != nil {
+		return err
+	}
+	slog.Info("Successfully synced subtitles for movie", "movie_id", movieID)
+	return nil
 }
 
 func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
@@ -738,8 +741,11 @@ func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	// Update DB
-	_, err = database.DB.Exec("UPDATE episodes SET subtitles_synced = TRUE WHERE id = $1", episodeID)
-	return err
+	if _, err = database.DB.Exec("UPDATE episodes SET subtitles_synced = TRUE WHERE id = $1", episodeID); err != nil {
+		return err
+	}
+	slog.Info("Successfully synced subtitles for episode", "episode_id", episodeID)
+	return nil
 }
 
 func HasSubtitles(videoPath string) bool {

@@ -450,7 +450,7 @@ func upsertMovie(movie models.Movie) (int, error) {
 }
 
 func GetMovies() ([]models.Movie, error) {
-	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, created_at, updated_at FROM movies ORDER BY title ASC`
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, subtitles_synced, created_at, updated_at FROM movies ORDER BY title ASC`
 	rows, err := database.DB.Query(query)
 	if err != nil {
 		return nil, err
@@ -462,7 +462,7 @@ func GetMovies() ([]models.Movie, error) {
 		var m models.Movie
 		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
 		var importedAt sql.NullTime
-		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.CreatedAt, &m.UpdatedAt)
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.SubtitlesSynced, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -483,7 +483,7 @@ func GetMovies() ([]models.Movie, error) {
 
 func GetIncomingMovies(incomingPath string) ([]models.Movie, error) {
 	query := `
-		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, created_at, updated_at 
+		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, torrent_hash, subtitles_synced, created_at, updated_at 
 		FROM movies 
 		WHERE path LIKE $1 || '%' AND imported_at IS NULL
 		ORDER BY created_at DESC`
@@ -498,7 +498,7 @@ func GetIncomingMovies(incomingPath string) ([]models.Movie, error) {
 		var m models.Movie
 		var tmdbID, imdbID, overview, posterPath, quality, genres, torrentHash sql.NullString
 		var importedAt sql.NullTime
-		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.CreatedAt, &m.UpdatedAt)
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &torrentHash, &m.SubtitlesSynced, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -518,11 +518,11 @@ func GetIncomingMovies(incomingPath string) ([]models.Movie, error) {
 }
 
 func GetMovieByID(id int) (*models.Movie, error) {
-	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, created_at, updated_at FROM movies WHERE id = $1`
+	query := `SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, imported_at, subtitles_synced, created_at, updated_at FROM movies WHERE id = $1`
 	var m models.Movie
 	var tmdbID, imdbID, overview, posterPath, quality, genres sql.NullString
 	var importedAt sql.NullTime
-	err := database.DB.QueryRow(query, id).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &m.CreatedAt, &m.UpdatedAt)
+	err := database.DB.QueryRow(query, id).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &importedAt, &m.SubtitlesSynced, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +584,7 @@ func SearchMoviesLocal(query string) ([]models.Movie, error) {
 	}
 
 	dbQuery := fmt.Sprintf(`
-		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, created_at, updated_at
+		SELECT id, title, year, tmdb_id, imdb_id, path, quality, size, overview, poster_path, genres, status, subtitles_synced, created_at, updated_at
 		FROM movies
 		WHERE %s
 		ORDER BY title ASC
@@ -600,7 +600,7 @@ func SearchMoviesLocal(query string) ([]models.Movie, error) {
 	for rows.Next() {
 		var m models.Movie
 		var tmdbID, imdbID, overview, posterPath, quality, genres sql.NullString
-		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.CreatedAt, &m.UpdatedAt)
+		err := rows.Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID, &m.Path, &quality, &m.Size, &overview, &posterPath, &genres, &m.Status, &m.SubtitlesSynced, &m.CreatedAt, &m.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
