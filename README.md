@@ -72,6 +72,10 @@ docker-compose up -d
 | `SERVER_IP` | `localhost` | IP of your Unraid server (for qBittorrent links) |
 | `PUID/PGID` | `99`/`100` | User/Group ID for file permissions (Unraid defaults) |
 | `QBITTORRENT_URL` | `http://qbittorrent:8080` | URL for qBittorrent WebUI |
+| `ENABLE_SUBSYNC` | `false` | Set to `true` to enable automatic subtitle synchronization |
+| `FFSUBSYNC_URL` | `http://ffsubsync-api:8080` | URL for the `ffsubsync-api` service |
+| `MOVIES_PATH` | `/data/movies` | Path to movies (shared by Arrgo and SubSync) |
+| `SHOWS_PATH` | `/data/shows` | Path to shows (shared by Arrgo and SubSync) |
 | `DEBUG` | `false` | Set to `true` for verbose logging |
 
 ---
@@ -88,6 +92,16 @@ Arrgo's default stack includes a pre-configured qBittorrent VPN container (based
    ```
 2. **Clean up**: Remove any non-PIA `.ovpn` files.
 3. **Credentials**: Set `PIA_USER` and `PIA_PASSWORD` in your `.env`.
+
+---
+
+## 🎬 Subtitle Synchronization (Optional)
+
+Arrgo includes an optional integration with `ffsubsync` to automatically sync subtitles with video files.
+
+1. **Enable the feature**: Set `ENABLE_SUBSYNC=true` in your `.env`.
+2. **Architecture**: Arrgo communicates with the `ffsubsync-api` container in the stack. By default, this service is included but remains idle unless `ENABLE_SUBSYNC` is enabled.
+3. **Usage**: Once enabled, Arrgo will provide options to automatically synchronize downloaded subtitles to ensure perfect timing.
 
 ---
 

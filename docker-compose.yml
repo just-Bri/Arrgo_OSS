@@ -114,8 +114,17 @@ services:
     build:
       context: ./ffsubsync-api
     container_name: ffsubsync-api
-    profiles:
-      - subsync
+    environment:
+      - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}
+      - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
+      - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
+    command: >
+      sh -c "if [ \"$${ENABLE_SUBSYNC}\" = \"true\" ]; then
+        exec ./ffsubsync-api;
+      else
+        echo 'SubSync is disabled (ENABLE_SUBSYNC=false). Exiting...';
+        exit 0;
+      fi"
     volumes:
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     restart: unless-stopped

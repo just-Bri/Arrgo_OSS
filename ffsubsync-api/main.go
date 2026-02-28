@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync" // Added for mutex
 
 	"github.com/labstack/echo/v4"
@@ -19,12 +21,58 @@ type SyncRequest struct {
 var (
 	// syncMutex ensures only one ffsubsync process runs at a time to prevent CPU exhaustion.
 	syncMutex sync.Mutex
+
+	moviesPath string
+	showsPath  string
 )
 
+func isPathAllowed(path string) bool {
+	// If paths aren't set, allow all (backward compatibility/default behavior)
+	if moviesPath == "" && showsPath == "" {
+		return true
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+
+	if moviesPath != "" && strings.HasPrefix(absPath, moviesPath) {
+		return true
+	}
+	if showsPath != "" && strings.HasPrefix(absPath, showsPath) {
+		return true
+	}
+
+	return false
+}
+
 func main() {
+	moviesPath = os.Getenv("MOVIES_PATH")
+	showsPath = os.Getenv("SHOWS_PATH")
+
+	log.Printf("SubSync API starting...")
+	log.Printf("Allowed Movies Path: %s", moviesPath)
+	log.Printf("Allowed Shows Path: %s", showsPath)
+
 	e := echo.New()
 
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		LogLatency:  true,
+		LogError:    true,
+		LogRemoteIP: true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			if v.Error != nil {
+				log.Printf("ERROR: %s %s %s %d %s | error: %v", v.RemoteIP, v.Method, v.URI, v.Status, v.Latency, v.Error)
+			} else {
+				log.Printf("REQUEST: %s %s %s %d %s", v.RemoteIP, v.Method, v.URI, v.Status, v.Latency)
+			}
+			return nil
+		},
+	}))
 	e.Use(middleware.Recover())
 
 	e.POST("/sync", func(c echo.Context) error {
@@ -41,6 +89,11 @@ func main() {
 		// between Arrgo and this container via the shared media volume.
 		videoPath := req.Video
 		subtitlePath := req.Subtitle
+
+		if !isPathAllowed(videoPath) || !isPathAllowed(subtitlePath) {
+			log.Printf("Access denied for paths outside of allowed directories: %s, %s", videoPath, subtitlePath)
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied: paths must be within MOVIES_PATH or SHOWS_PATH"})
+		}
 
 		// Acquire lock to serialize sync tasks
 		syncMutex.Lock()
