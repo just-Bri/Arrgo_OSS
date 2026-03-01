@@ -6,11 +6,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/justbri/arrgo/indexer/handlers"
 	"github.com/justbri/arrgo/indexer/providers"
 	"github.com/justbri/arrgo/shared/config"
 	sharedlogger "github.com/justbri/arrgo/shared/logger"
-	"github.com/justbri/arrgo/shared/middleware"
+	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 	"github.com/justbri/arrgo/shared/server"
 )
 
@@ -30,7 +32,7 @@ func main() {
 
 	// Create server with shared configuration
 	srvConfig := server.DefaultConfig(":" + port)
-	srv := server.CreateServer(srvConfig, middleware.LoggingSimple(mux))
+	srv := server.CreateServer(srvConfig, sharedmiddleware.LoggingSimple(mux))
 
 	slog.Info("Indexer service starting", "port", port)
 	if err := srv.ListenAndServe(); err != nil {
@@ -40,19 +42,30 @@ func main() {
 }
 
 // setupRoutes configures all HTTP routes
-func setupRoutes() *http.ServeMux {
-	mux := http.NewServeMux()
+func setupRoutes() *chi.Mux {
+	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.CleanPath)
+	r.Use(sharedmiddleware.Logging)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Compress(5))
 
 	// Routes
-	mux.HandleFunc("/", handlers.IndexHandler)
-	mux.HandleFunc("/search", handlers.SearchHandler)
-	mux.HandleFunc("/api", handlers.TorznabAPIHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.NoCache)
+		r.Get("/", handlers.IndexHandler)
+		r.Get("/search", handlers.SearchHandler)
+		r.HandleFunc("/api", handlers.TorznabAPIHandler)
+	})
 
 	// Static files
 	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	r.Handle("/static/*", http.StripPrefix("/static/", fs))
 
-	return mux
+	return r
 }
 
 // startCacheCleanup runs periodic cleanup of expired cache entries
@@ -66,4 +79,3 @@ func startCacheCleanup() {
 		slog.Debug("Cleaned up expired Nyaa RSS cache entries")
 	}
 }
-

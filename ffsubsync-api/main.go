@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -8,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync" // Added for mutex
+	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type SyncRequest struct {
@@ -55,34 +57,31 @@ func main() {
 	log.Printf("Allowed Movies Path: %s", moviesPath)
 	log.Printf("Allowed Shows Path: %s", showsPath)
 
-	e := echo.New()
+	r := chi.NewRouter()
 
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogStatus:   true,
-		LogURI:      true,
-		LogMethod:   true,
-		LogLatency:  true,
-		LogError:    true,
-		LogRemoteIP: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			if v.Error != nil {
-				log.Printf("ERROR: %s %s %s %d %s | error: %v", v.RemoteIP, v.Method, v.URI, v.Status, v.Latency, v.Error)
-			} else {
-				log.Printf("REQUEST: %s %s %s %d %s", v.RemoteIP, v.Method, v.URI, v.Status, v.Latency)
-			}
-			return nil
-		},
-	}))
-	e.Use(middleware.Recover())
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.CleanPath)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("REQUEST: %s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
+			next.ServeHTTP(w, r)
+		})
+	})
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(10 * time.Minute))
+	r.Use(middleware.Compress(5))
 
-	e.POST("/sync", func(c echo.Context) error {
+	r.Post("/sync", func(w http.ResponseWriter, r *http.Request) {
 		req := new(SyncRequest)
-		if err := c.Bind(req); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON format"})
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			http.Error(w, "Invalid JSON format", http.StatusBadRequest)
+			return
 		}
 
 		if req.Video == "" || req.Subtitle == "" {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing video or subtitle path"})
+			http.Error(w, "Missing video or subtitle path", http.StatusBadRequest)
+			return
 		}
 
 		// Use the absolute path provided in the request as they are mapped in the same way
@@ -92,7 +91,8 @@ func main() {
 
 		if !isPathAllowed(videoPath) || !isPathAllowed(subtitlePath) {
 			log.Printf("Access denied for paths outside of allowed directories: %s, %s", videoPath, subtitlePath)
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied: paths must be within MOVIES_PATH or SHOWS_PATH"})
+			http.Error(w, "Access denied: paths must be within MOVIES_PATH or SHOWS_PATH", http.StatusForbidden)
+			return
 		}
 
 		// Acquire lock to serialize sync tasks
@@ -109,20 +109,27 @@ func main() {
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			log.Printf("ffsubsync failed: %v\nOutput: %s", err, string(output))
-			return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
 				"error":   "Failed to process subtitle",
 				"details": string(output),
 			})
+			return
 		}
 
 		log.Printf("Successfully synced subtitle: %s", filepath.Base(subtitlePath))
-		return c.JSON(http.StatusOK, map[string]string{"message": "success"})
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "success"})
 	})
 
-	e.GET("/health", func(c echo.Context) error {
-		return c.String(http.StatusOK, "ok")
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
 	})
 
 	// Start server
-	e.Logger.Fatal(e.Start(":8080"))
+	log.Printf("Starting server on :8080")
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatal(err)
+	}
 }

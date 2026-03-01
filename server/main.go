@@ -4,7 +4,7 @@ import (
 	"Arrgo/config"
 	"Arrgo/database"
 	"Arrgo/handlers"
-	"Arrgo/middleware"
+	localmiddleware "Arrgo/middleware"
 	"Arrgo/services"
 	"context"
 	"fmt"
@@ -18,78 +18,92 @@ import (
 	sharedlogger "github.com/justbri/arrgo/shared/logger"
 	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 	sharedserver "github.com/justbri/arrgo/shared/server"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // setupRoutes configures all HTTP routes
-func setupRoutes() *http.ServeMux {
-	mux := http.NewServeMux()
+func setupRoutes() *chi.Mux {
+	r := chi.NewRouter()
 
-	// Static files
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.CleanPath)
+	r.Use(sharedmiddleware.Logging)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Compress(5))
+
+	// --- Static Files & Media ---
 	fs := http.FileServer(http.Dir("static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+	r.Get("/images/tmdb/*", handlers.ImageProxyHandler)
+	r.Get("/images/movie/*", handlers.ServeMovieImage)
+	r.Get("/images/shows/*", handlers.ServeShowImage)
 
-	// Public routes
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+	// --- Public Routes ---
+	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("pong"))
 	})
-	mux.HandleFunc("/login", handlers.LoginHandler)
-	mux.HandleFunc("/register", handlers.RegisterHandler)
-	mux.HandleFunc("/logout", handlers.LogoutHandler)
-	mux.HandleFunc("/images/tmdb/", handlers.ImageProxyHandler)
-	mux.HandleFunc("/images/movie/", handlers.ServeMovieImage)
-	mux.HandleFunc("/images/shows/", handlers.ServeShowImage)
+	r.HandleFunc("/login", handlers.LoginHandler)
+	r.HandleFunc("/register", handlers.RegisterHandler)
+	r.HandleFunc("/logout", handlers.LogoutHandler)
 
-	// Protected routes - using helper to reduce repetition
-	protectedRoutes := map[string]http.HandlerFunc{
-		"/dashboard":                        handlers.DashboardHandler,
-		"/admin":                            handlers.AdminHandler,
-		"/movies":                           handlers.MoviesHandler,
-		"/movies/details":                   handlers.MovieDetailsHandler,
-		"/shows":                            handlers.ShowsHandler,
-		"/shows/details":                    handlers.ShowDetailsHandler,
-		"/search":                           handlers.SearchHandler,
-		"/requests":                         handlers.RequestsHandler,
-		"/requests/create":                  handlers.CreateRequestHandler,
-		"/requests/delete":                  handlers.DeleteRequestHandler,
-		"/scan/movies":                      handlers.ScanMoviesHandler,
-		"/scan/shows":                       handlers.ScanShowsHandler,
-		"/scan/incoming/movies":             handlers.ScanIncomingMoviesHandler,
-		"/scan/incoming/shows":              handlers.ScanIncomingShowsHandler,
-		"/scan/stop":                        handlers.StopScanHandler,
-		"/api/scan/status":                  handlers.ScanStatusHandler,
-		"/import/movies/all":                handlers.ImportAllMoviesHandler,
-		"/import/shows/all":                 handlers.ImportAllShowsHandler,
-		"/rename/movie":                     handlers.RenameMovieHandler,
-		"/rename/show":                      handlers.RenameShowHandler,
-		"/subtitles/download":               handlers.DownloadSubtitlesHandler,
-		"/admin/nuke":                       handlers.NukeLibraryHandler,
-		"/api/movies/alternatives":          handlers.GetMovieAlternativesHandler,
-		"/api/shows/alternatives":           handlers.GetShowAlternativesHandler,
-		"/api/movies/rematch":               handlers.RematchMovieHandler,
-		"/api/shows/rematch":                handlers.RematchShowHandler,
-		"/admin/subtitles/scan":             handlers.ScanSubtitlesHandler,
-		"/admin/subtitles/queue":            handlers.QueueMissingSubtitlesHandler,
-		"/api/admin/dedupe/movies":          handlers.DeduplicateMoviesHandler,
-		"/api/admin/dedupe/shows":           handlers.DeduplicateShowsHandler,
-		"/api/admin/subtitles/sync/movie":   handlers.MovieSubtitlesSyncHandler,
-		"/api/admin/subtitles/sync/episode": handlers.EpisodeSubtitlesSyncHandler,
-		"/api/admin/subtitles/sync/all":     handlers.SyncAllSubtitlesHandler,
-	}
+	// --- Protected Routes ---
+	r.Group(func(r chi.Router) {
+		r.Use(localmiddleware.RequireAuth)
 
-	for path, handler := range protectedRoutes {
-		mux.Handle(path, middleware.RequireAuth(http.HandlerFunc(handler)))
-	}
+		// UI / General
+		r.Get("/dashboard", handlers.DashboardHandler)
+		r.Get("/search", handlers.SearchHandler)
+		r.Get("/requests", handlers.RequestsHandler)
+		r.Post("/requests/create", handlers.CreateRequestHandler)
+		r.Post("/requests/delete", handlers.DeleteRequestHandler)
 
-	// Root redirect
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
-			return
-		}
-		http.NotFound(w, r)
+		// Movies
+		r.Get("/movies", handlers.MoviesHandler)
+		r.Get("/movies/details", handlers.MovieDetailsHandler)
+		r.Post("/scan/movies", handlers.ScanMoviesHandler)
+		r.Post("/scan/incoming/movies", handlers.ScanIncomingMoviesHandler)
+		r.Post("/import/movies/all", handlers.ImportAllMoviesHandler)
+		r.Post("/rename/movie", handlers.RenameMovieHandler)
+		r.Get("/api/movies/alternatives", handlers.GetMovieAlternativesHandler)
+		r.Post("/api/movies/rematch", handlers.RematchMovieHandler)
+
+		// Shows
+		r.Get("/shows", handlers.ShowsHandler)
+		r.Get("/shows/details", handlers.ShowDetailsHandler)
+		r.Post("/scan/shows", handlers.ScanShowsHandler)
+		r.Post("/scan/incoming/shows", handlers.ScanIncomingShowsHandler)
+		r.Post("/import/shows/all", handlers.ImportAllShowsHandler)
+		r.Post("/rename/show", handlers.RenameShowHandler)
+		r.Get("/api/shows/alternatives", handlers.GetShowAlternativesHandler)
+		r.Post("/api/shows/rematch", handlers.RematchShowHandler)
+
+		// Subtitles
+		r.Post("/subtitles/download", handlers.DownloadSubtitlesHandler)
+		r.Post("/admin/subtitles/scan", handlers.ScanSubtitlesHandler)
+		r.Post("/admin/subtitles/queue", handlers.QueueMissingSubtitlesHandler)
+		r.Post("/api/admin/subtitles/sync/movie", handlers.MovieSubtitlesSyncHandler)
+		r.Post("/api/admin/subtitles/sync/episode", handlers.EpisodeSubtitlesSyncHandler)
+		r.Post("/api/admin/subtitles/sync/all", handlers.SyncAllSubtitlesHandler)
+
+		// Admin & System
+		r.Get("/admin", handlers.AdminHandler)
+		r.Post("/admin/nuke", handlers.NukeLibraryHandler)
+		r.Post("/scan/stop", handlers.StopScanHandler)
+		r.Get("/api/scan/status", handlers.ScanStatusHandler)
+		r.Post("/api/admin/dedupe/movies", handlers.DeduplicateMoviesHandler)
+		r.Post("/api/admin/dedupe/shows", handlers.DeduplicateShowsHandler)
 	})
 
-	return mux
+	// Root redirect
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	})
+
+	return r
 }
 
 func main() {
