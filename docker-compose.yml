@@ -50,6 +50,9 @@ services:
       - ./posters:/root/data/posters
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     restart: unless-stopped
+    labels:
+      net.unraid.docker.managed: arrgo
+      net.unraid.docker.webui: http://${SERVER_IP:-localhost}:5003
 
   db:
     image: postgres:16-alpine
@@ -111,7 +114,7 @@ services:
       - ${MEDIA_PATH:-/mnt/user/media}/incoming:/data/incoming
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: qbittorrentvpn
+      net.unraid.docker.managed: qbitvpn
       net.unraid.docker.webui: http://${SERVER_IP:-localhost}:8080
 
   ffsubsync-api:
