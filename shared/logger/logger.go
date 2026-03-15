@@ -13,11 +13,8 @@ var defaultLogger *slog.Logger
 func Init(env string, debug bool) {
 	var handler slog.Handler
 
-	// Default log level
-	level := slog.LevelInfo
-	if debug || env == "development" {
-		level = slog.LevelDebug
-	}
+	// Default log level - restricted to Error and Fatal as requested
+	level := slog.LevelError
 
 	// Override from environment if set
 	envLevel := strings.ToLower(os.Getenv("GOLOG_LOG_LEVEL"))
