@@ -14,6 +14,7 @@ func Init(env string, debug bool) {
 	var handler slog.Handler
 
 	// Default log level - restricted to Error and Fatal as requested
+	// We ignore the 'debug' flag here to ensure we only emit errors by default
 	level := slog.LevelError
 
 	// Override from environment if set
@@ -35,11 +36,12 @@ func Init(env string, debug bool) {
 		case "fatal":
 			level = slog.Level(12)
 		default:
-			fmt.Printf("Unknown log level: %s, falling back to default\n", envLevel)
+			fmt.Printf("Unknown log level: %s, falling back to default (Error)\n", envLevel)
 		}
 	}
 
-	fmt.Printf("Initializing logger: env=%s, debug=%v, level=%v\n", env, debug, level)
+	// Always print to stdout when initializing so we can verify the level in docker logs
+	fmt.Printf("Initializing logger: env=%s, debug_flag=%v, effective_level=%v\n", env, debug, level)
 
 	opts := &slog.HandlerOptions{
 		Level: level,

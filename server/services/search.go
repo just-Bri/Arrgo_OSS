@@ -32,7 +32,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 
 	if searchType == "show" || searchType == "tv" {
 		// For shows, use all indexers except YTS (which only supports movies)
-		slog.Info("Searching for show", "query", query, "seasons", seasons)
+		slog.Debug("Searching for show", "query", query, "seasons", seasons)
 		for _, idx := range indexerList {
 			if idx.GetName() == "YTS" {
 				slog.Debug("Skipping YTS indexer for show search")
@@ -50,7 +50,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 					if sErr == nil {
 						res = append(res, sRes...)
 					} else {
-						slog.Warn("Season search failed", "indexer", idx.GetName(), "season", sn, "error", sErr)
+						slog.Debug("Season search failed", "indexer", idx.GetName(), "season", sn, "error", sErr)
 					}
 				}
 			} else {
@@ -58,7 +58,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 			}
 
 			if err != nil {
-				slog.Warn("Indexer search failed", "indexer", idx.GetName(), "error", err)
+				slog.Debug("Indexer search failed", "indexer", idx.GetName(), "error", err)
 				errs = append(errs, err)
 				continue
 			}
@@ -66,11 +66,11 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 		}
 	} else {
 		// Movie search
-		slog.Info("Searching for movie", "query", query)
+		slog.Debug("Searching for movie", "query", query)
 		for _, idx := range indexerList {
 			res, err := idx.SearchMovies(ctx, query)
 			if err != nil {
-				slog.Warn("Indexer search failed", "indexer", idx.GetName(), "error", err)
+				slog.Debug("Indexer search failed", "indexer", idx.GetName(), "error", err)
 				errs = append(errs, err)
 				continue
 			}
@@ -78,10 +78,10 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 		}
 	}
 
-	// Log errors but don't fail
+	// Log errors at Debug level to avoid flooding but still allow troubleshooting
 	if len(errs) > 0 {
 		for _, err := range errs {
-			slog.Warn("Indexer search error", "error", err)
+			slog.Debug("Indexer search error", "error", err)
 		}
 	}
 

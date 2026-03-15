@@ -104,7 +104,7 @@ func (s *AutomationService) Start(ctx context.Context) {
 }
 
 func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
-	slog.Info("Checking all media for missing subtitles")
+	slog.Debug("Checking all media for missing subtitles")
 
 	// 1. Check Movies
 	movieRows, err := database.DB.Query("SELECT id, path FROM movies")
@@ -128,7 +128,7 @@ func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
 				}
 			}
 		}
-		slog.Info("Movie subtitle check completed", "total_movies", movieCount, "queued_subtitles", queuedCount)
+		slog.Debug("Movie subtitle check completed", "total_movies", movieCount, "queued_subtitles", queuedCount)
 	}
 
 	// 2. Check Episodes
@@ -153,7 +153,7 @@ func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
 				}
 			}
 		}
-		slog.Info("Episode subtitle check completed", "total_episodes", episodeCount, "queued_subtitles", queuedCount)
+		slog.Debug("Episode subtitle check completed", "total_episodes", episodeCount, "queued_subtitles", queuedCount)
 	}
 }
 
@@ -366,9 +366,9 @@ func (s *AutomationService) ProcessPendingRequestsOnStartup(ctx context.Context)
 		return
 	}
 
-	slog.Info("Found pending requests to process on startup", "count", len(requests))
+	slog.Debug("Found pending requests to process on startup", "count", len(requests))
 	for _, r := range requests {
-		slog.Info("Processing pending request on startup", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
+		slog.Debug("Processing pending request on startup", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
 		if err := s.processRequest(ctx, r); err != nil {
 			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}
@@ -441,9 +441,9 @@ func (s *AutomationService) ProcessPendingRequests(ctx context.Context) {
 		return
 	}
 
-	slog.Info("Found pending requests to process", "count", len(requests))
+		slog.Debug("Found pending requests to process", "count", len(requests))
 	for _, r := range requests {
-		slog.Info("Processing pending request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
+		slog.Debug("Processing pending request", "request_id", r.ID, "title", r.Title, "media_type", r.MediaType, "seasons", r.Seasons, "retry_count", r.RetryCount)
 		if err := s.processRequest(ctx, r); err != nil {
 			slog.Error("Failed to process request", "request_id", r.ID, "title", r.Title, "error", err)
 		}

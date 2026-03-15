@@ -95,7 +95,7 @@ func (n *NyaaIndexer) searchRSS(ctx context.Context, query string, category stri
 	nyaaCache.RUnlock()
 	
 	// Cache miss or expired - fetch from RSS feed
-	slog.Info("Fetching from Nyaa RSS", "query", query, "category", category)
+	slog.Debug("Fetching from Nyaa RSS", "query", query, "category", category)
 	// Nyaa.si RSS feed format: https://nyaa.si/?page=rss&q={query}&c={category}
 	// Categories:
 	//   0_0 = All categories
@@ -112,7 +112,7 @@ func (n *NyaaIndexer) searchRSS(ctx context.Context, query string, category stri
 
 	resp, err := sharedhttp.MakeRequest(ctx, searchURL, sharedhttp.DefaultClient)
 	if err != nil {
-		slog.Warn("Nyaa RSS request failed", "query", query, "category", category, "error", err)
+		slog.Debug("Nyaa RSS request failed", "query", query, "category", category, "error", err)
 		// Graceful degradation - return empty results instead of error
 		return []SearchResult{}, nil
 	}
@@ -120,12 +120,12 @@ func (n *NyaaIndexer) searchRSS(ctx context.Context, query string, category stri
 
 	var rss NyaaRSS
 	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
-		slog.Warn("Nyaa RSS decode failed", "query", query, "category", category, "error", err)
+		slog.Debug("Nyaa RSS decode failed", "query", query, "category", category, "error", err)
 		// If XML decode fails, return empty results (graceful degradation)
 		return []SearchResult{}, nil
 	}
 	
-	slog.Info("Nyaa RSS request successful", "query", query, "category", category, "items", len(rss.Channel.Items))
+	slog.Debug("Nyaa RSS request successful", "query", query, "category", category, "items", len(rss.Channel.Items))
 
 	var results []SearchResult
 	for _, item := range rss.Channel.Items {
