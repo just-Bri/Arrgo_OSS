@@ -12,6 +12,7 @@ docker compose rm -f arrgo db indexer 2>/dev/null || true
 # Nuke old image, build new one
 docker rmi arrgo-arrgo 2>/dev/null || true
 docker rmi arrgo-indexer 2>/dev/null || true
+docker rmi arrgo-ffsubsync-api 2>/dev/null || true
 docker compose build --no-cache
 
 # Start the services (qbittorrent should already be running)
