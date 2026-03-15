@@ -352,7 +352,7 @@ async function showAlternatives(id, type) {
         
         list.innerHTML = alternatives.map((alt, index) => {
             const posterUrl = alt.poster_path 
-                ? (alt.poster_path.startsWith('http') ? alt.poster_path : `/images/tmdb/${alt.poster_path}`)
+                ? (alt.poster_path.startsWith('http') ? alt.poster_path : `/images/tmdb/${alt.poster_path.startsWith('/') ? alt.poster_path.substring(1) : alt.poster_path}`)
                 : '';
             const genres = alt.genres ? alt.genres.join(', ') : '';
             

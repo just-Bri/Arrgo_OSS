@@ -226,14 +226,17 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// We handle both /images/tmdb/path and /images/tmdb//path (extra slash)
 	path := r.URL.Path
 	path = strings.TrimPrefix(path, "/images/tmdb")
-	path = strings.TrimPrefix(path, "/")
 
 	// 1. Check if it's an absolute local path (from scanner)
-	if strings.HasPrefix(path, "/") {
-		if _, err := os.Stat(path); err == nil {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			http.ServeFile(w, r, path)
-			return
+	// Some poster paths might be local absolute paths, but TMDB images start with /
+	// Ensure it's a deep path (contains another slash) before treating as local
+	if strings.HasPrefix(path, "/") && len(path) > 1 && !strings.HasPrefix(path, "//") {
+		if strings.Contains(path[1:], "/") {
+			if _, err := os.Stat(path); err == nil {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				http.ServeFile(w, r, path)
+				return
+			}
 		}
 	}
 
@@ -241,13 +244,16 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 	cacheDir := "data/posters"
 	os.MkdirAll(cacheDir, 0755)
 
+	// Clean the path for cache name and TMDB URL
+	cleanPath := strings.TrimLeft(path, "/")
+
 	// Create a safe filename from the path/URL
 	safeName := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
 			return r
 		}
 		return '_'
-	}, path)
+	}, cleanPath)
 	cachePath := filepath.Join(cacheDir, safeName)
 
 	if _, err := os.Stat(cachePath); err == nil {
@@ -258,18 +264,19 @@ func ImageProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Not in cache, determine source
 	var sourceURL string
-	if strings.HasPrefix(path, "http") {
+	if strings.HasPrefix(path, "http") || strings.HasPrefix(cleanPath, "http") {
 		// It's a full URL (likely TVDB)
-		sourceURL = path
-	} else if strings.HasPrefix(path, "/") {
-		// This should have been caught by step 1 if the file existed.
-		// If it reaches here, it's a local path that doesn't exist.
-		// We should NOT try to download it from TMDB.
-		http.Error(w, "Local image not found", http.StatusNotFound)
+		if strings.HasPrefix(path, "http") {
+			sourceURL = path
+		} else {
+			sourceURL = cleanPath
+		}
+	} else if cleanPath == "" {
+		http.Error(w, "Invalid image path", http.StatusBadRequest)
 		return
 	} else {
 		// It's a TMDB relative path
-		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", path)
+		sourceURL = fmt.Sprintf("https://image.tmdb.org/t/p/w500/%s", cleanPath)
 	}
 
 	slog.Info("Downloading poster", "source_url", sourceURL, "cache_path", cachePath)
