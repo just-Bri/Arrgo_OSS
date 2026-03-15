@@ -1,8 +1,10 @@
 package logger
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 )
 
 var defaultLogger *slog.Logger
@@ -18,25 +20,29 @@ func Init(env string, debug bool) {
 	}
 
 	// Override from environment if set
-	envLevel := os.Getenv("GOLOG_LOG_LEVEL")
+	envLevel := strings.ToLower(os.Getenv("GOLOG_LOG_LEVEL"))
 	if envLevel == "" {
-		envLevel = os.Getenv("LOG_LEVEL")
+		envLevel = strings.ToLower(os.Getenv("LOG_LEVEL"))
 	}
 
-	switch envLevel {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	case "fatal":
-		// slog doesn't have Fatal level, use a custom level or Error
-		// Here we map it to Error, but we could use a higher value if needed
-		level = slog.Level(12) 
+	if envLevel != "" {
+		switch envLevel {
+		case "debug":
+			level = slog.LevelDebug
+		case "info":
+			level = slog.LevelInfo
+		case "warn":
+			level = slog.LevelWarn
+		case "error":
+			level = slog.LevelError
+		case "fatal":
+			level = slog.Level(12)
+		default:
+			fmt.Printf("Unknown log level: %s, falling back to default\n", envLevel)
+		}
 	}
+
+	fmt.Printf("Initializing logger: env=%s, debug=%v, level=%v\n", env, debug, level)
 
 	opts := &slog.HandlerOptions{
 		Level: level,

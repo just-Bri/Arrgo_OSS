@@ -111,6 +111,7 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize structured logging
+	// logger.Init reads GOLOG_LOG_LEVEL directly from environment
 	sharedlogger.Init(cfg.Environment, cfg.Debug)
 
 	fmt.Println("-----------------------------------------")

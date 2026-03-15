@@ -27,6 +27,7 @@ type Config struct {
 	EnableSubSync       bool
 	SubSyncURL          string
 	Debug               bool
+	LogLevel            string
 }
 
 func Load() *Config {
@@ -50,6 +51,7 @@ func Load() *Config {
 		EnableSubSync:       config.GetEnv("ENABLE_SUBSYNC", "false") == "true",
 		SubSyncURL:          config.GetEnv("FFSUBSYNC_URL", "http://ffsubsync-api:8080"),
 		Debug:               config.GetEnv("DEBUG", "false") == "true",
+		LogLevel:            config.GetEnv("GOLOG_LOG_LEVEL", config.GetEnv("LOG_LEVEL", "error")),
 	}
 
 	// Validate configuration
