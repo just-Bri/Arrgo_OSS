@@ -14,7 +14,7 @@ services:
       - BUILD_VERSION=1
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
-      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-info}
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
       - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
       - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
       - INCOMING_MOVIES_PATH=${INCOMING_MOVIES_PATH:-/data/incoming/movies}
@@ -56,6 +56,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-arrgo}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-arrgo}
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
     volumes:
       - ./data/db:/var/lib/postgresql/data
     ports:
@@ -100,6 +101,7 @@ services:
       - UMASK=000
       - PUID=99
       - PGID=100
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
       # Timezone
       - TZ=${TZ:-America/Los_Angeles}
     volumes:
@@ -116,6 +118,7 @@ services:
     container_name: ffsubsync-api
     environment:
       - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
       - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
       - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
     command: >

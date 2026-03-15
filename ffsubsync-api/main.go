@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,8 +10,11 @@ import (
 	"sync" // Added for mutex
 	"time"
 
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	sharedlogger "github.com/justbri/arrgo/shared/logger"
 )
 
 type SyncRequest struct {
@@ -52,10 +54,18 @@ func isPathAllowed(path string) bool {
 func main() {
 	moviesPath = os.Getenv("MOVIES_PATH")
 	showsPath = os.Getenv("SHOWS_PATH")
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "development"
+	}
+	debug := os.Getenv("DEBUG") == "true"
 
-	log.Printf("SubSync API starting...")
-	log.Printf("Allowed Movies Path: %s", moviesPath)
-	log.Printf("Allowed Shows Path: %s", showsPath)
+	// Initialize structured logging
+	sharedlogger.Init(env, debug)
+
+	slog.Info("SubSync API starting...",
+		"allowed_movies_path", moviesPath,
+		"allowed_shows_path", showsPath)
 
 	r := chi.NewRouter()
 
@@ -64,7 +74,10 @@ func main() {
 	r.Use(middleware.CleanPath)
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("REQUEST: %s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
+			slog.Debug("HTTP request",
+				"remote_addr", r.RemoteAddr,
+				"method", r.Method,
+				"path", r.URL.Path)
 			next.ServeHTTP(w, r)
 		})
 	})
@@ -90,7 +103,9 @@ func main() {
 		subtitlePath := req.Subtitle
 
 		if !isPathAllowed(videoPath) || !isPathAllowed(subtitlePath) {
-			log.Printf("Access denied for paths outside of allowed directories: %s, %s", videoPath, subtitlePath)
+			slog.Warn("Access denied for paths outside of allowed directories",
+				"video_path", videoPath,
+				"subtitle_path", subtitlePath)
 			http.Error(w, "Access denied: paths must be within MOVIES_PATH or SHOWS_PATH", http.StatusForbidden)
 			return
 		}
@@ -99,7 +114,9 @@ func main() {
 		syncMutex.Lock()
 		defer syncMutex.Unlock()
 
-		log.Printf("Starting subtitle sync for video: %s, subtitle: %s", filepath.Base(videoPath), filepath.Base(subtitlePath))
+		slog.Info("Starting subtitle sync",
+			"video", filepath.Base(videoPath),
+			"subtitle", filepath.Base(subtitlePath))
 
 		// ffsubsync <video> -i <subtitle> -o <subtitle>
 		// We use the same path for input and output, directly overwriting the file.
@@ -108,7 +125,9 @@ func main() {
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("ffsubsync failed: %v\nOutput: %s", err, string(output))
+			slog.Error("ffsubsync failed",
+				"error", err,
+				"output", string(output))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -118,7 +137,8 @@ func main() {
 			return
 		}
 
-		log.Printf("Successfully synced subtitle: %s", filepath.Base(subtitlePath))
+		slog.Info("Successfully synced subtitle",
+			"subtitle", filepath.Base(subtitlePath))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "success"})
 	})
@@ -128,8 +148,9 @@ func main() {
 	})
 
 	// Start server
-	log.Printf("Starting server on :8080")
+	slog.Info("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
-		log.Fatal(err)
+		slog.Error("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

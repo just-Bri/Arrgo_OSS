@@ -11,12 +11,38 @@ var defaultLogger *slog.Logger
 func Init(env string, debug bool) {
 	var handler slog.Handler
 
+	// Default log level
+	level := slog.LevelInfo
+	if debug || env == "development" {
+		level = slog.LevelDebug
+	}
+
+	// Override from environment if set
+	envLevel := os.Getenv("GOLOG_LOG_LEVEL")
+	if envLevel == "" {
+		envLevel = os.Getenv("LOG_LEVEL")
+	}
+
+	switch envLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	case "fatal":
+		// slog doesn't have Fatal level, use a custom level or Error
+		// Here we map it to Error, but we could use a higher value if needed
+		level = slog.Level(12) 
+	}
+
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 	}
 
 	if debug || env == "development" {
-		opts.Level = slog.LevelDebug
 		// Use text handler for development (human-readable)
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	} else {

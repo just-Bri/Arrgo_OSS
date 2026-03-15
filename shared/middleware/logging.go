@@ -8,7 +8,7 @@ import (
 // Logging provides request logging middleware
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("HTTP request",
+		slog.Debug("HTTP request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote_addr", r.RemoteAddr)
@@ -19,7 +19,7 @@ func Logging(next http.Handler) http.Handler {
 // LoggingSimple provides simple request logging without prefix
 func LoggingSimple(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("HTTP request",
+		slog.Debug("HTTP request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote_addr", r.RemoteAddr)
