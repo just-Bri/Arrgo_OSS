@@ -2,6 +2,8 @@ services:
   arrgo:
     build:
       context: .
+      args:
+        - GO_VERSION=${GO_VERSION:-1.26.1}
     container_name: arrgo
     ports:
       - "5003:5003"
@@ -114,7 +116,10 @@ services:
 
   ffsubsync-api:
     build:
-      context: ./ffsubsync-api
+      context: .
+      dockerfile: ffsubsync-api/Dockerfile
+      args:
+        - GO_VERSION=${GO_VERSION:-1.26.1}
     container_name: ffsubsync-api
     environment:
       - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}

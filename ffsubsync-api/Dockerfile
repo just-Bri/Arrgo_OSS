@@ -1,10 +1,17 @@
-FROM golang:1.24-bookworm AS builder
+ARG GO_VERSION=1.26.1
+FROM golang:${GO_VERSION}-bookworm AS builder
 
 # Build the Go API
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY shared/ ./shared/
+COPY ffsubsync-api/go.mod ./
+COPY ffsubsync-api/go.sum* ./
+
+# Update replace directive for Docker build context
+RUN sed -i 's|=> ../shared|=> ./shared|g' go.mod
+
 RUN go mod download
-COPY main.go ./
+COPY ffsubsync-api/main.go ./
 RUN go build -o ffsubsync-api main.go
 
 FROM debian:bookworm-slim

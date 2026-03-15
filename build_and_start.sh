@@ -5,6 +5,10 @@ cd "$(dirname "$0")"
 # Sync with git
 git pull origin main || true
 
+# Extract Go version from mise.toml
+export GO_VERSION=$(grep 'go =' mise.toml | sed -E 's/.*"([^"]+)".*/\1/')
+echo "Building with Go version: ${GO_VERSION:-1.26.1}"
+
 # Stop and remove only arrgo and db services (leave qbittorrent running)
 docker-compose stop arrgo db indexer 2>/dev/null || true
 docker-compose rm -f arrgo db indexer 2>/dev/null || true
