@@ -72,6 +72,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    labels:
+      net.unraid.docker.managed: arrgo-db
 
   qbittorrent:
     image: binhex/arch-qbittorrentvpn:latest
@@ -139,3 +141,5 @@ services:
     volumes:
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     restart: unless-stopped
+    labels:
+      net.unraid.docker.managed: ffsubsync-api
