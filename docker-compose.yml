@@ -10,11 +10,11 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - PORT=${PORT:-5003}
       - ENV=${ENV:-development}
-      - DEBUG=${DEBUG:-true}
+      - DEBUG=${DEBUG:-false}
       - BUILD_VERSION=1
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
-      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-debug}
+      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-info}
       - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
       - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
       - INCOMING_MOVIES_PATH=${INCOMING_MOVIES_PATH:-/data/incoming/movies}
