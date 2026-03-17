@@ -67,12 +67,16 @@ func (n *NyaaIndexer) SearchMovies(ctx context.Context, query string) ([]SearchR
 }
 
 func (n *NyaaIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// Enhance query with season info if provided
+	// Enhance query with season/episode info if provided
 	searchQuery := query
-	if season > 0 {
+	if season > 0 && episode > 0 {
+		searchQuery = fmt.Sprintf("%s S%02dE%02d", query, season, episode)
+	} else if season > 0 {
 		searchQuery = fmt.Sprintf("%s S%02d", query, season)
+	} else if episode > 0 {
+		searchQuery = fmt.Sprintf("%s E%02d", query, episode)
 	}
-	// Use category 1_0 for Anime (English translated)
+	// Use category 1_2 for Anime (English translated)
 	return n.searchRSS(ctx, searchQuery, "1_2")
 }
 

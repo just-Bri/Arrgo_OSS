@@ -190,5 +190,11 @@ func InitSchema() error {
 		fmt.Printf("Warning: failed to add episode subtitles_synced column: %v\n", err)
 	}
 
+	// Add episodes column to requests table if it doesn't exist
+	addEpisodesToRequestsSQL := "ALTER TABLE requests ADD COLUMN IF NOT EXISTS episodes TEXT;"
+	if _, err := DB.Exec(addEpisodesToRequestsSQL); err != nil {
+		fmt.Printf("Warning: failed to add episodes column to requests: %v\n", err)
+	}
+
 	return nil
 }

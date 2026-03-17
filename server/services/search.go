@@ -10,7 +10,7 @@ import (
 )
 
 // SearchTorrents searches across all enabled indexers
-func SearchTorrents(ctx context.Context, query, searchType string, seasons string) ([]indexers.SearchResult, error) {
+func SearchTorrents(ctx context.Context, query, searchType string, seasons string, episodes string) ([]indexers.SearchResult, error) {
 	indexerList, err := indexers.GetIndexers()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get indexers: %w", err)
@@ -19,7 +19,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 	var results []indexers.SearchResult
 	var errs []error
 
-	// Parse seasons for show searches
+	// Parse seasons and episodes for show searches
 	var seasonNums []int
 	if seasons != "" {
 		seasonStrs := strings.Split(seasons, ",")
@@ -30,9 +30,15 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 		}
 	}
 
+	var episodeID string
+	if episodes != "" {
+		// Just take the first one if multiple are provided (unlikely from current UI)
+		episodeID = strings.TrimSpace(strings.Split(episodes, ",")[0])
+	}
+
 	if searchType == "show" || searchType == "tv" {
 		// For shows, use all indexers except YTS (which only supports movies)
-		slog.Debug("Searching for show", "query", query, "seasons", seasons)
+		slog.Debug("Searching for show", "query", query, "seasons", seasons, "episodes", episodes)
 		for _, idx := range indexerList {
 			if idx.GetName() == "YTS" {
 				slog.Debug("Skipping YTS indexer for show search")
@@ -42,8 +48,17 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 			var res []indexers.SearchResult
 			var err error
 
-			// If multiple seasons requested, perform search for each
-			if len(seasonNums) > 0 {
+			// If specific episode requested
+			if episodeID != "" {
+				slog.Debug("Searching for specific episode", "indexer", idx.GetName(), "episode", episodeID)
+				// episodeID is "S01E01" - extract season and episode numbers if possible?
+				// Most indexers can just take the string in the query, but SearchShows takes ints.
+				// Let's see if we can parse "S01E01"
+				s, e := 0, 0
+				fmt.Sscanf(strings.ToLower(episodeID), "s%de%d", &s, &e)
+				res, err = idx.SearchShows(ctx, query, s, e)
+			} else if len(seasonNums) > 0 {
+				// If multiple seasons requested, perform search for each
 				for _, sn := range seasonNums {
 					slog.Debug("Searching for specific season", "indexer", idx.GetName(), "season", sn)
 					sRes, sErr := idx.SearchShows(ctx, query, sn, 0)

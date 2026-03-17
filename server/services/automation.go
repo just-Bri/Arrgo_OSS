@@ -481,11 +481,45 @@ func (s *AutomationService) isReadyForRetry(r models.Request, now time.Time) boo
 func (s *AutomationService) processRequest(ctx context.Context, r models.Request) error {
 	// For shows with multiple seasons, process each season separately
 	if r.MediaType == "show" && r.Seasons != "" {
-		return s.processShowRequestWithSeasons(ctx, r)
+		if err := s.processShowRequestWithSeasons(ctx, r); err != nil {
+			return err
+		}
 	}
 
-	// For movies or single-season shows, use the original logic
-	return s.processSingleRequest(ctx, r)
+	// Process individual episodes if requested
+	if r.MediaType == "show" && r.Episodes != "" {
+		episodes := strings.Split(r.Episodes, ",")
+		for _, epStr := range episodes {
+			epStr = strings.TrimSpace(epStr)
+			if epStr == "" {
+				continue
+			}
+			
+			// Create a temporary request for this single episode
+			epReq := r
+			epReq.Seasons = ""
+			epReq.Episodes = "" // Clear to avoid loops
+			
+			// epStr is like "S01E01"
+			// Force the search title
+			epReq.Title = fmt.Sprintf("%s %s", r.Title, epStr)
+			if r.OriginalTitle != "" && r.OriginalTitle != r.Title {
+				epReq.OriginalTitle = fmt.Sprintf("%s %s", r.OriginalTitle, epStr)
+			}
+			
+			slog.Info("Processing individual episode request", "request_id", r.ID, "episode", epStr, "title", epReq.Title)
+			if err := s.processSingleRequest(ctx, epReq); err != nil {
+				slog.Error("Failed to process individual episode request", "request_id", r.ID, "episode", epStr, "error", err)
+			}
+		}
+	}
+
+	// For movies or single-season shows (legacy), use the original logic
+	if r.MediaType == "movie" || (r.MediaType == "show" && r.Seasons == "" && r.Episodes == "") {
+		return s.processSingleRequest(ctx, r)
+	}
+	
+	return nil
 }
 
 func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r models.Request) error {
@@ -1017,13 +1051,15 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 	// Search each variant and merge results using the search service directly
 	for _, variant := range variants {
 		seasonsParam := ""
-		if r.MediaType == "show" && r.Seasons != "" {
+		episodesParam := ""
+		if r.MediaType == "show" {
 			seasonsParam = r.Seasons
+			episodesParam = r.Episodes
 		}
 
 		slog.Info("Searching indexers for request", "request_id", r.ID, "title", r.Title, "variant", variant, "type", searchType)
 
-		searchResults, err := SearchTorrents(ctx, variant, searchType, seasonsParam)
+		searchResults, err := SearchTorrents(ctx, variant, searchType, seasonsParam, episodesParam)
 		if err != nil {
 			slog.Warn("Failed to search indexers for variant", "request_id", r.ID, "variant", variant, "error", err)
 			// Continue with next variant if one fails
@@ -1080,7 +1116,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 	// 2. Choose best result - prioritize quality (1080p > 4K > 720p > other), match seasons, sort by seeds, filter by title/year for movies
 	// Also prefer results with direct info hashes or magnet links to avoid URL extraction issues
-	best := selectBestResult(results, r.MediaType, r.Seasons, r.Title, r.Year)
+	best := selectBestResult(results, r.MediaType, r.Seasons, r.Episodes, r.Title, r.Year)
 	if best == nil {
 		slog.Warn("No suitable results found after filtering", "request_id", r.ID, "title", r.Title, "total_results", len(results), "seasons", r.Seasons, "retry_count", r.RetryCount)
 		s.incrementRetryCount(r.ID, r.RetryCount)
@@ -1158,7 +1194,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 			if err != nil {
 				slog.Warn("Failed to extract magnet link from URL, will try fallback", "request_id", r.ID, "error", err, "source", best.Source)
 				// Try fallback: find next best result with direct magnet/info hash
-				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Title, r.Year)
+				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Episodes, r.Title, r.Year)
 				if fallbackBest != nil {
 					slog.Info("Using fallback result with direct magnet/info hash", "request_id", r.ID, "fallback_title", fallbackBest.Title, "fallback_source", fallbackBest.Source)
 					best = fallbackBest
@@ -1180,7 +1216,7 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 				infoHash = extractInfoHashFromMagnet(magnetLink)
 			} else {
 				// Extraction returned empty - try fallback
-				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Title, r.Year)
+				fallbackBest := findFallbackResult(results, best, r.MediaType, r.Seasons, r.Episodes, r.Title, r.Year)
 				if fallbackBest != nil {
 					slog.Info("Using fallback result after empty extraction", "request_id", r.ID, "fallback_title", fallbackBest.Title, "fallback_source", fallbackBest.Source)
 					best = fallbackBest
@@ -1626,7 +1662,7 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 }
 
 // selectBestResult selects the best torrent result based on seeds, quality, season matching, title/year matching, and minimum requirements
-func selectBestResult(results []TorrentSearchResult, mediaType string, requestedSeasons string, requestedTitle string, requestedYear int) *TorrentSearchResult {
+func selectBestResult(results []TorrentSearchResult, mediaType string, requestedSeasons string, requestedEpisodes string, requestedTitle string, requestedYear int) *TorrentSearchResult {
 	if len(results) == 0 {
 		return nil
 	}
@@ -1781,8 +1817,16 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 			if singleEpRegex.MatchString(titleLower) {
 				// If requestedSeasons contains a single season and no specific episodes,
 				// we are looking for a season pack. Penalize single episodes to avoid picking them.
-				if len(requestedSeasonNums) > 0 {
+				if len(requestedSeasonNums) > 0 && requestedEpisodes == "" {
 					score -= 5000 // Huge penalty to avoid mistaking a single episode for a season pack
+				}
+				
+				// If we specifically requested this episode, give it a big bonus
+				if requestedEpisodes != "" {
+					epID := strings.ToUpper(requestedEpisodes) // e.g. "S01E01"
+					if strings.Contains(strings.ToUpper(titleLower), epID) {
+						score += 5000
+					}
 				}
 			}
 		}
@@ -1926,7 +1970,7 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 
 // findFallbackResult finds the next best result that has a direct info hash or magnet link
 // This is used when the best result requires URL extraction which fails
-func findFallbackResult(results []TorrentSearchResult, exclude *TorrentSearchResult, mediaType string, requestedSeasons string, requestedTitle string, requestedYear int) *TorrentSearchResult {
+func findFallbackResult(results []TorrentSearchResult, exclude *TorrentSearchResult, mediaType string, requestedSeasons string, requestedEpisodes string, requestedTitle string, requestedYear int) *TorrentSearchResult {
 	// Filter to only results with direct info hash or magnet link (not URLs)
 	var candidates []TorrentSearchResult
 	for _, r := range results {
@@ -1945,7 +1989,7 @@ func findFallbackResult(results []TorrentSearchResult, exclude *TorrentSearchRes
 	}
 
 	// Use selectBestResult logic but only on candidates
-	return selectBestResult(candidates, mediaType, requestedSeasons, requestedTitle, requestedYear)
+	return selectBestResult(candidates, mediaType, requestedSeasons, requestedEpisodes, requestedTitle, requestedYear)
 }
 
 // extractMagnetLinkFromURL fetches a torrent page URL and extracts the magnet link from the HTML

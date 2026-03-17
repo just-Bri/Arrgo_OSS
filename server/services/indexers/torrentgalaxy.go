@@ -36,9 +36,11 @@ func (tg *TorrentGalaxyIndexer) SearchMovies(ctx context.Context, query string) 
 }
 
 func (tg *TorrentGalaxyIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// Enhance query with season info if provided
+	// Enhance query with season/episode info if provided
 	searchQuery := query
-	if season > 0 {
+	if season > 0 && episode > 0 {
+		searchQuery = fmt.Sprintf("%s S%02dE%02d", query, season, episode)
+	} else if season > 0 {
 		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
 		searchQuery = fmt.Sprintf("%s S%02d", query, season)
 	}

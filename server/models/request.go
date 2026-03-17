@@ -15,8 +15,9 @@ type Request struct {
 	Year          int        `json:"year"`
 	PosterPath    string     `json:"poster_path"`
 	Overview      string     `json:"overview"`
-	Seasons       string     `json:"seasons,omitempty"` // Comma-separated list of season numbers
-	Status        string     `json:"status"`            // "pending", "downloading", "completed", "cancelled", "not_found"
+	Seasons       string     `json:"seasons,omitempty"`  // Comma-separated list of season numbers
+	Episodes      string     `json:"episodes,omitempty"` // Comma-separated list of episode identifiers (e.g., S01E01,S01E02)
+	Status        string     `json:"status"`             // "pending", "downloading", "completed", "cancelled", "not_found"
 	RetryCount    int        `json:"retry_count"`
 	LastSearchAt  *time.Time `json:"last_search_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`

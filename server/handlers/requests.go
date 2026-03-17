@@ -137,6 +137,22 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Season(s) %s already exist(s) or have been requested", strings.Join(duplicateSeasons, ", ")), http.StatusConflict)
 			return
 		}
+
+		// Also check episodes
+		if req.Episodes != "" {
+			requestedEpisodes := strings.Split(req.Episodes, ",")
+			var duplicateEpisodes []string
+			for _, re := range requestedEpisodes {
+				re = strings.TrimSpace(re)
+				if slices.Contains(status.RequestedEpisodes, re) {
+					duplicateEpisodes = append(duplicateEpisodes, re)
+				}
+			}
+			if len(duplicateEpisodes) > 0 {
+				http.Error(w, fmt.Sprintf("Episode(s) %s already requested", strings.Join(duplicateEpisodes, ", ")), http.StatusConflict)
+				return
+			}
+		}
 	}
 
 	if err := services.CreateRequest(req); err != nil {
