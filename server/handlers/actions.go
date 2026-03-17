@@ -211,6 +211,43 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
+func RenameAllLibraryMoviesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	cfg := config.Load()
+	allMovies, err := services.GetMovies()
+	if err != nil {
+		slog.Error("Error getting movies for renaming", "error", err)
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	slog.Info("Starting mass movie renaming", "count", len(allMovies))
+
+	count := 0
+	for _, m := range allMovies {
+		if m.Status == "matched" {
+			if err := services.RenameAndMoveMovie(cfg, m.ID); err != nil {
+				slog.Error("Error renaming movie", "movie_id", m.ID, "title", m.Title, "error", err)
+			} else {
+				count++
+			}
+		}
+	}
+
+	slog.Info("Mass movie renaming complete", "movies_renamed", count)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
 func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -287,6 +324,43 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	services.CleanupEmptyDirs(cfg.IncomingShowsPath)
 
 	slog.Info("Mass show import complete", "shows_moved", count)
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func RenameAllLibraryShowsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, err := RequireAdmin(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: Admin only", http.StatusUnauthorized)
+		return
+	}
+
+	cfg := config.Load()
+	allShows, err := services.GetShows()
+	if err != nil {
+		slog.Error("Error getting shows for renaming", "error", err)
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+
+	slog.Info("Starting mass show renaming", "count", len(allShows))
+
+	count := 0
+	for _, s := range allShows {
+		if s.Status == "matched" {
+			if err := services.RenameAndMoveShow(cfg, s.ID); err != nil {
+				slog.Error("Error renaming show", "show_id", s.ID, "title", s.Title, "error", err)
+			} else {
+				count++
+			}
+		}
+	}
+
+	slog.Info("Mass show renaming complete", "shows_renamed", count)
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 

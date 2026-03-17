@@ -68,6 +68,7 @@ func setupRoutes() *chi.Mux {
 		r.Post("/scan/incoming/movies", handlers.ScanIncomingMoviesHandler)
 		r.Post("/import/movies/all", handlers.ImportAllMoviesHandler)
 		r.Post("/rename/movie", handlers.RenameMovieHandler)
+		r.Post("/rename/library/movies", handlers.RenameAllLibraryMoviesHandler)
 		r.Get("/api/movies/alternatives", handlers.GetMovieAlternativesHandler)
 		r.Post("/api/movies/rematch", handlers.RematchMovieHandler)
 
@@ -78,6 +79,7 @@ func setupRoutes() *chi.Mux {
 		r.Post("/scan/incoming/shows", handlers.ScanIncomingShowsHandler)
 		r.Post("/import/shows/all", handlers.ImportAllShowsHandler)
 		r.Post("/rename/show", handlers.RenameShowHandler)
+		r.Post("/rename/library/shows", handlers.RenameAllLibraryShowsHandler)
 		r.Get("/api/shows/alternatives", handlers.GetShowAlternativesHandler)
 		r.Post("/api/shows/rematch", handlers.RematchShowHandler)
 

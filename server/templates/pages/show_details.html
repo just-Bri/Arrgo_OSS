@@ -51,9 +51,14 @@
             {{if .IsAdmin}}
                 {{if gt .Show.ID 0}}
                     <div style="margin-top: 25px;">
-                        <button class="show-alternatives-btn" data-id="{{.Show.ID}}" data-type="show" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                        <button class="show-alternatives-btn" data-id="{{.Show.ID}}" data-type="show" style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500; margin-bottom: 10px;">
                             Fix Mismatch
                         </button>
+                        <form action="/rename/show?id={{.Show.ID}}" method="POST" onsubmit="return confirm('This will rename all episodes and move the show to the correct folder. Continue?')">
+                            <button type="submit" style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500;">
+                                Rename & Organize
+                            </button>
+                        </form>
                     </div>
                 {{end}}
             {{end}}

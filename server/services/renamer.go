@@ -171,7 +171,7 @@ func cleanTitleTags(title string) string {
 	// Remove common uploader/junk patterns and tags without nuking everything after
 	// We use a list of specific tags to remove
 	tags := []string{
-		"- IMPORTED", "RARBG", "YTS", "YIFY", "Eztv", "1337x", "GalaxyRG", "TGX", "PSA", "VXT", "EVO", "MeGusta", "AVS", "SNEAKY",
+		"- IMPORTED", "RARBG", "YTS", "YIFY", "Eztv", "1337x", "GalaxyRG", "TGX", "PSA", "VXT", "EVO", "MeGusta", "AVS",
 		"BRRip", "WEB-DL", "WEB-DLRip", "WEBRip", "BluRay", "BDRip", "DVDRip", "HDTV", "PDTV", "SDTV",
 		"1080p", "720p", "480p", "2160p", "4K", "UHD",
 		"x264", "x265", "HEVC", "H264", "H265", "AVC", "XviD", "DivX",
