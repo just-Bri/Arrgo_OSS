@@ -288,10 +288,16 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	ext := filepath.Ext(m.Path)
 	cleanedTitle := cleanTitleTags(m.Title)
 	sanitizedTitle := sanitizePath(cleanedTitle)
-	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, ext)
 
-	// Create destination directory: Movies/Title (Year) {tmdb-id}/Title (Year) {tmdb-id}.ext
-	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}", sanitizedTitle, m.Year, m.TMDBID)
+	qualitySuffix := ""
+	if m.Quality != "" {
+		qualitySuffix = fmt.Sprintf(" [%s]", sanitizePath(m.Quality))
+	}
+
+	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s%s", sanitizedTitle, m.Year, m.TMDBID, qualitySuffix, ext)
+
+	// Create destination directory: Movies/Title (Year) {tmdb-id} [Quality]/Title (Year) {tmdb-id} [Quality].ext
+	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, qualitySuffix)
 	destDirPath := filepath.Join(cfg.MoviesPath, destDirName)
 	destPath := filepath.Join(destDirPath, newName)
 
