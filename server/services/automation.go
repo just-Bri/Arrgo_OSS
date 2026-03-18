@@ -2551,9 +2551,20 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 
 	// Clean name for metadata search
 	cleanedName := cleanTitleTags(t.Name)
+	// Remove SxxExx or Sxx or Exx patterns
+	epRegex := regexp.MustCompile(`(?i)\.?s\d{1,2}(e\d{1,2})?.*`)
+	cleanedName = epRegex.ReplaceAllString(cleanedName, "")
+	// Remove "Season X" patterns
+	seasonRegex := regexp.MustCompile(`(?i)\.?season\s*\d{1,2}.*`)
+	cleanedName = seasonRegex.ReplaceAllString(cleanedName, "")
+	// Replace dots with spaces and trim
+	cleanedName = strings.ReplaceAll(cleanedName, ".", " ")
+	cleanedName = strings.TrimSpace(cleanedName)
+
 	if cleanedName == "" {
 		cleanedName = t.Name
 	}
+	slog.Info("Cleaned name for metadata search", "original", t.Name, "cleaned", cleanedName)
 
 	var req models.Request
 	req.UserID = userID
@@ -2575,12 +2586,27 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 					break
 				}
 			}
-			req.Title = best.Title
-			req.Year = best.Year
-			req.TMDBID = best.ID
-			req.PosterPath = best.PosterPath
-			req.Overview = best.Overview
-			slog.Info("Matched external movie torrent to TMDB", "torrent", t.Name, "match", best.Title, "tmdb_id", best.ID)
+
+			// Fetch full details for better quality info and poster
+			details, err := GetTMDBMovieDetails(s.cfg, best.ID)
+			if err == nil && details != nil {
+				req.Title = details.Title
+				if details.ReleaseDate != "" && len(details.ReleaseDate) >= 4 {
+					y, _ := strconv.Atoi(details.ReleaseDate[:4])
+					req.Year = y
+				}
+				req.TMDBID = best.ID
+				req.PosterPath = details.PosterPath
+				req.Overview = details.Overview
+				slog.Info("Successfully matched and fetched full TMDB details for external torrent", "torrent", t.Name, "match", details.Title, "tmdb_id", best.ID)
+			} else {
+				req.Title = best.Title
+				req.Year = best.Year
+				req.TMDBID = best.ID
+				req.PosterPath = best.PosterPath
+				req.Overview = best.Overview
+				slog.Info("Matched external movie torrent to TMDB (search only)", "torrent", t.Name, "match", best.Title, "tmdb_id", best.ID)
+			}
 		}
 	} else {
 		results, err := SearchTVDB(s.cfg, cleanedName)
@@ -2592,12 +2618,27 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 					break
 				}
 			}
-			req.Title = best.Title
-			req.Year = best.Year
-			req.TVDBID = best.ID
-			req.PosterPath = best.PosterPath
-			req.Overview = best.Overview
-			slog.Info("Matched external show torrent to TVDB", "torrent", t.Name, "match", best.Title, "tvdb_id", best.ID)
+
+			// Fetch full details for better quality info and poster
+			details, err := GetTVDBShowDetails(s.cfg, best.ID)
+			if err == nil && details != nil {
+				req.Title = details.Name
+				if details.FirstAired != "" && len(details.FirstAired) >= 4 {
+					y, _ := strconv.Atoi(details.FirstAired[:4])
+					req.Year = y
+				}
+				req.TVDBID = best.ID
+				req.PosterPath = details.Image
+				req.Overview = details.Overview
+				slog.Info("Successfully matched and fetched full TVDB details for external torrent", "torrent", t.Name, "match", details.Name, "tvdb_id", best.ID)
+			} else {
+				req.Title = best.Title
+				req.Year = best.Year
+				req.TVDBID = best.ID
+				req.PosterPath = best.PosterPath
+				req.Overview = best.Overview
+				slog.Info("Matched external show torrent to TVDB (search only)", "torrent", t.Name, "match", best.Title, "tvdb_id", best.ID)
+			}
 		}
 	}
 
