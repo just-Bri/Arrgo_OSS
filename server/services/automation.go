@@ -66,8 +66,8 @@ func (s *AutomationService) Start(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
-	// Update download progress every 60 minutes
-	updateTicker := time.NewTicker(60 * time.Minute)
+	// Update download progress every minute (was 60m)
+	updateTicker := time.NewTicker(1 * time.Minute)
 	defer updateTicker.Stop()
 
 	// Check subtitle queue every 60 minutes
@@ -84,6 +84,8 @@ func (s *AutomationService) Start(ctx context.Context) {
 		s.ValidateDownloadingRequests(ctx)
 		// Then process all pending requests
 		s.ProcessPendingRequestsOnStartup(ctx)
+		// Also update download status immediately to pick up any manual torrents
+		s.UpdateDownloadStatus(ctx)
 	}
 
 	// Check for missing subtitles on startup
@@ -2522,13 +2524,19 @@ func (s *AutomationService) incrementRetryCount(requestID int, currentRetryCount
 
 // importExternalTorrent attempts to create a request and download entry for a torrent manually added to qBittorrent
 func (s *AutomationService) importExternalTorrent(ctx context.Context, t TorrentStatus) {
-	// 1. Find an admin user to assign the request to
-	var adminID int
-	err := database.DB.QueryRow("SELECT id FROM users WHERE is_admin = true LIMIT 1").Scan(&adminID)
+	// 1. Find an admin user to assign the request to, falling back to any user
+	var userID int
+	err := database.DB.QueryRow("SELECT id FROM users WHERE is_admin = true LIMIT 1").Scan(&userID)
 	if err != nil {
-		slog.Error("Failed to find admin user for external torrent import", "error", err)
-		return
+		slog.Warn("Failed to find admin user for external torrent import, trying any user", "error", err)
+		err = database.DB.QueryRow("SELECT id FROM users LIMIT 1").Scan(&userID)
+		if err != nil {
+			slog.Error("No users found in database, cannot import external torrent")
+			return
+		}
 	}
+
+	slog.Info("Starting import of external torrent", "name", t.Name, "category", t.Category, "hash", t.Hash, "user_id", userID)
 
 	mediaType := "movie"
 	if t.Category == "arrgo-shows" {
@@ -2548,7 +2556,7 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 	}
 
 	var req models.Request
-	req.UserID = adminID
+	req.UserID = userID
 	req.Title = cleanedName
 	req.MediaType = mediaType
 	req.Year = year
