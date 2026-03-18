@@ -221,7 +221,56 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 
 func processShowDir(cfg *config.Config, root string, name string) {
 	showPath := filepath.Join(root, name)
-	title, year, tmdbID, tvdbID, imdbID := ParseMediaName(name) // Use the new shared ParseMediaName
+	
+	// Fallback to parsing folder name for show info and IDs
+	folderTitle, folderYear, tmdbID, tvdbID, imdbID := ParseMediaName(name)
+
+	var title string
+	var year int
+
+	// Find the first video file in the show folder (or subfolders) to inspect metadata
+	var firstVideoFile string
+	filepath.WalkDir(showPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if MovieExtensions[ext] {
+			firstVideoFile = path
+			// Return a specific error to stop walking immediately
+			return fmt.Errorf("found video")
+		}
+		return nil
+	})
+
+	// Try to extract metadata directly from the first file found (prioritize internal tags)
+	if firstVideoFile != "" {
+		vidMeta, err := ProbeVideo(context.Background(), firstVideoFile)
+		if err == nil && vidMeta != nil {
+			internalTitle := vidMeta.GetTitle()
+			if internalTitle != "" {
+				slog.Info("Found internal video metadata title for show", "file", firstVideoFile, "embedded_title", internalTitle)
+				// Parse the internal title to clean up any tags and extract year if present
+				parsedTitle, parsedYear, _, _, _ := ParseMediaName(internalTitle)
+				if parsedTitle != "" {
+					title = parsedTitle
+				}
+				if parsedYear != 0 {
+					year = parsedYear
+				}
+			}
+		}
+	}
+
+	// Fallback to folder name if internal metadata title is empty
+	if title == "" {
+		title = folderTitle
+	}
+
+	// Keep year from folder if metadata didn't have one or failed to parse
+	if year == 0 {
+		year = folderYear
+	}
 
 	// Look for local poster
 	posterPath := findLocalPoster(showPath)
@@ -552,9 +601,34 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		episodeNum, _ := strconv.Atoi(matches[1])
 		episodePath := filepath.Join(seasonPath, entry.Name())
 
-		// Clean the episode title (remove SXXEXX, tags like - IMPORTED, etc.)
+		// Fallback: Clean the episode title from filename
 		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		epTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+		folderEpTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+		
+		var epTitle string
+		var quality string
+
+		// Try to extract episode metadata directly from the file first (prioritize internal tags)
+		vidMeta, err := ProbeVideo(context.Background(), episodePath)
+		if err == nil && vidMeta != nil {
+			internalTitle := vidMeta.GetTitle()
+			if internalTitle != "" {
+				slog.Info("Found internal video metadata title for episode", "file", episodePath, "embedded_title", internalTitle)
+				parsedTitle, _, _, _, _ := ParseMediaName(internalTitle)
+				if parsedTitle != "" {
+					epTitle = parsedTitle
+				}
+			}
+			quality = vidMeta.GetQuality()
+			if quality != "" {
+				slog.Debug("Extracted video quality from stream metadata for episode", "file", episodePath, "quality", quality)
+			}
+		}
+
+		// Fallback to folder name if internal metadata title is empty
+		if epTitle == "" {
+			epTitle = folderEpTitle
+		}
 
 		// If ParseMediaName left it empty or it's just the show title, use a better default
 		if epTitle == "" {
@@ -572,7 +646,10 @@ func scanEpisodes(seasonID int, seasonPath string) {
 				size = fileInfo.Size()
 			}
 		}
-		quality := DetectQuality(episodePath)
+		
+		if quality == "" {
+			quality = DetectQuality(episodePath)
+		}
 
 		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
 

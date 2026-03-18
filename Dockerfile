@@ -34,8 +34,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o arrgo .
 # Final stage
 FROM alpine:3.20
 
-# Add ca-certificates for API calls and tzdata for correct timezones
-RUN apk --no-cache add ca-certificates tzdata
+# Add ca-certificates for API calls, tzdata for correct timezones, and ffmpeg for ffprobe video metadata extraction
+RUN apk --no-cache add ca-certificates tzdata ffmpeg
 
 WORKDIR /root/
 

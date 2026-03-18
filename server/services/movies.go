@@ -159,8 +159,46 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		}
 	}
 
-	// Parse folder name for movie info
-	title, year, tmdbID, _, imdbID := ParseMediaName(folderName)
+	// Find the main movie file in this folder FIRST so we can inspect its metadata
+	mainMovieFile := findMainMovieFile(folderPath, folderName)
+	if mainMovieFile == "" {
+		slog.Debug("No movie file found in folder", "folder", folderName, "folder_path", folderPath)
+		return
+	}
+
+	slog.Debug("Found main movie file", "folder", folderName, "file", mainMovieFile)
+
+	// Fallback to parsing folder name for movie info and IDs
+	folderTitle, folderYear, tmdbID, _, imdbID := ParseMediaName(folderName)
+
+	var title string
+	var year int
+	var quality string
+
+	// Try to extract metadata directly from the file first (prioritize internal tags)
+	vidMeta, err := ProbeVideo(context.Background(), mainMovieFile)
+	if err == nil && vidMeta != nil {
+		internalTitle := vidMeta.GetTitle()
+		if internalTitle != "" {
+			slog.Info("Found internal video metadata title", "file", mainMovieFile, "embedded_title", internalTitle)
+			// Parse the internal title to clean up any tags and extract year if present
+			title, year, _, _, _ = ParseMediaName(internalTitle)
+		}
+		quality = vidMeta.GetQuality()
+		if quality != "" {
+			slog.Debug("Extracted video quality from stream metadata", "file", mainMovieFile, "quality", quality)
+		}
+	}
+
+	// Fallback to folder name if internal metadata title is empty
+	if title == "" {
+		title = folderTitle
+	}
+	
+	// Keep year from folder if metadata didn't have one or failed to parse
+	if year == 0 {
+		year = folderYear
+	}
 
 	// If parsed title is empty or very short after cleaning, skip it
 	// Also check if parsed title matches skip patterns (in case ParseMediaName didn't clean it properly)
@@ -170,7 +208,7 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		return
 	}
 
-	slog.Debug("Processing movie folder", "folder", folderName, "folder_path", folderPath, "parsed_title", title, "year", year)
+	slog.Debug("Processing movie", "folder", folderName, "file", mainMovieFile, "final_title", title, "year", year)
 
 	// Check if a movie with this title/year already exists in the library (not in incoming)
 	// This prevents re-scanning folders for movies that were already imported
@@ -183,7 +221,7 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		AND path NOT LIKE $3 || '%'
 		LIMIT 1
 	`
-	err := database.DB.QueryRow(checkQuery, title, year, cfg.IncomingMoviesPath).Scan(&existingMovieID, &existingMoviePath)
+	err = database.DB.QueryRow(checkQuery, title, year, cfg.IncomingMoviesPath).Scan(&existingMovieID, &existingMoviePath)
 	if err == nil {
 		slog.Debug("Movie already exists in library, skipping incoming folder",
 			"folder", folderName,
@@ -194,21 +232,15 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		return
 	}
 
-	// Find the main movie file in this folder
-	mainMovieFile := findMainMovieFile(folderPath, folderName)
-	if mainMovieFile == "" {
-		slog.Debug("No movie file found in folder", "folder", folderName, "folder_path", folderPath)
-		return
-	}
-
-	slog.Debug("Found main movie file", "folder", folderName, "file", mainMovieFile)
-
 	info, err := os.Stat(mainMovieFile)
 	if err != nil {
 		return
 	}
 	size := info.Size()
-	quality := DetectQuality(mainMovieFile)
+	
+	if quality == "" {
+		quality = DetectQuality(mainMovieFile)
+	}
 
 	// Look for local poster
 	posterPath := findLocalPoster(folderPath)
