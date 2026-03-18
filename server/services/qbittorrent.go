@@ -254,6 +254,7 @@ type TorrentStatus struct {
 	Ratio         float64 `json:"ratio"`        // Share ratio
 	SeedingTime   int64   `json:"seeding_time"` // Seeding time in seconds
 	SavePath      string  `json:"save_path"`    // Save path for the torrent
+	Category      string  `json:"category"`     // Category of the torrent
 }
 
 func (q *QBittorrentClient) GetTorrents(ctx context.Context, filter string) ([]TorrentStatus, error) {

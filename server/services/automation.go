@@ -1478,7 +1478,7 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		}
 
 		// Update our downloads table (use normalized hash for WHERE clause)
-		_, err := database.DB.Exec(`
+		res, err := database.DB.Exec(`
 			UPDATE downloads
 			SET progress = $1, status = $2, updated_at = NOW()
 			WHERE LOWER(torrent_hash) = $3`,
@@ -1486,6 +1486,14 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		if err != nil {
 			slog.Error("Error updating download status", "error", err, "torrent_hash", normalizedHash)
 			continue
+		}
+
+		// If no rows were affected, this might be a manually added torrent in qBittorrent
+		// that we should pick up as a new request
+		if rows, _ := res.RowsAffected(); rows == 0 {
+			if t.Category == "arrgo-movies" || t.Category == "arrgo-shows" {
+				s.importExternalTorrent(ctx, t)
+			}
 		}
 
 		// If finished, update request status
@@ -2510,4 +2518,134 @@ func (s *AutomationService) incrementRetryCount(requestID int, currentRetryCount
 			slog.Debug("Incremented retry count", "request_id", requestID, "retry_count", newRetryCount)
 		}
 	}
+}
+
+// importExternalTorrent attempts to create a request and download entry for a torrent manually added to qBittorrent
+func (s *AutomationService) importExternalTorrent(ctx context.Context, t TorrentStatus) {
+	// 1. Find an admin user to assign the request to
+	var adminID int
+	err := database.DB.QueryRow("SELECT id FROM users WHERE is_admin = true LIMIT 1").Scan(&adminID)
+	if err != nil {
+		slog.Error("Failed to find admin user for external torrent import", "error", err)
+		return
+	}
+
+	mediaType := "movie"
+	if t.Category == "arrgo-shows" {
+		mediaType = "show"
+	}
+
+	slog.Info("Attempting to import external torrent", "name", t.Name, "category", t.Category, "hash", t.Hash)
+
+	// Detect year and season from title
+	year := extractYear(t.Name)
+	season := extractSeason(t.Name)
+
+	// Clean name for metadata search
+	cleanedName := cleanTitleTags(t.Name)
+	if cleanedName == "" {
+		cleanedName = t.Name
+	}
+
+	var req models.Request
+	req.UserID = adminID
+	req.Title = cleanedName
+	req.MediaType = mediaType
+	req.Year = year
+	req.Seasons = season
+	req.Status = "downloading"
+
+	// 2. Try to match with TMDB/TVDB
+	if mediaType == "movie" {
+		results, err := SearchTMDB(s.cfg, cleanedName)
+		if err == nil && len(results) > 0 {
+			// Find best match (prefer exact title, better with year)
+			best := results[0]
+			for _, r := range results {
+				if r.Year == year && strings.EqualFold(r.Title, cleanedName) {
+					best = r
+					break
+				}
+			}
+			req.Title = best.Title
+			req.Year = best.Year
+			req.TMDBID = best.ID
+			req.PosterPath = best.PosterPath
+			req.Overview = best.Overview
+			slog.Info("Matched external movie torrent to TMDB", "torrent", t.Name, "match", best.Title, "tmdb_id", best.ID)
+		}
+	} else {
+		results, err := SearchTVDB(s.cfg, cleanedName)
+		if err == nil && len(results) > 0 {
+			best := results[0]
+			for _, r := range results {
+				if r.Year == year && strings.EqualFold(r.Title, cleanedName) {
+					best = r
+					break
+				}
+			}
+			req.Title = best.Title
+			req.Year = best.Year
+			req.TVDBID = best.ID
+			req.PosterPath = best.PosterPath
+			req.Overview = best.Overview
+			slog.Info("Matched external show torrent to TVDB", "torrent", t.Name, "match", best.Title, "tvdb_id", best.ID)
+		}
+	}
+
+	// 3. Create request record
+	var requestID int
+	query := `
+		INSERT INTO requests (user_id, title, media_type, tmdb_id, tvdb_id, year, poster_path, overview, seasons, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		RETURNING id
+	`
+	err = database.DB.QueryRow(query,
+		req.UserID, req.Title, req.MediaType,
+		sql.NullString{String: req.TMDBID, Valid: req.TMDBID != ""},
+		sql.NullString{String: req.TVDBID, Valid: req.TVDBID != ""},
+		req.Year, req.PosterPath, req.Overview, req.Seasons, req.Status).Scan(&requestID)
+
+	if err != nil {
+		slog.Error("Failed to create request for external torrent import", "error", err, "name", t.Name)
+		return
+	}
+
+	// 4. Create download record
+	_, err = database.DB.Exec(`
+		INSERT INTO downloads (request_id, torrent_hash, title, size, status, progress, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+		requestID, strings.ToLower(t.Hash), t.Name, fmt.Sprintf("%d", t.Size), t.State, t.Progress)
+
+	if err != nil {
+		slog.Error("Failed to create download entry for external torrent import", "error", err, "hash", t.Hash, "request_id", requestID)
+		// We could delete the request here, but maybe it's better to keep it?
+	} else {
+		slog.Info("Successfully imported external torrent into Arrgo", "request_id", requestID, "name", t.Name, "hash", t.Hash)
+	}
+}
+
+func extractYear(s string) int {
+	re := regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	match := re.FindString(s)
+	if match != "" {
+		year, _ := strconv.Atoi(match)
+		return year
+	}
+	return 0
+}
+
+func extractSeason(s string) string {
+	// Look for S01 or Season 01
+	re := regexp.MustCompile(`(?i)(?:[sS]|Season\s*)(\d{1,2})`)
+	matches := re.FindStringSubmatch(s)
+	if len(matches) > 1 {
+		// Clean up leading zero if it's 01-09
+		season := matches[1]
+		if len(season) == 2 && season[0] == '0' {
+			return season[1:]
+		}
+		return season
+	}
+	return ""
 }
