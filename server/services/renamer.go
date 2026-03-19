@@ -317,6 +317,10 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	}
 
 	if m.Path == destPath {
+		// Even if perfectly named, ensure it's marked as imported and ready
+		if !strings.HasPrefix(m.Path, cfg.IncomingMoviesPath) {
+			database.DB.Exec("UPDATE movies SET status = 'ready', imported_at = COALESCE(imported_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = $1", m.ID)
+		}
 		return nil // Already in correct place
 	}
 
@@ -495,6 +499,10 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	}
 
 	if e.FilePath == destPath {
+		// Ensure episode is marked as imported if it's already in the correct place
+		if !strings.HasPrefix(e.FilePath, cfg.IncomingShowsPath) {
+			database.DB.Exec("UPDATE episodes SET imported_at = COALESCE(imported_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = $1", e.ID)
+		}
 		return nil
 	}
 

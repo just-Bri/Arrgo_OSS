@@ -127,10 +127,6 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 func processMovieDir(cfg *config.Config, root string, folderName string) {
 	folderPath := filepath.Join(root, folderName)
 
-	// Lock this folder to prevent concurrent processing by multiple workers
-	unlock := lockPath(folderPath)
-	defer unlock()
-
 	// Skip common extra/subdirectory names (case-insensitive, with common variations)
 	folderNameLower := strings.ToLower(strings.TrimSpace(folderName))
 	skipDirs := map[string]bool{
