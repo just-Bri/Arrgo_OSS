@@ -210,27 +210,8 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 
 	slog.Debug("Processing movie", "folder", folderName, "file", mainMovieFile, "final_title", title, "year", year)
 
-	// Check if a movie with this title/year already exists in the library (not in incoming)
-	// This prevents re-scanning folders for movies that were already imported
-	var existingMovieID int
-	var existingMoviePath string
-	checkQuery := `
-		SELECT id, path FROM movies 
-		WHERE title = $1 AND year = $2 
-		AND imported_at IS NOT NULL
-		AND path NOT LIKE $3 || '%'
-		LIMIT 1
-	`
-	err = database.DB.QueryRow(checkQuery, title, year, cfg.IncomingMoviesPath).Scan(&existingMovieID, &existingMoviePath)
-	if err == nil {
-		slog.Debug("Movie already exists in library, skipping incoming folder",
-			"folder", folderName,
-			"title", title,
-			"year", year,
-			"existing_movie_id", existingMovieID,
-			"existing_path", existingMoviePath)
-		return
-	}
+	// Previously, we skipped movies that already existed in the library.
+	// We now process them anyway to ensure metadata is fully extracted and folders are correctly renamed.
 
 	info, err := os.Stat(mainMovieFile)
 	if err != nil {
@@ -276,6 +257,13 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 	// Fetch metadata immediately
 	if err := MatchMovie(cfg, id); err != nil {
 		slog.Debug("Error matching movie metadata", "movie_id", id, "title", title, "error", err)
+	}
+
+	// Force rename the movie if its metadata or quality dictates a new path.
+	// This ensures existing items in /data/movies conform to the newest naming standard on every scan.
+	// If already correctly named, this becomes a fast no-op.
+	if err := RenameAndMoveMovie(cfg, id); err != nil {
+		slog.Debug("Error moving/renaming movie during scan", "movie_id", id, "title", title, "error", err)
 	}
 }
 
