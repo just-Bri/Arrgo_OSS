@@ -147,6 +147,38 @@ func handleExistingFile(destPath, candidatePath, candidateQuality string, candid
 	return false
 }
 
+// normalizeForComparison strips punctuation, collapses whitespace, and lowercases
+// a title for fuzzy matching. This catches variations like "Batman - The Animated Series"
+// vs "Batman The Animated Series" and "BOFURI" vs "Bofuri".
+func normalizeForComparison(title string) string {
+	// Remove common punctuation that varies between sources
+	re := regexp.MustCompile(`[-:.,;!?''""/\\()]+`)
+	normalized := re.ReplaceAllString(title, " ")
+	// Collapse multiple spaces
+	normalized = regexp.MustCompile(`\s+`).ReplaceAllString(normalized, " ")
+	return strings.ToLower(strings.TrimSpace(normalized))
+}
+
+// findExistingDirCaseInsensitive checks if a directory with the same name (case-insensitive)
+// already exists in the parent directory. Returns the existing path if found, or the original
+// path if no case-insensitive match exists.
+func findExistingDirCaseInsensitive(destPath string) string {
+	parentDir := filepath.Dir(destPath)
+	targetName := strings.ToLower(filepath.Base(destPath))
+
+	entries, err := os.ReadDir(parentDir)
+	if err != nil {
+		return destPath
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && strings.ToLower(entry.Name()) == targetName {
+			return filepath.Join(parentDir, entry.Name())
+		}
+	}
+	return destPath
+}
+
 func sanitizePath(name string) string {
 	// Remove or replace characters that are problematic for filesystems
 	// Specifically :, /, \, *, ?, ", <, >, |
@@ -300,6 +332,10 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	// Create destination directory: Movies/Title (Year) {tmdb-id} [Quality]/Title (Year) {tmdb-id} [Quality].ext
 	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, qualitySuffix)
 	destDirPath := filepath.Join(cfg.MoviesPath, destDirName)
+
+	// Check for existing folder with different casing
+	destDirPath = findExistingDirCaseInsensitive(destDirPath)
+
 	destPath := filepath.Join(destDirPath, newName)
 
 	// Lock both source and destination paths to prevent concurrent operations
@@ -680,6 +716,9 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
 	}
 	destShowPath := filepath.Join(cfg.ShowsPath, showDirName)
+
+	// Check for existing folder with different casing (e.g., "BOFURI" vs "Bofuri")
+	destShowPath = findExistingDirCaseInsensitive(destShowPath)
 
 	// Lock the destination show path to prevent concurrent operations
 	unlockShow := lockPath(destShowPath)

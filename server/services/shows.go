@@ -308,27 +308,35 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			}
 		}
 
-		// If no match by TVDB ID, try matching by title and year
+		// If no match by TVDB ID, try matching by normalized title and year
 		if showID == 0 && title != "" {
-			var existingID int
-			var existingYear sql.NullInt64
-			err := database.DB.QueryRow(`
-				SELECT id, year FROM shows 
-				WHERE LOWER(title) = LOWER($1)
-				LIMIT 1`,
-				title).Scan(&existingID, &existingYear)
-			if err == nil && existingID > 0 {
-				// Match year if both have years and they match, or if neither has a year
-				yearMatch := (year == 0 && !existingYear.Valid) ||
-					(year != 0 && existingYear.Valid && year == int(existingYear.Int64))
-				if yearMatch {
-					showID = existingID
-					slog.Debug("Reusing existing incoming show by title/year",
-						"show_id", showID,
-						"title", title,
-						"year", year,
-						"new_path", showPath)
+			normalizedTitle := normalizeForComparison(title)
+			rows, err := database.DB.Query(`SELECT id, title, year FROM shows`)
+			if err == nil {
+				for rows.Next() {
+					var existingID int
+					var existingTitle string
+					var existingYear sql.NullInt64
+					if err := rows.Scan(&existingID, &existingTitle, &existingYear); err != nil {
+						continue
+					}
+					if normalizeForComparison(existingTitle) != normalizedTitle {
+						continue
+					}
+					yearMatch := (year == 0 && !existingYear.Valid) ||
+						(year != 0 && existingYear.Valid && year == int(existingYear.Int64))
+					if yearMatch {
+						showID = existingID
+						slog.Debug("Reusing existing incoming show by normalized title/year",
+							"show_id", showID,
+							"title", title,
+							"existing_title", existingTitle,
+							"year", year,
+							"new_path", showPath)
+						break
+					}
 				}
+				rows.Close()
 			}
 		}
 	}
