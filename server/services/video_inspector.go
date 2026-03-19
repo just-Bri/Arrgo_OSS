@@ -87,17 +87,21 @@ func ProbeVideo(ctx context.Context, filePath string) (*VideoMetadata, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	slog.Info("Probing video internal metadata via ffprobe", "file", filePath)
+
 	if err := cmd.Run(); err != nil {
 		// Log string version of stderr to see actual ffprobe errors
-		slog.Debug("ffprobe execution failed", "error", err, "stderr", stderr.String(), "file", filePath)
+		slog.Info("ffprobe execution failed", "error", err, "stderr", stderr.String(), "file", filePath)
 		return nil, fmt.Errorf("ffprobe failed: %w", err)
 	}
 
 	var metadata VideoMetadata
 	if err := json.Unmarshal(stdout.Bytes(), &metadata); err != nil {
-		slog.Error("Failed to parse ffprobe json output", "error", err, "file", filePath)
+		slog.Info("Failed to parse ffprobe json output", "error", err, "file", filePath)
 		return nil, fmt.Errorf("json parse failed: %w", err)
 	}
+
+	slog.Info("Successfully probed video internal metadata", "file", filePath, "title", metadata.GetTitle(), "quality", metadata.GetQuality())
 
 	return &metadata, nil
 }
