@@ -304,8 +304,11 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	// Lock both source and destination paths to prevent concurrent operations
 	unlockSrc := lockPath(m.Path)
 	defer unlockSrc()
-	unlockDst := lockPath(destPath)
-	defer unlockDst()
+	if m.Path != destPath {
+		unlockDst := lockPath(destPath)
+		defer unlockDst()
+	}
+	// m.Path is a file, destDirPath is a directory, so they are guaranteed different
 	unlockDir := lockPath(destDirPath)
 	defer unlockDir()
 
@@ -480,8 +483,10 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	// Lock both source and destination paths to prevent concurrent operations
 	unlockSrc := lockPath(e.FilePath)
 	defer unlockSrc()
-	unlockDst := lockPath(destPath)
-	defer unlockDst()
+	if e.FilePath != destPath {
+		unlockDst := lockPath(destPath)
+		defer unlockDst()
+	}
 	unlockDir := lockPath(destDirPath)
 	defer unlockDir()
 
