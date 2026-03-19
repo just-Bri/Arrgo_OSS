@@ -1,0 +1,71 @@
+{{define "admin_jellyfin"}}
+<div
+    style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+    <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Jellyfin Integration</h2>
+    <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Sync users and trigger library scans on your Jellyfin server.</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+        <button id="jellyfin-sync-users-btn" onclick="jellyfinSyncUsers()"
+            style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+            Sync Users to Jellyfin
+        </button>
+        <button id="jellyfin-refresh-btn" onclick="jellyfinRefreshLibrary()"
+            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+            Refresh Jellyfin Library
+        </button>
+    </div>
+    <div id="jellyfin-result"
+        style="margin-top: 15px; padding: 12px; background: var(--border-color); border-radius: 4px; display: none;">
+        <div style="color: var(--text-color); font-size: 13px;" id="jellyfin-result-content"></div>
+    </div>
+</div>
+
+<script>
+    function jellyfinSyncUsers() {
+        const btn = document.getElementById('jellyfin-sync-users-btn');
+        const resultDiv = document.getElementById('jellyfin-result');
+        const resultContent = document.getElementById('jellyfin-result-content');
+
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+
+        fetch('/api/admin/jellyfin/sync-users', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                resultContent.textContent = data.message || 'User sync complete';
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Sync Users to Jellyfin';
+            })
+            .catch(err => {
+                resultContent.textContent = 'Error: ' + err.message;
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Sync Users to Jellyfin';
+            });
+    }
+
+    function jellyfinRefreshLibrary() {
+        const btn = document.getElementById('jellyfin-refresh-btn');
+        const resultDiv = document.getElementById('jellyfin-result');
+        const resultContent = document.getElementById('jellyfin-result-content');
+
+        btn.disabled = true;
+        btn.textContent = 'Refreshing...';
+
+        fetch('/api/admin/jellyfin/refresh-library', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                resultContent.textContent = data.message || 'Library refresh triggered';
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Refresh Jellyfin Library';
+            })
+            .catch(err => {
+                resultContent.textContent = 'Error: ' + err.message;
+                resultDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Refresh Jellyfin Library';
+            });
+    }
+</script>
+{{end}}

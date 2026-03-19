@@ -26,6 +26,13 @@ func init() {
 		"templates/layouts/base.html",
 		"templates/pages/admin.html",
 		"templates/components/navigation.html",
+		"templates/components/admin_library_management.html",
+		"templates/components/admin_subtitle_management.html",
+		"templates/components/admin_library_maintenance.html",
+		"templates/components/admin_jellyfin.html",
+		"templates/components/admin_user_info.html",
+		"templates/components/admin_danger_zone.html",
+		"templates/components/admin_incoming_media.html",
 	)
 	if err != nil {
 		log.Fatal("Failed to parse admin template:", err)
