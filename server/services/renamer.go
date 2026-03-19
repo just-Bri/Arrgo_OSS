@@ -435,6 +435,37 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	return nil
 }
 
+func StripShowTitlePrefix(epTitle, showTitle string) string {
+	if epTitle == "" || showTitle == "" {
+		return epTitle
+	}
+
+	lowEpTitle := strings.ToLower(epTitle)
+	lowShowTitle := strings.ToLower(showTitle)
+
+	// Try with the full show title
+	if strings.HasPrefix(lowEpTitle, lowShowTitle) {
+		trimmed := epTitle[len(showTitle):]
+		trimmed = strings.Trim(trimmed, " -._")
+		// Recursively strip if needed (handles cases like "Silicon Valley - Silicon Valley - ...")
+		return StripShowTitlePrefix(trimmed, showTitle)
+	}
+
+	// Try without year in show title (e.g. "Silicon Valley (2014)" -> "Silicon Valley")
+	yearRegex := regexp.MustCompile(`\s*\(\d{4}\)$`)
+	cleanShowTitle := strings.TrimSpace(yearRegex.ReplaceAllString(showTitle, ""))
+	lowCleanShowTitle := strings.ToLower(cleanShowTitle)
+
+	if lowCleanShowTitle != lowShowTitle && strings.HasPrefix(lowEpTitle, lowCleanShowTitle) {
+		trimmed := epTitle[len(cleanShowTitle):]
+		trimmed = strings.Trim(trimmed, " -._")
+		// Recursively strip if needed
+		return StripShowTitlePrefix(trimmed, showTitle)
+	}
+
+	return epTitle
+}
+
 func RenameAndMoveEpisode(cfg *config.Config, episodeID int) error {
 	return RenameAndMoveEpisodeWithCleanup(cfg, episodeID, false)
 }
@@ -478,6 +509,9 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	if epTitle == "" || strings.EqualFold(epTitle, sh.Title) {
 		epTitle = fmt.Sprintf("Episode %d", e.EpisodeNumber)
 	}
+
+	// Strip show title prefix from episode title to avoid recursive and redundant naming
+	epTitle = StripShowTitlePrefix(epTitle, sh.Title)
 
 	sanitizedEpTitle := sanitizePath(epTitle)
 
@@ -576,7 +610,7 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	if !skipRescan {
 		go func() {
 			showDirPath := filepath.Join(cfg.ShowsPath, showDirName)
-			scanSeasons(sh.ID, showDirPath)
+			scanSeasons(sh.ID, showDirPath, sh.Title)
 			slog.Info("Rescanned show directory after episode import",
 				"show_id", sh.ID,
 				"show_title", sh.Title,
@@ -763,7 +797,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 
 	// Rescan the show directory once for all imported episodes
 	go func() {
-		scanSeasons(showID, destShowPath)
+		scanSeasons(showID, destShowPath, sh.Title)
 		slog.Info("Rescanned show directory after full show import", "show_id", showID)
 	}()
 

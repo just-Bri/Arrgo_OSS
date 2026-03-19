@@ -159,6 +159,18 @@ func InitSchema() error {
 		('TorrentGalaxy', 'builtin', TRUE, 4),
 		('SolidTorrents', 'builtin', TRUE, 5)
 	ON CONFLICT (name, type) DO NOTHING;
+
+	-- TVDB Episodes metadata cache
+	CREATE TABLE IF NOT EXISTS tvdb_episodes (
+		id SERIAL PRIMARY KEY,
+		show_id INTEGER REFERENCES shows(id) ON DELETE CASCADE,
+		season_number INTEGER NOT NULL,
+		episode_number INTEGER NOT NULL,
+		name VARCHAR(255),
+		overview TEXT,
+		aired VARCHAR(50),
+		UNIQUE(show_id, season_number, episode_number)
+	);
 	`
 
 	if _, err := DB.Exec(schemaSQL); err != nil {

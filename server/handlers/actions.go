@@ -531,23 +531,25 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Order matters if foreign keys aren't all cascading, but ours are mostly.
 	// Deleting shows cascades to seasons and episodes.
-	queries := []string{
-		"DELETE FROM episodes",
-		"DELETE FROM seasons",
-		"DELETE FROM shows",
-		"DELETE FROM movies",
-		"DELETE FROM requests",
-		"DELETE FROM subtitle_queue",
-		"DELETE FROM settings",
-	}
+	// Use TRUNCATE with RESTART IDENTITY to reset auto-incrementing IDs to 1.
+	// CASCADE ensures dependent records in other tables are also cleared.
+	nukeQuery := `TRUNCATE TABLE 
+		episodes, 
+		seasons, 
+		shows, 
+		movies, 
+		requests, 
+		subtitle_queue, 
+		settings, 
+		downloads, 
+		tvdb_episodes 
+		RESTART IDENTITY CASCADE`
 
-	for _, q := range queries {
-		if _, err := tx.Exec(q); err != nil {
-			tx.Rollback()
-			slog.Error("Failed to execute nuke query", "query", q, "error", err, "user", user.Username)
-			http.Error(w, "Failed to clear table: "+q, http.StatusInternalServerError)
-			return
-		}
+	if _, err := tx.Exec(nukeQuery); err != nil {
+		tx.Rollback()
+		slog.Error("Failed to execute nuke query", "error", err, "user", user.Username)
+		http.Error(w, "Failed to clear tables and reset sequences", http.StatusInternalServerError)
+		return
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -857,7 +857,7 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	// 6. Sync episode titles from TVDB
-	go SyncShowEpisodes(cfg, s.ID)
+	SyncShowEpisodes(cfg, s.ID)
 
 	return nil
 }
@@ -922,8 +922,21 @@ func SyncShowEpisodes(cfg *config.Config, showID int) error {
 		return err
 	}
 
+	// 1. First, populate the tvdb_episodes cache table for quick lookup during scans/renames
 	for _, ep := range episodes {
-		// Update existing episodes with official titles
+		query := `
+			INSERT INTO tvdb_episodes (show_id, season_number, episode_number, name, overview, aired)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (show_id, season_number, episode_number) DO UPDATE SET
+				name = EXCLUDED.name,
+				overview = EXCLUDED.overview,
+				aired = EXCLUDED.aired
+		`
+		database.DB.Exec(query, showID, ep.SeasonNumber, ep.Number, ep.Name, ep.Overview, ep.Aired)
+	}
+
+	// 2. Then, update existing episodes in the episodes table with official titles
+	for _, ep := range episodes {
 		query := `
 			UPDATE episodes
 			SET title = $1
@@ -1243,7 +1256,7 @@ func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
 	}
 
 	// Sync episode titles from TVDB
-	go SyncShowEpisodes(cfg, showID)
+	SyncShowEpisodes(cfg, showID)
 
 	slog.Info("Show rematched successfully", "show_id", showID, "new_tvdb_id", newTVDBID)
 	return nil

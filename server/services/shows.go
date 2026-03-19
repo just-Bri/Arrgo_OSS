@@ -375,7 +375,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 
 	// Always scan the current path's seasons/episodes
 	// Even if we reused an existing show, we need to scan this new path
-	scanSeasons(showID, showPath)
+	scanSeasons(showID, showPath, title)
 
 	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
 	// This is a fallback in case the initial check didn't find a match
@@ -424,7 +424,11 @@ func upsertShow(show models.Show) (int, error) {
 	return id, err
 }
 
-func scanSeasons(showID int, showPath string) {
+func scanSeasons(showID int, showPath string, showTitle string) {
+	if showTitle == "" {
+		database.DB.QueryRow("SELECT title FROM shows WHERE id = $1", showID).Scan(&showTitle)
+	}
+
 	entries, err := os.ReadDir(showPath)
 	if err != nil {
 		return
@@ -456,7 +460,7 @@ func scanSeasons(showID int, showPath string) {
 			continue
 		}
 
-		scanEpisodes(seasonID, seasonPath)
+		scanEpisodes(showID, seasonID, seasonPath, showTitle)
 	}
 
 	// Second pass: if no standard Season folders found, try alternative patterns
@@ -479,7 +483,7 @@ func scanSeasons(showID int, showPath string) {
 				continue
 			}
 
-			scanEpisodes(seasonID, seasonPath)
+			scanEpisodes(showID, seasonID, seasonPath, showTitle)
 		}
 	}
 
@@ -500,18 +504,18 @@ func scanSeasons(showID int, showPath string) {
 			seasonNum, _ := strconv.Atoi(matches[1])
 			seasonID, err := upsertSeason(showID, seasonNum)
 			if err == nil {
-				scanEpisodes(seasonID, showPath)
+				scanEpisodes(showID, seasonID, showPath, showTitle)
 			}
 		} else {
 			// No season info in folder name, try to detect season from episode files
 			// Scan episodes directly from show folder and try to infer season from filenames
-			scanEpisodesFromShowFolder(showID, showPath)
+			scanEpisodesFromShowFolder(showID, showPath, showTitle)
 		}
 	}
 }
 
 // scanEpisodesFromShowFolder scans episodes directly from show folder and infers season from filenames
-func scanEpisodesFromShowFolder(showID int, showPath string) {
+func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string) {
 	entries, err := os.ReadDir(showPath)
 	if err != nil {
 		return
@@ -544,18 +548,52 @@ func scanEpisodesFromShowFolder(showID int, showPath string) {
 			continue
 		}
 
-		// Clean the episode title
+		// Clean the episode title using the new logic
+		officialTitle := getOfficialEpisodeTitle(showID, seasonNum, episodeNum)
 		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		epTitle, _, _, _, _ := ParseMediaName(epNameOnly)
-		if epTitle == "" {
-			epTitle = fmt.Sprintf("Episode %d", episodeNum)
+		filenameEpTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+
+		// Follow user's flow: ffprobe => title. If English/clean, use it. Else TVDB.
+		finalEpTitle := ""
+		
+		// 1. Check ffprobe (via ProbeVideo)
+		vidMeta, probeErr := ProbeVideo(context.Background(), episodePath)
+		if probeErr == nil && vidMeta != nil {
+			probeTitle := vidMeta.GetTitle()
+			if probeTitle != "" {
+				cleanProbeTitle, _, _, _, _ := ParseMediaName(probeTitle)
+				if isCleanEnglishEpisodeTitle(cleanProbeTitle, showTitle, officialTitle) {
+					finalEpTitle = cleanProbeTitle
+				}
+			}
+		}
+
+		// 2. Use official TVDB title if available
+		if finalEpTitle == "" && officialTitle != "" {
+			finalEpTitle = officialTitle
+		}
+
+		// 3. Use filename derived title if clean
+		if finalEpTitle == "" && isCleanEnglishEpisodeTitle(filenameEpTitle, showTitle, officialTitle) {
+			finalEpTitle = filenameEpTitle
+		}
+
+		// 4. Ultimate fallback
+		if finalEpTitle == "" {
+			finalEpTitle = fmt.Sprintf("Episode %d", episodeNum)
 		}
 
 		info, _ := entry.Info()
 		size := info.Size()
-		quality := DetectQuality(episodePath)
+		quality := ""
+		if vidMeta != nil {
+			quality = vidMeta.GetQuality()
+		}
+		if quality == "" {
+			quality = DetectQuality(episodePath)
+		}
 
-		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
+		upsertEpisode(seasonID, episodeNum, finalEpTitle, episodePath, quality, size)
 
 		// Try to link torrent hash if file is in incoming folder
 		cfg := config.Load()
@@ -580,7 +618,10 @@ func upsertSeason(showID int, seasonNum int) (int, error) {
 	return id, err
 }
 
-func scanEpisodes(seasonID int, seasonPath string) {
+func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string) {
+	var seasonNum int
+	database.DB.QueryRow("SELECT season_number FROM seasons WHERE id = $1", seasonID).Scan(&seasonNum)
+
 	entries, err := os.ReadDir(seasonPath)
 	if err != nil {
 		return
@@ -607,38 +648,40 @@ func scanEpisodes(seasonID int, seasonPath string) {
 		episodeNum, _ := strconv.Atoi(matches[1])
 		episodePath := filepath.Join(seasonPath, entry.Name())
 
-		// Fallback: Clean the episode title from filename
+		// Get official title from cache
+		officialTitle := getOfficialEpisodeTitle(showID, seasonNum, episodeNum)
 		epNameOnly := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		folderEpTitle, _, _, _, _ := ParseMediaName(epNameOnly)
-		
-		var epTitle string
+		filenameEpTitle, _, _, _, _ := ParseMediaName(epNameOnly)
+
+		var finalEpTitle string
 		var quality string
 
-		// Try to extract episode metadata directly from the file first (prioritize internal tags)
-		vidMeta, err := ProbeVideo(context.Background(), episodePath)
-		if err == nil && vidMeta != nil {
-			internalTitle := vidMeta.GetTitle()
-			if internalTitle != "" {
-				slog.Info("Found internal video metadata title for episode", "file", episodePath, "embedded_title", internalTitle)
-				parsedTitle, _, _, _, _ := ParseMediaName(internalTitle)
-				if parsedTitle != "" {
-					epTitle = parsedTitle
+		// Follow user's flow: ffprobe => title
+		vidMeta, probeErr := ProbeVideo(context.Background(), episodePath)
+		if probeErr == nil && vidMeta != nil {
+			probeTitle := vidMeta.GetTitle()
+			if probeTitle != "" {
+				cleanProbeTitle, _, _, _, _ := ParseMediaName(probeTitle)
+				if isCleanEnglishEpisodeTitle(cleanProbeTitle, showTitle, officialTitle) {
+					finalEpTitle = cleanProbeTitle
 				}
 			}
 			quality = vidMeta.GetQuality()
-			if quality != "" {
-				slog.Debug("Extracted video quality from stream metadata for episode", "file", episodePath, "quality", quality)
-			}
 		}
 
-		// Fallback to folder name if internal metadata title is empty
-		if epTitle == "" {
-			epTitle = folderEpTitle
+		// 2. Use official TVDB title
+		if finalEpTitle == "" && officialTitle != "" {
+			finalEpTitle = officialTitle
 		}
 
-		// If ParseMediaName left it empty or it's just the show title, use a better default
-		if epTitle == "" {
-			epTitle = fmt.Sprintf("Episode %d", episodeNum)
+		// 3. Fallback to filename if clean
+		if finalEpTitle == "" && isCleanEnglishEpisodeTitle(filenameEpTitle, showTitle, officialTitle) {
+			finalEpTitle = filenameEpTitle
+		}
+
+		// 4. Default
+		if finalEpTitle == "" {
+			finalEpTitle = fmt.Sprintf("Episode %d", episodeNum)
 		}
 
 		// Get file info, handle potential nil/error gracefully
@@ -657,7 +700,7 @@ func scanEpisodes(seasonID int, seasonPath string) {
 			quality = DetectQuality(episodePath)
 		}
 
-		upsertEpisode(seasonID, episodeNum, epTitle, episodePath, quality, size)
+		upsertEpisode(seasonID, episodeNum, finalEpTitle, episodePath, quality, size)
 
 		// Try to link torrent hash if file is in incoming folder
 		cfg := config.Load()
@@ -683,6 +726,47 @@ func upsertEpisode(seasonID int, episodeNum int, title string, path string, qual
 	if _, err := database.DB.Exec(query, seasonID, episodeNum, title, path, quality, size); err != nil {
 		slog.Error("Error upserting episode", "season_id", seasonID, "episode", episodeNum, "path", path, "error", err)
 	}
+}
+
+func getOfficialEpisodeTitle(showID, seasonNum, epNum int) string {
+	var name string
+	err := database.DB.QueryRow("SELECT name FROM tvdb_episodes WHERE show_id = $1 AND season_number = $2 AND episode_number = $3", showID, seasonNum, epNum).Scan(&name)
+	if err == nil {
+		return name
+	}
+	return ""
+}
+
+func isCleanEnglishEpisodeTitle(title, showTitle, officialTitle string) bool {
+	if title == "" {
+		return false
+	}
+
+	// Basic check for show title prefix (prevents recursion)
+	lowTitle := strings.ToLower(title)
+	lowShow := strings.ToLower(showTitle)
+
+	// Strip year from show title for check (e.g. "Silicon Valley (2014)")
+	yearRegex := regexp.MustCompile(`\s*\(\d{4}\)$`)
+	cleanShowTitle := strings.TrimSpace(yearRegex.ReplaceAllString(showTitle, ""))
+	lowCleanShow := strings.ToLower(cleanShowTitle)
+
+	if strings.HasPrefix(lowTitle, lowShow) || strings.HasPrefix(lowTitle, lowCleanShow) {
+		// If it's a prefix, it's NOT a "clean" standalone episode title
+		// EXCEPT if the official title also has the show name (very rare)
+		if officialTitle != "" && !strings.Contains(strings.ToLower(officialTitle), lowShow) {
+			return false
+		}
+	}
+
+	// Reject if it's purely non-English characters (simplified)
+	for _, r := range title {
+		if r > 127 && (r < 0x2000 || r > 0x206F) { // Outside basic Latin and punctuation
+			return false
+		}
+	}
+
+	return true
 }
 
 func GetShowCount(excludeIncomingPath string) (int, error) {
