@@ -537,6 +537,8 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 		"DELETE FROM shows",
 		"DELETE FROM movies",
 		"DELETE FROM requests",
+		"DELETE FROM subtitle_queue",
+		"DELETE FROM settings",
 	}
 
 	for _, q := range queries {
