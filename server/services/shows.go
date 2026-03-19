@@ -397,6 +397,12 @@ func processShowDir(cfg *config.Config, root string, name string) {
 			}
 		}
 	}
+
+	// Force rename the show if its metadata, episodes, or quality dictate a new path.
+	// This ensures existing items in /data/shows conform to the newest naming standard on every scan.
+	if err := RenameAndMoveShow(cfg, showID); err != nil {
+		slog.Debug("Error moving/renaming show during scan", "show_id", showID, "title", title, "error", err)
+	}
 }
 
 func upsertShow(show models.Show) (int, error) {
