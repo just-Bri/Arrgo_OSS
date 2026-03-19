@@ -98,6 +98,8 @@ func setupRoutes() *chi.Mux {
 		r.Get("/api/scan/status", handlers.ScanStatusHandler)
 		r.Post("/api/admin/dedupe/movies", handlers.DeduplicateMoviesHandler)
 		r.Post("/api/admin/dedupe/shows", handlers.DeduplicateShowsHandler)
+		r.Post("/api/admin/jellyfin/sync-users", handlers.JellyfinSyncUsersHandler)
+		r.Post("/api/admin/jellyfin/refresh-library", handlers.JellyfinRefreshLibraryHandler)
 	})
 
 	// Root redirect

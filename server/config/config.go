@@ -24,6 +24,8 @@ type Config struct {
 	QBittorrentURL      string
 	QBittorrentUser     string
 	QBittorrentPass     string
+	JellyfinURL         string
+	JellyfinAPIKey      string
 	EnableSubSync       bool
 	SubSyncURL          string
 	Debug               bool
@@ -48,6 +50,8 @@ func Load() *Config {
 		QBittorrentURL:      config.GetEnv("QBITTORRENT_URL", "http://localhost:8080"),
 		QBittorrentUser:     config.GetEnv("QBITTORRENT_USER", ""),
 		QBittorrentPass:     config.GetEnv("QBITTORRENT_PASS", ""),
+		JellyfinURL:         config.GetEnv("JELLYFIN_URL", ""),
+		JellyfinAPIKey:      config.GetEnv("JELLYFIN_API_KEY", ""),
 		EnableSubSync:       config.GetEnv("ENABLE_SUBSYNC", "false") == "true",
 		SubSyncURL:          config.GetEnv("FFSUBSYNC_URL", "http://ffsubsync-api:8080"),
 		Debug:               config.GetEnv("DEBUG", "false") == "true",

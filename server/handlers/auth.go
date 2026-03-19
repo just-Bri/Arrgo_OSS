@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"Arrgo/config"
 	"Arrgo/services"
 	"html/template"
 	"log"
@@ -61,6 +62,14 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("User registered successfully", "username", username, "user_id", user.ID)
+
+	// Create Jellyfin user in the background (non-blocking)
+	go func() {
+		cfg := config.Load()
+		if _, err := services.CreateJellyfinUser(cfg, username, password); err != nil {
+			slog.Error("Failed to create Jellyfin user", "username", username, "error", err)
+		}
+	}()
 
 	// Automatically log in after registration
 	if err := SetupUserSession(w, r, user); err != nil {

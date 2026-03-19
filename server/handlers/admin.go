@@ -229,6 +229,54 @@ func AdminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func JellyfinSyncUsersHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.SyncExistingUsersToJellyfin(cfg); err != nil {
+		slog.Error("Failed to sync users to Jellyfin", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Error: " + err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "User sync complete. New users created with temporary passwords."})
+}
+
+func JellyfinRefreshLibraryHandler(w http.ResponseWriter, r *http.Request) {
+	user, err := GetCurrentUser(r)
+	if err != nil || user == nil || !user.IsAdmin {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := config.Load()
+	if err := services.RefreshJellyfinLibrary(cfg); err != nil {
+		slog.Error("Failed to refresh Jellyfin library", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Error: " + err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Jellyfin library refresh triggered successfully."})
+}
+
 func ScanStatusHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {

@@ -30,6 +30,8 @@ services:
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+      - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@arrgo.local}
@@ -49,6 +51,9 @@ services:
       - ./server/static:/root/static:ro
       - ./posters:/root/data/posters
       - ${MEDIA_PATH:-/mnt/user/media}:/data
+    networks:
+      - default
+      - coven
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: arrgo
@@ -143,3 +148,7 @@ services:
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: ffsubsync-api
+
+networks:
+  coven:
+    external: true
