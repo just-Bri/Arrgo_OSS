@@ -762,7 +762,34 @@ func MatchShow(cfg *config.Config, showID int) error {
 	genreString := strings.Join(genres, ", ")
 	rawMetadata, _ := json.Marshal(details)
 
-	// 5. Update DB with official metadata
+	// 5. Extract English title from translations
+	// This is crucial for non-English shows where the primary title is in another language
+	englishTitle := ""
+	for _, trans := range details.Translations.NameTranslations {
+		// Look for English translation (language code "eng")
+		if trans.Language == "eng" && trans.Name != "" {
+			englishTitle = trans.Name
+			break
+		}
+	}
+
+	// Fallback to aliases if translation is missing
+	if englishTitle == "" {
+		for _, alias := range details.Aliases {
+			if alias.Language == "eng" && alias.Name != "" {
+				englishTitle = alias.Name
+				break
+			}
+		}
+	}
+
+	// Use the English title as the primary name if found
+	displayName := details.Name
+	if englishTitle != "" {
+		displayName = englishTitle
+	}
+
+	// 5.5 Update DB with official metadata
 	updateQuery := `
 		UPDATE shows
 		SET title = $1, year = $2, tvdb_id = $3, tmdb_id = $4, imdb_id = $5, overview = $6, poster_path = $7, genres = $8, status = 'matched', raw_metadata = $9, updated_at = CURRENT_TIMESTAMP
@@ -775,30 +802,33 @@ func MatchShow(cfg *config.Config, showID int) error {
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, details.Name, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
+	_, err = database.DB.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
 	if err != nil {
 		slog.Error("Error updating DB for show", "title", s.Title, "error", err)
 		return err
 	}
 
-	// 5.5. Extract English title from translations and update related requests
-	// This is crucial for non-English shows where the primary title is in another language
-	englishTitle := ""
-	for _, trans := range details.Translations.NameTranslations {
-		// Look for English translation (language code "eng")
-		if trans.Language == "eng" && trans.Name != "" {
-			englishTitle = trans.Name
-			break
-		}
-	}
+	// Update any pending/downloading requests for this show with the English title
+	if englishTitle != "" && englishTitle != details.Name {
+		slog.Info("Updating related requests with English title",
+			"tvdb_id", matchedTVDBID,
+			"primary_title", details.Name,
+			"english_title", englishTitle)
 
-	// Fallback to aliases if translation is missing or same as primary title
-	if englishTitle == "" || englishTitle == details.Name {
-		for _, alias := range details.Aliases {
-			if alias.Language == "eng" && alias.Name != "" {
-				englishTitle = alias.Name
-				break
-			}
+		_, err = database.DB.Exec(`
+			UPDATE requests 
+			SET original_title = $1, updated_at = CURRENT_TIMESTAMP 
+			WHERE tvdb_id = $2 
+			AND media_type = 'show' 
+			AND status IN ('pending', 'downloading')
+			AND (original_title IS NULL OR original_title = '')`,
+			englishTitle, matchedTVDBID)
+		if err != nil {
+			slog.Warn("Failed to update requests with English title", "tvdb_id", matchedTVDBID, "error", err)
+		} else {
+			slog.Info("Successfully updated requests with English title",
+				"tvdb_id", matchedTVDBID,
+				"english_title", englishTitle)
 		}
 	}
 
@@ -1168,6 +1198,31 @@ func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
 	genreString := strings.Join(genres, ", ")
 	rawMetadata, _ := json.Marshal(details)
 
+	// Extract English title from translations
+	englishTitle := ""
+	for _, trans := range details.Translations.NameTranslations {
+		if trans.Language == "eng" && trans.Name != "" {
+			englishTitle = trans.Name
+			break
+		}
+	}
+
+	// Fallback to aliases
+	if englishTitle == "" {
+		for _, alias := range details.Aliases {
+			if alias.Language == "eng" && alias.Name != "" {
+				englishTitle = alias.Name
+				break
+			}
+		}
+	}
+
+	// Use English title as primary if found
+	displayName := details.Name
+	if englishTitle != "" {
+		displayName = englishTitle
+	}
+
 	// Update DB with official metadata
 	updateQuery := `
 		UPDATE shows
@@ -1181,7 +1236,7 @@ func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, details.Name, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, showID)
+	_, err = database.DB.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, showID)
 	if err != nil {
 		slog.Error("Error updating DB for show rematch", "show_id", showID, "error", err)
 		return err

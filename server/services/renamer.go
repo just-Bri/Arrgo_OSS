@@ -218,11 +218,12 @@ func ParseMediaName(name string) (string, int, string, string, string) {
 	for _, match := range matches {
 		tag := strings.ToLower(match[1])
 		id := match[2]
-		if tag == "tmdb" || tag == "tmdbid" {
+		switch tag {
+		case "tmdb", "tmdbid":
 			tmdbID = id
-		} else if tag == "tvdb" {
+		case "tvdb":
 			tvdbID = id
-		} else if tag == "imdb" {
+		case "imdb":
 			imdbID = id
 		}
 	}
@@ -395,6 +396,13 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	// Cleanup old directory if it was in incoming (only if requested)
 	if doCleanup {
 		CleanupEmptyDirs(cfg.IncomingMoviesPath)
+	} else if !shouldCopyInsteadOfMove {
+		// Clean up the specific old directory if it's now empty (and not the root library path)
+		oldDir := filepath.Dir(oldPath)
+		if oldDir != cfg.MoviesPath && oldDir != cfg.IncomingMoviesPath {
+			// os.Remove naturally fails if directory is not empty, which is exactly what we want
+			os.Remove(oldDir)
+		}
 	}
 
 	// Update DB with new path and status, mark as imported
@@ -589,6 +597,14 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 						"error", err)
 				}
 			}()
+		}
+	}
+
+	if !shouldCopyInsteadOfMove {
+		// Clean up the specific old directory if it's now empty
+		oldDir := filepath.Dir(oldPath)
+		if !strings.HasPrefix(oldDir, cfg.ShowsPath) || oldDir != cfg.ShowsPath {
+			os.Remove(oldDir)
 		}
 	}
 
