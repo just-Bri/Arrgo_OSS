@@ -151,9 +151,11 @@ func handleExistingFile(destPath, candidatePath, candidateQuality string, candid
 // a title for fuzzy matching. This catches variations like "Batman - The Animated Series"
 // vs "Batman The Animated Series" and "BOFURI" vs "Bofuri".
 func normalizeForComparison(title string) string {
-	// Remove common punctuation that varies between sources
-	re := regexp.MustCompile(`[-:.,;!?''""/\\()]+`)
+	// Remove common punctuation that varies between sources (including {} braces used in ID tags)
+	re := regexp.MustCompile(`[-:.,;!?''""/\\(){}\[\]]+`)
 	normalized := re.ReplaceAllString(title, " ")
+	// Normalize common Unicode substitutions (e.g., × → x in SPY×FAMILY)
+	normalized = strings.ReplaceAll(normalized, "×", "x")
 	// Collapse multiple spaces
 	normalized = regexp.MustCompile(`\s+`).ReplaceAllString(normalized, " ")
 	return strings.ToLower(strings.TrimSpace(normalized))
@@ -610,11 +612,15 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	if sh.TVDBID != "" {
 		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
 	}
+
+	// Check for existing show folder with different casing/punctuation to avoid creating duplicates
+	// (e.g., "Star Trek Deep Space Nine" vs "Star Trek - Deep Space Nine")
+	showDirPath := findExistingDirCaseInsensitive(filepath.Join(cfg.ShowsPath, showDirName))
 	seasonDirName := fmt.Sprintf("Season %02d", s.SeasonNumber)
 
 	newFileName := fmt.Sprintf("%s - S%02dE%02d - %s%s", sanitizedShowTitle, s.SeasonNumber, e.EpisodeNumber, sanitizedEpTitle, ext)
 
-	destDirPath := filepath.Join(cfg.ShowsPath, showDirName, seasonDirName)
+	destDirPath := filepath.Join(showDirPath, seasonDirName)
 	destPath := filepath.Join(destDirPath, newFileName)
 
 	// Lock both source and destination paths to prevent concurrent operations
