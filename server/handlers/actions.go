@@ -174,7 +174,14 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Starting mass movie import", "count", len(moviesToImport), "workers", services.DefaultWorkerCount)
 
-	count := 0
+	type importFailure struct {
+		ID    int
+		Title string
+		Err   string
+	}
+
+	var succeeded int
+	var failures []importFailure
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	movieChan := make(chan models.Movie, len(moviesToImport))
@@ -188,9 +195,12 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 				// Don't cleanup during import - we'll do it once at the end
 				if err := services.RenameAndMoveMovieWithCleanup(cfg, m.ID, false); err != nil {
 					slog.Error("Error importing movie", "movie_id", m.ID, "title", m.Title, "error", err)
+					mu.Lock()
+					failures = append(failures, importFailure{ID: m.ID, Title: m.Title, Err: err.Error()})
+					mu.Unlock()
 				} else {
 					mu.Lock()
-					count++
+					succeeded++
 					mu.Unlock()
 				}
 			}
@@ -207,7 +217,10 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	// Final cleanup pass
 	services.CleanupEmptyDirs(cfg.IncomingMoviesPath)
 
-	slog.Info("Mass movie import complete", "movies_moved", count)
+	slog.Info("Mass movie import complete", "succeeded", succeeded, "failed", len(failures), "total", len(moviesToImport))
+	for _, f := range failures {
+		slog.Warn("Movie import failed", "movie_id", f.ID, "title", f.Title, "error", f.Err)
+	}
 
 	services.TriggerJellyfinRefresh(cfg, "movie import")
 
@@ -293,7 +306,14 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Starting mass show import", "count", len(showsToImport), "workers", services.DefaultWorkerCount)
 
-	count := 0
+	type importFailure struct {
+		ID    int
+		Title string
+		Err   string
+	}
+
+	var succeeded int
+	var failures []importFailure
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	showChan := make(chan models.Show, len(showsToImport))
@@ -307,9 +327,12 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 				// Don't cleanup during import - we'll do it once at the end
 				if err := services.RenameAndMoveShowWithCleanup(cfg, s.ID, false); err != nil {
 					slog.Error("Error importing show", "show_id", s.ID, "title", s.Title, "error", err)
+					mu.Lock()
+					failures = append(failures, importFailure{ID: s.ID, Title: s.Title, Err: err.Error()})
+					mu.Unlock()
 				} else {
 					mu.Lock()
-					count++
+					succeeded++
 					mu.Unlock()
 				}
 			}
@@ -326,7 +349,10 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	// Final cleanup pass
 	services.CleanupEmptyDirs(cfg.IncomingShowsPath)
 
-	slog.Info("Mass show import complete", "shows_moved", count)
+	slog.Info("Mass show import complete", "succeeded", succeeded, "failed", len(failures), "total", len(showsToImport))
+	for _, f := range failures {
+		slog.Warn("Show import failed", "show_id", f.ID, "title", f.Title, "error", f.Err)
+	}
 
 	services.TriggerJellyfinRefresh(cfg, "show import")
 
