@@ -171,6 +171,10 @@ If you are developing or testing updates on an SMB share and changes aren't refl
 
 ---
 
+## Random notes
+
+I use [mise-en-place](https://mise.jdx.dev/) to manage versions so I have included a mise.toml in this repo.
+
 ## ⚖️ License
 
 Distributed under the **MIT License**. See `LICENSE` for more information.
