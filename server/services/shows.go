@@ -214,6 +214,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 		slog.Info("Show scan cancelled", "scan_type", scanType)
 	} else {
 		slog.Info("Show scan complete", "scan_type", scanType)
+		TriggerJellyfinRefresh(cfg, "show scan")
 	}
 
 	return nil

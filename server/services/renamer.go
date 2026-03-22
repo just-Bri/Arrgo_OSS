@@ -159,12 +159,61 @@ func normalizeForComparison(title string) string {
 	return strings.ToLower(strings.TrimSpace(normalized))
 }
 
-// findExistingDirCaseInsensitive checks if a directory with the same name (case-insensitive)
-// already exists in the parent directory. Returns the existing path if found, or the original
-// path if no case-insensitive match exists.
+// moveAncillaryFiles moves non-video ancillary media files (posters, fanart, banners, NFOs,
+// subtitles, etc.) from oldPath to newPath, preserving directory structure. This is used when
+// renaming show/movie folders within the library to preserve Jellyfin metadata and artwork.
+func moveAncillaryFiles(oldPath, newPath string) {
+	ancillaryExts := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true, ".tbn": true,
+		".nfo": true, ".xml": true,
+		".srt": true, ".ass": true, ".ssa": true, ".sub": true, ".idx": true, ".vtt": true,
+	}
+
+	err := filepath.Walk(oldPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if !ancillaryExts[ext] {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(oldPath, path)
+		if err != nil {
+			return nil
+		}
+
+		destPath := filepath.Join(newPath, relPath)
+
+		// Don't overwrite existing files in destination
+		if _, err := os.Stat(destPath); err == nil {
+			return nil
+		}
+
+		os.MkdirAll(filepath.Dir(destPath), 0755)
+		if err := safeRename(path, destPath); err != nil {
+			slog.Error("Failed to move ancillary file", "from", path, "to", destPath, "error", err)
+		} else {
+			slog.Info("Moved ancillary media file", "from", path, "to", destPath)
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("Failed to walk old path for ancillary files", "path", oldPath, "error", err)
+	}
+
+	// Try to remove the old directory if it's now empty
+	os.Remove(oldPath)
+}
+
+// findExistingDirCaseInsensitive checks if a directory with a matching name already exists
+// in the parent directory, using normalized comparison to handle punctuation differences
+// (e.g., "Batman - The Animated Series" vs "Batman The Animated Series").
+// Returns the existing path if found, or the original path if no match exists.
 func findExistingDirCaseInsensitive(destPath string) string {
 	parentDir := filepath.Dir(destPath)
-	targetName := strings.ToLower(filepath.Base(destPath))
+	targetName := normalizeForComparison(filepath.Base(destPath))
 
 	entries, err := os.ReadDir(parentDir)
 	if err != nil {
@@ -172,7 +221,7 @@ func findExistingDirCaseInsensitive(destPath string) string {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() && strings.ToLower(entry.Name()) == targetName {
+		if entry.IsDir() && normalizeForComparison(entry.Name()) == targetName {
 			return filepath.Join(parentDir, entry.Name())
 		}
 	}
@@ -427,6 +476,12 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 			// If it's a TMDB URL or already in library, keep it as is
 			newPosterPath = m.PosterPath
 		}
+	}
+
+	// Move remaining ancillary media files when renaming within the library
+	oldDir := filepath.Dir(oldPath)
+	if oldDir != destDirPath && !strings.HasPrefix(oldPath, cfg.IncomingMoviesPath) {
+		moveAncillaryFiles(oldDir, destDirPath)
 	}
 
 	// Cleanup old directory if it was in incoming (only if requested)
@@ -770,6 +825,12 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		if err := renameAndMoveEpisodeInternal(cfg, epID, doCleanup, true); err != nil {
 			slog.Error("Error renaming episode", "episode_id", epID, "error", err)
 		}
+	}
+
+	// Move remaining ancillary media files (fanart, banners, season posters, NFOs, etc.)
+	// when renaming within the library. Skip incoming folders as those contain random torrent junk.
+	if sh.Path != destShowPath && !strings.HasPrefix(sh.Path, cfg.IncomingShowsPath) {
+		moveAncillaryFiles(sh.Path, destShowPath)
 	}
 
 	// Update show status and path in DB, handling potential duplicates

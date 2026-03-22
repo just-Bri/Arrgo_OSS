@@ -208,6 +208,9 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 	services.CleanupEmptyDirs(cfg.IncomingMoviesPath)
 
 	slog.Info("Mass movie import complete", "movies_moved", count)
+
+	services.TriggerJellyfinRefresh(cfg, "movie import")
+
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
@@ -324,6 +327,9 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	services.CleanupEmptyDirs(cfg.IncomingShowsPath)
 
 	slog.Info("Mass show import complete", "shows_moved", count)
+
+	services.TriggerJellyfinRefresh(cfg, "show import")
+
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 

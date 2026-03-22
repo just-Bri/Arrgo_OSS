@@ -118,6 +118,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 		slog.Info("Movie scan cancelled", "scan_type", scanType)
 	} else {
 		slog.Info("Movie scan complete", "scan_type", scanType)
+		TriggerJellyfinRefresh(cfg, "movie scan")
 	}
 
 	return nil

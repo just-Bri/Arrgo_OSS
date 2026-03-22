@@ -143,6 +143,8 @@ func DeduplicateMovies(cfg *config.Config) (*DedupeResult, error) {
 		}
 	}
 
+	TriggerJellyfinRefresh(cfg, "movie dedup")
+
 	return result, nil
 }
 
@@ -210,6 +212,8 @@ func DeduplicateShows(cfg *config.Config) (*DedupeResult, error) {
 		// Dedupe the newly consolidated primary folder
 		dedupeEpisodesInShow(primaryFolder, result)
 	}
+
+	TriggerJellyfinRefresh(cfg, "show dedup")
 
 	return result, nil
 }
