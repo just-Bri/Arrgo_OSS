@@ -192,13 +192,27 @@ func DeduplicateShows(cfg *config.Config) (*DedupeResult, error) {
 		slog.Info("Found duplicate show folders", "id", id, "count", len(paths))
 		result.Messages = append(result.Messages, fmt.Sprintf("Merging %d folders for %s", len(paths), id))
 
-		// Assume the first one is the "primary" one. Better: pick the one with clean naming
+		// Pick the primary folder: prefer the one the DB already points to for this show,
+		// so we don't needlessly move files that are already in the correct location.
+		// Fall back to the longest path (canonical names with proper punctuation tend to be longer).
 		primaryFolder := paths[0]
-		for _, p := range paths {
-			// If it matches exactly the standard naming "Title (Year) {id}", it's the best primary
-			// Here we just pick one heuristics might be better
-			if len(p) < len(primaryFolder) {
-				primaryFolder = p // shorter might be cleaner, arbitrary
+		var dbPath string
+		idParts := strings.SplitN(id, "-", 2)
+		if len(idParts) == 2 {
+			_ = database.DB.QueryRow("SELECT path FROM shows WHERE "+idParts[0]+"_id = $1 LIMIT 1", idParts[1]).Scan(&dbPath)
+		}
+		if dbPath != "" {
+			for _, p := range paths {
+				if p == dbPath {
+					primaryFolder = p
+					break
+				}
+			}
+		} else {
+			for _, p := range paths {
+				if len(p) > len(primaryFolder) {
+					primaryFolder = p
+				}
 			}
 		}
 
