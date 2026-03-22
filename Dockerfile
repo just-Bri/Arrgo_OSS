@@ -34,16 +34,22 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o arrgo .
 # Final stage
 FROM alpine:3.20
 
-# Add ca-certificates for API calls, tzdata for correct timezones, and ffmpeg for ffprobe video metadata extraction
-RUN apk --no-cache add ca-certificates tzdata ffmpeg
+# Add ca-certificates for API calls, tzdata for correct timezones,
+# ffmpeg for ffprobe video metadata extraction, and su-exec to drop privileges
+RUN apk --no-cache add ca-certificates tzdata ffmpeg su-exec
 
-WORKDIR /root/
+WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /app/arrgo .
 COPY --from=builder /app/templates ./templates
 COPY --from=builder /app/static ./static
 
+# Copy entrypoint script
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
 EXPOSE 5003
 
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["./arrgo"]

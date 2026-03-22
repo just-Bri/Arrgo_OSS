@@ -47,9 +47,9 @@ services:
       # flaresolverr dependency removed - using existing Flaresolverr instance
       # If you want to run Flaresolverr in this stack, uncomment the dependency above
     volumes:
-      - ./server/templates:/root/templates:ro
-      - ./server/static:/root/static:ro
-      - ./posters:/root/data/posters
+      - ./server/templates:/app/templates:ro
+      - ./server/static:/app/static:ro
+      - ./posters:/app/data/posters
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     networks:
       - default
