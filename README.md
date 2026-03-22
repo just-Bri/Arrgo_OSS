@@ -65,17 +65,44 @@ docker-compose up -d
 | `TVDB_API_KEY` | [TheTVDB API Key](https://thetvdb.com/api-information) |
 | `ADMIN_PASSWORD` | Initial password for the seeded admin account |
 
-### Optional Variables
+### qBittorrent Variables
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `SERVER_IP` | `localhost` | IP of your Unraid server (for qBittorrent links) |
-| `PUID/PGID` | `99`/`100` | User/Group ID for file permissions (Unraid defaults) |
 | `QBITTORRENT_URL` | `http://qbittorrent:8080` | URL for qBittorrent WebUI |
+| `QBITTORRENT_USER` | — | qBittorrent admin username |
+| `QBITTORRENT_PASS` | — | qBittorrent admin password |
+
+### Jellyfin Variables (Optional)
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `JELLYFIN_URL` | `http://jellyfin:8096` | URL to your Jellyfin server |
+| `JELLYFIN_API_KEY` | — | Jellyfin API key (from Jellyfin's Dashboard → API Keys) |
+
+### Subtitle Variables (Optional)
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `OPENSUBTITLES_API_KEY` | — | [OpenSubtitles](https://www.opensubtitles.com/) API key |
+| `OPENSUBTITLES_USER` | — | OpenSubtitles username |
+| `OPENSUBTITLES_PASS` | — | OpenSubtitles password |
 | `ENABLE_SUBSYNC` | `false` | Set to `true` to enable automatic subtitle synchronization |
 | `FFSUBSYNC_URL` | `http://ffsubsync-api:8080` | URL for the `ffsubsync-api` service |
-| `MOVIES_PATH` | `/data/movies` | Path to movies (shared by Arrgo and SubSync) |
-| `SHOWS_PATH` | `/data/shows` | Path to shows (shared by Arrgo and SubSync) |
+
+### Other Optional Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `PORT` | `5003` | HTTP server port |
+| `TZ` | `America/Los_Angeles` | Container timezone |
+| `SERVER_IP` | `localhost` | IP of your Unraid server (for qBittorrent links) |
+| `PUID/PGID` | `99`/`100` | User/Group ID for file permissions (Unraid defaults) |
+| `MOVIES_PATH` | `/data/movies` | Path to movies library |
+| `SHOWS_PATH` | `/data/shows` | Path to shows library |
+| `INCOMING_MOVIES_PATH` | `/data/incoming/movies` | Staging path for incoming movies |
+| `INCOMING_SHOWS_PATH` | `/data/incoming/shows` | Staging path for incoming shows |
+| `CLOUDFLARE_BYPASS_URL` | `http://host.docker.internal:8191` | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) URL for Cloudflare-protected indexers |
 | `DEBUG` | `false` | Set to `true` for verbose logging |
 
 ---
@@ -92,6 +119,19 @@ Arrgo's default stack includes a pre-configured qBittorrent VPN container (based
    ```
 2. **Clean up**: Remove any non-PIA `.ovpn` files.
 3. **Credentials**: Set `PIA_USER` and `PIA_PASSWORD` in your `.env`.
+
+---
+
+## 📺 Jellyfin Integration (Optional)
+
+Arrgo can integrate with your [Jellyfin](https://jellyfin.org/) media server for automatic library refreshes and user management.
+
+1. **Get an API key**: In Jellyfin, go to **Dashboard → API Keys** and create a new key.
+2. **Set environment variables**: Add `JELLYFIN_URL` and `JELLYFIN_API_KEY` to your `.env`. If either is missing, Jellyfin integration is silently disabled.
+3. **Features**:
+   - **Auto library refresh**: Jellyfin's library is automatically refreshed after imports, scans, and deduplication operations.
+   - **User sync**: New Arrgo users automatically get a Jellyfin account created with a temporary password (`changeme-{username}`). Existing users can be bulk-synced from the admin panel.
+   - **Manual controls**: The admin panel provides buttons to trigger a library refresh or sync all users on demand.
 
 ---
 
@@ -125,6 +165,8 @@ If you are developing or testing updates on an SMB share and changes aren't refl
 - [x] Subtitle Management (OpenSubtitles)
 - [x] qBittorrent Integration & Automation
 - [x] Subtitle sync via ffsubsync microservice
+- [x] Jellyfin integration (library refresh & user sync)
+- [ ] Jellyfin auto-collections
 - [ ] Advanced Library Filtering & Bulk Actions
 
 ---
