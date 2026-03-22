@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,7 +30,8 @@ func init() {
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse requests template:", err)
+		slog.Error("Failed to parse requests template", "error", err)
+		os.Exit(1)
 	}
 }
 

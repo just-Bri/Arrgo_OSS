@@ -239,7 +239,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 		seasonsParam = strconv.Itoa(season)
 	}
 
-	results, err := services.SearchTorrents(ctx, searchQuery, searchType, seasonsParam)
+	results, err := services.SearchTorrents(ctx, searchQuery, searchType, seasonsParam, "")
 	if err != nil {
 		slog.Warn("Search failed", "error", err)
 		writeTorznabError(w, "500", fmt.Sprintf("Search failed: %v", err))

@@ -21,7 +21,7 @@ func NewX1337Indexer() *X1337Indexer {
 	return &X1337Indexer{}
 }
 
-func (x *X1337Indexer) GetName() string {
+func (x *X1337Indexer) Name() string {
 	return "1337x"
 }
 

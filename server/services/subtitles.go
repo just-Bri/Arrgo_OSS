@@ -2,8 +2,8 @@ package services
 
 import (
 	"Arrgo/config"
-	"Arrgo/database"
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +19,36 @@ import (
 	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
+type SubtitleService struct {
+	cfg               *config.Config
+	db                *sql.DB
+	osToken           string
+	osBaseURL         string
+	osTokenExpiry     time.Time
+	osMutex           sync.Mutex
+	lastOSRequestTime time.Time
+	osRateLimitMutex  sync.Mutex
+	osSemaphore       chan struct{}
+}
+
+func NewSubtitleService(cfg *config.Config, db *sql.DB) *SubtitleService {
+	return &SubtitleService{
+		cfg:         cfg,
+		db:          db,
+		osSemaphore: make(chan struct{}, 1),
+	}
+}
+
+var globalSubtitle *SubtitleService
+
+func SetGlobalSubtitleService(s *SubtitleService) {
+	globalSubtitle = s
+}
+
+func GetGlobalSubtitleService() *SubtitleService {
+	return globalSubtitle
+}
+
 type OpenSubtitlesError struct {
 	Message      string `json:"message"`
 	ResetTimeUTC string `json:"reset_time_utc"`
@@ -29,7 +59,7 @@ func (e OpenSubtitlesError) Error() string {
 	return fmt.Sprintf("opensubtitles download request failed (%d): %s", e.Status, e.Message)
 }
 
-func parseOpenSubtitlesError(resp *http.Response) error {
+func (s *SubtitleService) parseOpenSubtitlesError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
 	var osErr OpenSubtitlesError
@@ -40,7 +70,7 @@ func parseOpenSubtitlesError(resp *http.Response) error {
 		if resp.StatusCode == 406 && osErr.ResetTimeUTC != "" {
 			// Store quota reset time
 			if t, err := time.Parse(time.RFC3339, osErr.ResetTimeUTC); err == nil {
-				SetSetting("opensubtitles_quota_reset", t.Format(time.RFC3339))
+				s.SetSetting("opensubtitles_quota_reset", t.Format(time.RFC3339))
 			}
 		}
 		return osErr
@@ -56,7 +86,7 @@ func parseOpenSubtitlesError(resp *http.Response) error {
 			if t, err := time.Parse(layout, matches[1]); err == nil {
 				// Convert to UTC and store
 				utcTime := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
-				SetSetting("opensubtitles_quota_reset", utcTime.Format(time.RFC3339))
+				s.SetSetting("opensubtitles_quota_reset", utcTime.Format(time.RFC3339))
 				slog.Debug("Extracted quota reset time from text error", "reset_time", utcTime.Format(time.RFC3339))
 			}
 		}
@@ -65,8 +95,8 @@ func parseOpenSubtitlesError(resp *http.Response) error {
 	return fmt.Errorf("opensubtitles request failed (%d): %s", resp.StatusCode, bodyStr)
 }
 
-func SetSetting(key, value string) error {
-	_, err := database.DB.Exec(`
+func (s *SubtitleService) SetSetting(key, value string) error {
+	_, err := s.db.Exec(`
 		INSERT INTO settings (key, value, updated_at)
 		VALUES ($1, $2, CURRENT_TIMESTAMP)
 		ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
@@ -74,11 +104,11 @@ func SetSetting(key, value string) error {
 	return err
 }
 
-func QueueSubtitleDownload(mediaType string, mediaID int) error {
+func (s *SubtitleService) QueueSubtitleDownload(mediaType string, mediaID int) error {
 	// If we have a reset time, use it + 5 minutes. Otherwise use now.
 	nextRetry := time.Now()
 	var resetStr string
-	err := database.DB.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
 	if err == nil {
 		if t, err := time.Parse(time.RFC3339, resetStr); err == nil {
 			if t.After(nextRetry) {
@@ -87,7 +117,7 @@ func QueueSubtitleDownload(mediaType string, mediaID int) error {
 		}
 	}
 
-	_, err = database.DB.Exec(`
+	_, err = s.db.Exec(`
 		INSERT INTO subtitle_queue (media_type, media_id, next_retry)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (media_type, media_id) DO UPDATE SET next_retry = $3`,
@@ -95,9 +125,9 @@ func QueueSubtitleDownload(mediaType string, mediaID int) error {
 	return err
 }
 
-func IsQuotaLocked() bool {
+func (s *SubtitleService) IsQuotaLocked() bool {
 	var resetStr string
-	err := database.DB.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'opensubtitles_quota_reset'").Scan(&resetStr)
 	if err != nil {
 		return false
 	}
@@ -107,32 +137,18 @@ func IsQuotaLocked() bool {
 	return false
 }
 
-var (
-	osToken       string
-	osBaseURL     string
-	osTokenExpiry time.Time
-	osMutex       sync.Mutex
+func (s *SubtitleService) osThrottle() {
+	s.osRateLimitMutex.Lock()
+	defer s.osRateLimitMutex.Unlock()
 
-	// Rate limiting for OpenSubtitles
-	lastOSRequestTime time.Time
-	osRateLimitMutex  sync.Mutex
-
-	// Rate limiting semaphore to ensure we don't overload OpenSubtitles
-	osSemaphore = make(chan struct{}, 1)
-)
-
-func osThrottle() {
-	osRateLimitMutex.Lock()
-	defer osRateLimitMutex.Unlock()
-
-	elapsed := time.Since(lastOSRequestTime)
+	elapsed := time.Since(s.lastOSRequestTime)
 	if elapsed < 200*time.Millisecond {
 		time.Sleep(200*time.Millisecond - elapsed)
 	}
-	lastOSRequestTime = time.Now()
+	s.lastOSRequestTime = time.Now()
 }
 
-func doRequestWithRetry(client *http.Client, reqFunc func() (*http.Request, error)) (*http.Response, error) {
+func (s *SubtitleService) doRequestWithRetry(client *http.Client, reqFunc func() (*http.Request, error)) (*http.Response, error) {
 	var lastResp *http.Response
 	var lastErr error
 
@@ -142,7 +158,7 @@ func doRequestWithRetry(client *http.Client, reqFunc func() (*http.Request, erro
 			return nil, err
 		}
 
-		osThrottle()
+		s.osThrottle()
 		resp, err := client.Do(req)
 		if err == nil {
 			if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable {
@@ -187,27 +203,27 @@ type OSDownloadResponse struct {
 	FileName string `json:"file_name"`
 }
 
-func getOSToken(cfg *config.Config) (string, string, error) {
-	osMutex.Lock()
-	defer osMutex.Unlock()
+func (s *SubtitleService) getOSToken() (string, string, error) {
+	s.osMutex.Lock()
+	defer s.osMutex.Unlock()
 
-	if osToken != "" && time.Now().Before(osTokenExpiry) {
-		return osToken, osBaseURL, nil
+	if s.osToken != "" && time.Now().Before(s.osTokenExpiry) {
+		return s.osToken, s.osBaseURL, nil
 	}
 
-	if cfg.OpenSubtitlesUser == "" || cfg.OpenSubtitlesPass == "" {
+	if s.cfg.OpenSubtitlesUser == "" || s.cfg.OpenSubtitlesPass == "" {
 		return "", "", fmt.Errorf("OpenSubtitles credentials not set")
 	}
 
 	slog.Info("Authenticating with OpenSubtitles")
 	payload, _ := json.Marshal(map[string]string{
-		"username": cfg.OpenSubtitlesUser,
-		"password": cfg.OpenSubtitlesPass,
+		"username": s.cfg.OpenSubtitlesUser,
+		"password": s.cfg.OpenSubtitlesPass,
 	})
 
-	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("POST", "https://api.opensubtitles.com/api/v1/login", bytes.NewBuffer(payload))
-		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
+		req.Header.Set("Api-Key", s.cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "Arrgo v1.0")
@@ -231,44 +247,44 @@ func getOSToken(cfg *config.Config) (string, string, error) {
 		return "", "", err
 	}
 
-	osToken = result.Token
-	osBaseURL = result.BaseURL
-	if osBaseURL == "" {
-		osBaseURL = "api.opensubtitles.com"
+	s.osToken = result.Token
+	s.osBaseURL = result.BaseURL
+	if s.osBaseURL == "" {
+		s.osBaseURL = "api.opensubtitles.com"
 	}
-	osTokenExpiry = time.Now().Add(23 * time.Hour) // Tokens usually last 24h
-	return osToken, osBaseURL, nil
+	s.osTokenExpiry = time.Now().Add(23 * time.Hour) // Tokens usually last 24h
+	return s.osToken, s.osBaseURL, nil
 }
 
-func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
-	if cfg.OpenSubtitlesAPIKey == "" {
+func (s *SubtitleService) DownloadSubtitlesForMovie(movieID int) error {
+	if s.cfg.OpenSubtitlesAPIKey == "" {
 		return nil
 	}
 
-	if IsQuotaLocked() {
+	if s.IsQuotaLocked() {
 		slog.Info("OpenSubtitles quota is locked (pre-check), queueing movie", "movie_id", movieID)
-		return QueueSubtitleDownload("movie", movieID)
+		return s.QueueSubtitleDownload("movie", movieID)
 	}
 
 	var imdbID, tmdbID, title, videoPath string
 	var year int
-	err := database.DB.QueryRow("SELECT imdb_id, tmdb_id, title, year, path FROM movies WHERE id = $1", movieID).Scan(&imdbID, &tmdbID, &title, &year, &videoPath)
+	err := s.db.QueryRow("SELECT imdb_id, tmdb_id, title, year, path FROM movies WHERE id = $1", movieID).Scan(&imdbID, &tmdbID, &title, &year, &videoPath)
 	if err != nil {
 		return fmt.Errorf("failed to fetch movie info for subtitle download: %w", err)
 	}
 
 	// Wait for our turn
-	osSemaphore <- struct{}{}
+	s.osSemaphore <- struct{}{}
 	defer func() {
 		// Small cooldown after each API interaction
 		time.Sleep(1 * time.Second)
-		<-osSemaphore
+		<-s.osSemaphore
 	}()
 
 	// Re-check quota after entering semaphore to catch race conditions
-	if IsQuotaLocked() {
+	if s.IsQuotaLocked() {
 		slog.Info("OpenSubtitles quota was locked while waiting for semaphore, queueing movie", "movie_id", movieID)
-		return QueueSubtitleDownload("movie", movieID)
+		return s.QueueSubtitleDownload("movie", movieID)
 	}
 
 	if imdbID == "" {
@@ -288,9 +304,9 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 		"hearing_impaired": "include",
 		"order_by":         "votes",
 	})
-	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("GET", searchURL, nil)
-		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
+		req.Header.Set("Api-Key", s.cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "Arrgo v1.0")
@@ -302,9 +318,9 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		err := parseOpenSubtitlesError(resp)
+		err := s.parseOpenSubtitlesError(resp)
 		if resp.StatusCode == 406 {
-			QueueSubtitleDownload("movie", movieID)
+			s.QueueSubtitleDownload("movie", movieID)
 		}
 		return err
 	}
@@ -352,7 +368,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 
 	slog.Info("Found subtitle, downloading", "title", title, "sdh", isSDH, "file_id", fileID)
 
-	token, baseURL, err := getOSToken(cfg)
+	token, baseURL, err := s.getOSToken()
 	if err != nil {
 		slog.Warn("Failed to get auth token, download might fail", "error", err)
 		baseURL = "api.opensubtitles.com"
@@ -362,9 +378,9 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
 	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
-	downloadResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	downloadResp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
-		downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
+		downloadReq.Header.Set("Api-Key", s.cfg.OpenSubtitlesAPIKey)
 		downloadReq.Header.Set("Content-Type", "application/json")
 		downloadReq.Header.Set("Accept", "application/json")
 		downloadReq.Header.Set("User-Agent", "Arrgo v1.0")
@@ -379,9 +395,9 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	defer downloadResp.Body.Close()
 
 	if downloadResp.StatusCode != http.StatusOK {
-		err := parseOpenSubtitlesError(downloadResp)
+		err := s.parseOpenSubtitlesError(downloadResp)
 		if downloadResp.StatusCode == 406 {
-			QueueSubtitleDownload("movie", movieID)
+			s.QueueSubtitleDownload("movie", movieID)
 		}
 		return err
 	}
@@ -392,7 +408,7 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// 3. Download the actual file
-	fileResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	fileResp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		fileReq, _ := http.NewRequest("GET", downloadInfo.Link, nil)
 		fileReq.Header.Set("User-Agent", "Arrgo v1.0")
 		return fileReq, nil
@@ -424,9 +440,9 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	slog.Info("Successfully downloaded subtitle for movie", "title", title, "dest_path", destPath)
 
 	// Trigger automatic sync if enabled
-	if cfg.EnableSubSync {
+	if s.cfg.EnableSubSync {
 		go func() {
-			if err := SyncSubtitlesForMovie(cfg, movieID); err != nil {
+			if err := s.SyncSubtitlesForMovie(movieID); err != nil {
 				slog.Error("Automatic subtitle sync failed for movie", "movie_id", movieID, "error", err)
 			}
 		}()
@@ -435,14 +451,14 @@ func DownloadSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	return nil
 }
 
-func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
-	if cfg.OpenSubtitlesAPIKey == "" {
+func (s *SubtitleService) DownloadSubtitlesForEpisode(episodeID int) error {
+	if s.cfg.OpenSubtitlesAPIKey == "" {
 		return nil
 	}
 
-	if IsQuotaLocked() {
+	if s.IsQuotaLocked() {
 		slog.Info("OpenSubtitles quota is locked (pre-check), queueing episode", "episode_id", episodeID)
-		return QueueSubtitleDownload("episode", episodeID)
+		return s.QueueSubtitleDownload("episode", episodeID)
 	}
 
 	var imdbID, showTitle, videoPath string
@@ -454,23 +470,23 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		JOIN shows sh ON s.show_id = sh.id
 		WHERE e.id = $1
 	`
-	err := database.DB.QueryRow(query, episodeID).Scan(&imdbID, &showTitle, &season, &episode, &videoPath)
+	err := s.db.QueryRow(query, episodeID).Scan(&imdbID, &showTitle, &season, &episode, &videoPath)
 	if err != nil {
 		return fmt.Errorf("failed to fetch episode info for subtitle download: %w", err)
 	}
 
 	// Wait for our turn
-	osSemaphore <- struct{}{}
+	s.osSemaphore <- struct{}{}
 	defer func() {
 		// Small cooldown after each API interaction
 		time.Sleep(1 * time.Second)
-		<-osSemaphore
+		<-s.osSemaphore
 	}()
 
 	// Re-check quota after entering semaphore to catch race conditions
-	if IsQuotaLocked() {
+	if s.IsQuotaLocked() {
 		slog.Info("OpenSubtitles quota was locked while waiting for semaphore, queueing episode", "episode_id", episodeID)
-		return QueueSubtitleDownload("episode", episodeID)
+		return s.QueueSubtitleDownload("episode", episodeID)
 	}
 
 	if imdbID == "" {
@@ -491,9 +507,9 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		"order_by":         "votes",
 	})
 
-	resp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	resp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		req, _ := http.NewRequest("GET", searchURL, nil)
-		req.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
+		req.Header.Set("Api-Key", s.cfg.OpenSubtitlesAPIKey)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "Arrgo v1.0")
@@ -505,9 +521,9 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		err := parseOpenSubtitlesError(resp)
+		err := s.parseOpenSubtitlesError(resp)
 		if resp.StatusCode == 406 {
-			QueueSubtitleDownload("episode", episodeID)
+			s.QueueSubtitleDownload("episode", episodeID)
 		}
 		return err
 	}
@@ -551,7 +567,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	fileID := bestMatch.Attributes.Files[0].FileID
 	isSDH := bestMatch.Attributes.HearingImpaired
 
-	token, baseURL, err := getOSToken(cfg)
+	token, baseURL, err := s.getOSToken()
 	if err != nil {
 		slog.Warn("Failed to get auth token, download might fail", "error", err)
 		baseURL = "api.opensubtitles.com"
@@ -561,9 +577,9 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	payloadBytes, _ := json.Marshal(downloadPayload)
 
 	downloadURL := fmt.Sprintf("https://%s/api/v1/download", baseURL)
-	downloadResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	downloadResp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		downloadReq, _ := http.NewRequest("POST", downloadURL, bytes.NewBuffer(payloadBytes))
-		downloadReq.Header.Set("Api-Key", cfg.OpenSubtitlesAPIKey)
+		downloadReq.Header.Set("Api-Key", s.cfg.OpenSubtitlesAPIKey)
 		downloadReq.Header.Set("Content-Type", "application/json")
 		downloadReq.Header.Set("Accept", "application/json")
 		downloadReq.Header.Set("User-Agent", "Arrgo v1.0")
@@ -578,9 +594,9 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	defer downloadResp.Body.Close()
 
 	if downloadResp.StatusCode != http.StatusOK {
-		err := parseOpenSubtitlesError(downloadResp)
+		err := s.parseOpenSubtitlesError(downloadResp)
 		if downloadResp.StatusCode == 406 {
-			QueueSubtitleDownload("episode", episodeID)
+			s.QueueSubtitleDownload("episode", episodeID)
 		}
 		return err
 	}
@@ -591,7 +607,7 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	// 3. Download the actual file
-	fileResp, err := doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
+	fileResp, err := s.doRequestWithRetry(sharedhttp.DefaultClient, func() (*http.Request, error) {
 		fileReq, _ := http.NewRequest("GET", downloadInfo.Link, nil)
 		fileReq.Header.Set("User-Agent", "Arrgo v1.0")
 		return fileReq, nil
@@ -623,9 +639,9 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	slog.Info("Successfully downloaded subtitle for episode", "show_title", showTitle, "season", season, "episode", episode, "dest_path", destPath)
 
 	// Trigger automatic sync if enabled
-	if cfg.EnableSubSync {
+	if s.cfg.EnableSubSync {
 		go func() {
-			if err := SyncSubtitlesForEpisode(cfg, episodeID); err != nil {
+			if err := s.SyncSubtitlesForEpisode(episodeID); err != nil {
 				slog.Error("Automatic subtitle sync failed for episode", "episode_id", episodeID, "error", err)
 			}
 		}()
@@ -634,13 +650,13 @@ func DownloadSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	return nil
 }
 
-func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
-	if !cfg.EnableSubSync {
+func (s *SubtitleService) SyncSubtitlesForMovie(movieID int) error {
+	if !s.cfg.EnableSubSync {
 		return nil
 	}
 
 	var videoPath string
-	err := database.DB.QueryRow("SELECT path FROM movies WHERE id = $1", movieID).Scan(&videoPath)
+	err := s.db.QueryRow("SELECT path FROM movies WHERE id = $1", movieID).Scan(&videoPath)
 	if err != nil {
 		return err
 	}
@@ -672,7 +688,7 @@ func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
 		"subtitle": subPath,
 	})
 
-	resp, err := http.Post(cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
+	resp, err := http.Post(s.cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("failed to call subsync api: %w", err)
 	}
@@ -689,20 +705,20 @@ func SyncSubtitlesForMovie(cfg *config.Config, movieID int) error {
 	}
 
 	// Update DB
-	if _, err = database.DB.Exec("UPDATE movies SET subtitles_synced = TRUE WHERE id = $1", movieID); err != nil {
+	if _, err = s.db.Exec("UPDATE movies SET subtitles_synced = TRUE WHERE id = $1", movieID); err != nil {
 		return err
 	}
 	slog.Info("Successfully synced subtitles for movie", "movie_id", movieID)
 	return nil
 }
 
-func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
-	if !cfg.EnableSubSync {
+func (s *SubtitleService) SyncSubtitlesForEpisode(episodeID int) error {
+	if !s.cfg.EnableSubSync {
 		return nil
 	}
 
 	var videoPath string
-	err := database.DB.QueryRow("SELECT file_path FROM episodes WHERE id = $1", episodeID).Scan(&videoPath)
+	err := s.db.QueryRow("SELECT file_path FROM episodes WHERE id = $1", episodeID).Scan(&videoPath)
 	if err != nil {
 		return err
 	}
@@ -734,7 +750,7 @@ func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 		"subtitle": subPath,
 	})
 
-	resp, err := http.Post(cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
+	resp, err := http.Post(s.cfg.SubSyncURL+"/sync", "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("failed to call subsync api: %w", err)
 	}
@@ -751,7 +767,7 @@ func SyncSubtitlesForEpisode(cfg *config.Config, episodeID int) error {
 	}
 
 	// Update DB
-	if _, err = database.DB.Exec("UPDATE episodes SET subtitles_synced = TRUE WHERE id = $1", episodeID); err != nil {
+	if _, err = s.db.Exec("UPDATE episodes SET subtitles_synced = TRUE WHERE id = $1", episodeID); err != nil {
 		return err
 	}
 	slog.Info("Successfully synced subtitles for episode", "episode_id", episodeID)
@@ -814,10 +830,10 @@ const (
 )
 
 // getCachedScanResult retrieves cached scan results if they exist and are still valid
-func getCachedScanResult() (*SubtitleScanResult, bool) {
+func (s *SubtitleService) getCachedScanResult() (*SubtitleScanResult, bool) {
 	var value string
 	var updatedAt time.Time
-	err := database.DB.QueryRow(
+	err := s.db.QueryRow(
 		"SELECT value, updated_at FROM settings WHERE key = $1",
 		subtitleScanCacheKey,
 	).Scan(&value, &updatedAt)
@@ -841,22 +857,22 @@ func getCachedScanResult() (*SubtitleScanResult, bool) {
 }
 
 // cacheScanResult stores scan results in the database
-func cacheScanResult(result *SubtitleScanResult) error {
+func (s *SubtitleService) cacheScanResult(result *SubtitleScanResult) error {
 	jsonData, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal scan result: %w", err)
 	}
 
-	return SetSetting(subtitleScanCacheKey, string(jsonData))
+	return s.SetSetting(subtitleScanCacheKey, string(jsonData))
 }
 
 // ScanAllMediaForSubtitles scans all movies and episodes to check if they have subtitles
 // Results are cached for 24 hours to avoid repeated scans
 // Set forceRefresh to true to bypass cache and perform a new scan
-func ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
+func (s *SubtitleService) ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
 	// Check cache first (unless forcing refresh)
 	if !forceRefresh {
-		if cached, ok := getCachedScanResult(); ok {
+		if cached, ok := s.getCachedScanResult(); ok {
 			slog.Info("Returning cached subtitle scan results")
 			return cached, nil
 		}
@@ -886,7 +902,7 @@ func ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
 
 	// Scan episodes
 	episodeQuery := `SELECT id, file_path FROM episodes`
-	rows, err := database.DB.Query(episodeQuery)
+	rows, err := s.db.Query(episodeQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get episodes: %w", err)
 	}
@@ -910,7 +926,7 @@ func ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
 	}
 
 	// Cache the results
-	if err := cacheScanResult(result); err != nil {
+	if err := s.cacheScanResult(result); err != nil {
 		slog.Warn("Failed to cache scan results", "error", err)
 		// Don't fail the request if caching fails
 	}
@@ -919,7 +935,7 @@ func ScanAllMediaForSubtitles(forceRefresh bool) (*SubtitleScanResult, error) {
 }
 
 // QueueMissingSubtitles queues all movies and episodes that are missing subtitles
-func QueueMissingSubtitles() (int, error) {
+func (s *SubtitleService) QueueMissingSubtitles() (int, error) {
 	queuedCount := 0
 
 	// Queue missing movie subtitles
@@ -930,7 +946,7 @@ func QueueMissingSubtitles() (int, error) {
 
 	for _, movie := range movies {
 		if movie.Path != "" && !HasSubtitles(movie.Path) {
-			if err := QueueSubtitleDownload("movie", movie.ID); err != nil {
+			if err := s.QueueSubtitleDownload("movie", movie.ID); err != nil {
 				slog.Warn("Failed to queue subtitle for movie", "movie_id", movie.ID, "error", err)
 			} else {
 				queuedCount++
@@ -940,7 +956,7 @@ func QueueMissingSubtitles() (int, error) {
 
 	// Queue missing episode subtitles
 	episodeQuery := `SELECT id, file_path FROM episodes`
-	rows, err := database.DB.Query(episodeQuery)
+	rows, err := s.db.Query(episodeQuery)
 	if err != nil {
 		return queuedCount, fmt.Errorf("failed to get episodes: %w", err)
 	}
@@ -954,7 +970,7 @@ func QueueMissingSubtitles() (int, error) {
 		}
 
 		if filePath != "" && !HasSubtitles(filePath) {
-			if err := QueueSubtitleDownload("episode", episodeID); err != nil {
+			if err := s.QueueSubtitleDownload("episode", episodeID); err != nil {
 				slog.Warn("Failed to queue subtitle for episode", "episode_id", episodeID, "error", err)
 			} else {
 				queuedCount++

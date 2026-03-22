@@ -4,9 +4,9 @@ import (
 	"Arrgo/config"
 	"Arrgo/services"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -14,14 +14,15 @@ var searchTmpl *template.Template
 
 func init() {
 	var err error
-	funcMap := GetFuncMap()
+	funcMap := FuncMap()
 	searchTmpl, err = template.New("search").Funcs(funcMap).ParseFiles(
 		"templates/layouts/base.html",
 		"templates/pages/search.html",
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse search template:", err)
+		slog.Error("Failed to parse search template", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -109,7 +110,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 3. Search External (TMDB/TVDB)
-		movieResults, _ := services.SearchTMDB(cfg, query)
+		movieResults, _ := services.GetGlobalMetadataService().SearchTMDB(query)
 		for _, res := range movieResults {
 			// Skip if already in movies from local search
 			existsLocally := false
@@ -144,7 +145,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		showResults, _ := services.SearchTVDB(cfg, query)
+		showResults, _ := services.GetGlobalMetadataService().SearchTVDB(query)
 		for _, res := range showResults {
 			// Skip if already in shows from local search
 			existsLocally := false

@@ -39,7 +39,7 @@ func NewNyaaIndexer() *NyaaIndexer {
 	return &NyaaIndexer{}
 }
 
-func (n *NyaaIndexer) GetName() string {
+func (n *NyaaIndexer) Name() string {
 	return "Nyaa"
 }
 

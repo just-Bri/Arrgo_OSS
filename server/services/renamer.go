@@ -518,7 +518,7 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 
 	// Trigger subtitle download
 	go func() {
-		if err := DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
+		if err := globalSubtitle.DownloadSubtitlesForMovie(m.ID); err != nil {
 			slog.Error("Subtitle download failed for movie", "movie_id", m.ID, "title", m.Title, "error", err)
 		}
 	}()
@@ -740,7 +740,7 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 
 	// Trigger subtitle download for episode
 	go func() {
-		if err := DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
+		if err := globalSubtitle.DownloadSubtitlesForEpisode(e.ID); err != nil {
 			slog.Error("Subtitle download failed for episode",
 				"episode_id", e.ID,
 				"show_title", sh.Title,

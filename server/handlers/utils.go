@@ -31,7 +31,7 @@ func interfaceToInt64(v interface{}) int64 {
 	}
 }
 
-func GetFuncMap() template.FuncMap {
+func FuncMap() template.FuncMap {
 	return template.FuncMap{
 		"hasPrefix": strings.HasPrefix,
 		"split":     strings.Split,
@@ -375,7 +375,7 @@ func SetupUserSession(w http.ResponseWriter, r *http.Request, user *models.User)
 func LoadTemplate(name string, pageTemplate string, useFuncMap bool) (*template.Template, error) {
 	var funcMap template.FuncMap
 	if useFuncMap {
-		funcMap = GetFuncMap()
+		funcMap = FuncMap()
 	} else {
 		funcMap = template.FuncMap{}
 	}

@@ -11,10 +11,7 @@ import (
 
 // SearchTorrents searches across all enabled indexers
 func SearchTorrents(ctx context.Context, query, searchType string, seasons string, episodes string) ([]indexers.SearchResult, error) {
-	indexerList, err := indexers.GetIndexers()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers: %w", err)
-	}
+	indexerList := indexers.Indexers()
 
 	var results []indexers.SearchResult
 	var errs []error
@@ -40,7 +37,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 		// For shows, use all indexers except YTS (which only supports movies)
 		slog.Debug("Searching for show", "query", query, "seasons", seasons, "episodes", episodes)
 		for _, idx := range indexerList {
-			if idx.GetName() == "YTS" {
+			if idx.Name() == "YTS" {
 				slog.Debug("Skipping YTS indexer for show search")
 				continue
 			}
@@ -50,7 +47,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 
 			// If specific episode requested
 			if episodeID != "" {
-				slog.Debug("Searching for specific episode", "indexer", idx.GetName(), "episode", episodeID)
+				slog.Debug("Searching for specific episode", "indexer", idx.Name(), "episode", episodeID)
 				// episodeID is "S01E01" - extract season and episode numbers if possible?
 				// Most indexers can just take the string in the query, but SearchShows takes ints.
 				// Let's see if we can parse "S01E01"
@@ -60,12 +57,12 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 			} else if len(seasonNums) > 0 {
 				// If multiple seasons requested, perform search for each
 				for _, sn := range seasonNums {
-					slog.Debug("Searching for specific season", "indexer", idx.GetName(), "season", sn)
+					slog.Debug("Searching for specific season", "indexer", idx.Name(), "season", sn)
 					sRes, sErr := idx.SearchShows(ctx, query, sn, 0)
 					if sErr == nil {
 						res = append(res, sRes...)
 					} else {
-						slog.Debug("Season search failed", "indexer", idx.GetName(), "season", sn, "error", sErr)
+						slog.Debug("Season search failed", "indexer", idx.Name(), "season", sn, "error", sErr)
 					}
 				}
 			} else {
@@ -73,7 +70,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 			}
 
 			if err != nil {
-				slog.Debug("Indexer search failed", "indexer", idx.GetName(), "error", err)
+				slog.Debug("Indexer search failed", "indexer", idx.Name(), "error", err)
 				errs = append(errs, err)
 				continue
 			}
@@ -85,7 +82,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 		for _, idx := range indexerList {
 			res, err := idx.SearchMovies(ctx, query)
 			if err != nil {
-				slog.Debug("Indexer search failed", "indexer", idx.GetName(), "error", err)
+				slog.Debug("Indexer search failed", "indexer", idx.Name(), "error", err)
 				errs = append(errs, err)
 				continue
 			}

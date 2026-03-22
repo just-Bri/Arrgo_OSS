@@ -252,7 +252,7 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 		}
 	}
 	// Fetch metadata immediately
-	if err := MatchMovie(cfg, id); err != nil {
+	if err := globalMetadata.MatchMovie(id); err != nil {
 		slog.Debug("Error matching movie metadata", "movie_id", id, "title", title, "error", err)
 	}
 

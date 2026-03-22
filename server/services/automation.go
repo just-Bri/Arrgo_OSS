@@ -122,7 +122,7 @@ func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
 			if err := movieRows.Scan(&id, &path); err == nil {
 				movieCount++
 				if !HasSubtitles(path) {
-					if err := QueueSubtitleDownload("movie", id); err != nil {
+					if err := globalSubtitle.QueueSubtitleDownload("movie", id); err != nil {
 						slog.Error("Failed to queue movie subtitle download", "movie_id", id, "error", err)
 					} else {
 						queuedCount++
@@ -147,7 +147,7 @@ func (s *AutomationService) CheckMediaSubtitles(ctx context.Context) {
 			if err := episodeRows.Scan(&id, &path); err == nil {
 				episodeCount++
 				if !HasSubtitles(path) {
-					if err := QueueSubtitleDownload("episode", id); err != nil {
+					if err := globalSubtitle.QueueSubtitleDownload("episode", id); err != nil {
 						slog.Error("Failed to queue episode subtitle download", "episode_id", id, "error", err)
 					} else {
 						queuedCount++
@@ -750,7 +750,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 
 			// Fallback: fetch TVDB episodes for this season and search for them individually
 			if r.TVDBID != "" {
-				episodes, epErr := GetTVDBShowEpisodes(s.cfg, r.TVDBID)
+				episodes, epErr := globalMetadata.GetTVDBShowEpisodes(r.TVDBID)
 				if epErr == nil && len(episodes) > 0 {
 					seasonNum, _ := strconv.Atoi(seasonStr)
 
@@ -1641,9 +1641,9 @@ func (s *AutomationService) ProcessSubtitleQueue(ctx context.Context) {
 		slog.Info("Retrying subtitle download", "media_type", j.mType, "media_id", j.mID)
 		var err error
 		if j.mType == "movie" {
-			err = DownloadSubtitlesForMovie(s.cfg, j.mID)
+			err = globalSubtitle.DownloadSubtitlesForMovie(j.mID)
 		} else {
-			err = DownloadSubtitlesForEpisode(s.cfg, j.mID)
+			err = globalSubtitle.DownloadSubtitlesForEpisode(j.mID)
 		}
 
 		if err == nil {
@@ -2576,7 +2576,7 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 
 	// 2. Try to match with TMDB/TVDB
 	if mediaType == "movie" {
-		results, err := SearchTMDB(s.cfg, cleanedName)
+		results, err := globalMetadata.SearchTMDB(cleanedName)
 		if err == nil && len(results) > 0 {
 			// Find best match (prefer exact title, better with year)
 			best := results[0]
@@ -2588,7 +2588,7 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 			}
 
 			// Fetch full details for better quality info and poster
-			details, err := GetTMDBMovieDetails(s.cfg, best.ID)
+			details, err := globalMetadata.GetTMDBMovieDetails(best.ID)
 			if err == nil && details != nil {
 				req.Title = details.Title
 				if details.ReleaseDate != "" && len(details.ReleaseDate) >= 4 {
@@ -2609,7 +2609,7 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 			}
 		}
 	} else {
-		results, err := SearchTVDB(s.cfg, cleanedName)
+		results, err := globalMetadata.SearchTVDB(cleanedName)
 		if err == nil && len(results) > 0 {
 			best := results[0]
 			for _, r := range results {
@@ -2620,7 +2620,7 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 			}
 
 			// Fetch full details for better quality info and poster
-			details, err := GetTVDBShowDetails(s.cfg, best.ID)
+			details, err := globalMetadata.GetTVDBShowDetails(best.ID)
 			if err == nil && details != nil {
 				req.Title = details.Name
 				if details.FirstAired != "" && len(details.FirstAired) >= 4 {

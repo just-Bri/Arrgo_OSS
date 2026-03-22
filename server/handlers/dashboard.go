@@ -4,9 +4,9 @@ import (
 	"Arrgo/config"
 	"Arrgo/services"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -23,7 +23,8 @@ func init() {
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse dashboard template:", err)
+		slog.Error("Failed to parse dashboard template", "error", err)
+		os.Exit(1)
 	}
 }
 

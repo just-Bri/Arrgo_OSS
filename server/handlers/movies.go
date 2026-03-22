@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -19,14 +19,15 @@ var movieDetailsTmpl *template.Template
 
 func init() {
 	var err error
-	funcMap := GetFuncMap()
+	funcMap := FuncMap()
 	moviesTmpl, err = template.New("movies").Funcs(funcMap).ParseFiles(
 		"templates/layouts/base.html",
 		"templates/pages/movies.html",
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse movies template:", err)
+		slog.Error("Failed to parse movies template", "error", err)
+		os.Exit(1)
 	}
 
 	movieDetailsTmpl, err = template.New("movieDetails").Funcs(funcMap).ParseFiles(
@@ -35,7 +36,8 @@ func init() {
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse movie details template:", err)
+		slog.Error("Failed to parse movie details template", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -185,8 +187,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if tmdbID != "" {
 		// External search result
-		cfg := config.Load()
-		details, err := services.GetTMDBMovieDetails(cfg, tmdbID)
+		details, err := services.GetGlobalMetadataService().GetTMDBMovieDetails(tmdbID)
 		if err != nil {
 			slog.Error("Error getting TMDB movie details", "error", err, "tmdb_id", tmdbID)
 			http.Error(w, "Movie details not found", http.StatusNotFound)

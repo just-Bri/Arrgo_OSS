@@ -4,9 +4,9 @@ import (
 	"Arrgo/config"
 	"Arrgo/services"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 )
 
 var loginTmpl *template.Template
@@ -19,7 +19,8 @@ func init() {
 		"templates/pages/login.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse login template:", err)
+		slog.Error("Failed to parse login template", "error", err)
+		os.Exit(1)
 	}
 
 	registerTmpl, err = template.ParseFiles(
@@ -27,7 +28,8 @@ func init() {
 		"templates/pages/register.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse register template:", err)
+		slog.Error("Failed to parse register template", "error", err)
+		os.Exit(1)
 	}
 }
 

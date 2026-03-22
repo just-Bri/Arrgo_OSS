@@ -27,7 +27,7 @@ func NewTorrentGalaxyIndexer() *TorrentGalaxyIndexer {
 	return &TorrentGalaxyIndexer{}
 }
 
-func (tg *TorrentGalaxyIndexer) GetName() string {
+func (tg *TorrentGalaxyIndexer) Name() string {
 	return "TorrentGalaxy"
 }
 

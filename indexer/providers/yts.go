@@ -59,7 +59,7 @@ type YTSResponse struct {
 
 type YTSIndexer struct{}
 
-func (y *YTSIndexer) GetName() string {
+func (y *YTSIndexer) Name() string {
 	return "YTS"
 }
 

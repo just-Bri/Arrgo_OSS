@@ -433,8 +433,6 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.Atoi(idStr)
 
-	cfg := config.Load()
-
 	switch mediaType {
 	case "movie":
 		m, err := services.GetMovieByID(id)
@@ -446,7 +444,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		// If IMDB ID is missing, try to re-match it first
 		if m.IMDBID == "" {
 			slog.Info("IMDB ID missing for movie, attempting re-match", "movie_id", m.ID, "title", m.Title)
-			if err := services.MatchMovie(cfg, m.ID); err == nil {
+			if err := services.GetGlobalMetadataService().MatchMovie(m.ID); err == nil {
 				// Reload movie to get new IMDB ID
 				m, _ = services.GetMovieByID(id)
 			}
@@ -457,7 +455,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.DownloadSubtitlesForMovie(cfg, m.ID); err != nil {
+		if err := services.GetGlobalSubtitleService().DownloadSubtitlesForMovie(m.ID); err != nil {
 			slog.Error("Manual subtitle download failed for movie", "movie_id", m.ID, "title", m.Title, "error", err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
@@ -483,7 +481,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		// If IMDB ID is missing, try to re-match the parent show first
 		if sh.IMDBID == "" {
 			slog.Info("IMDB ID missing for show, attempting re-match", "show_id", sh.ID, "title", sh.Title)
-			if err := services.MatchShow(cfg, sh.ID); err == nil {
+			if err := services.GetGlobalMetadataService().MatchShow(sh.ID); err == nil {
 				// Reload IMDB ID
 				database.DB.QueryRow("SELECT imdb_id FROM shows WHERE id = $1", sh.ID).Scan(&sh.IMDBID)
 			}
@@ -494,7 +492,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.DownloadSubtitlesForEpisode(cfg, e.ID); err != nil {
+		if err := services.GetGlobalSubtitleService().DownloadSubtitlesForEpisode(e.ID); err != nil {
 			slog.Error("Manual subtitle download failed for episode",
 				"episode_id", e.ID,
 				"show_title", sh.Title,
@@ -588,8 +586,7 @@ func GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	alternatives, err := services.GetMovieAlternatives(cfg, movieID)
+	alternatives, err := services.GetGlobalMetadataService().GetMovieAlternatives(movieID)
 	if err != nil {
 		slog.Error("Error getting movie alternatives", "movie_id", movieID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -619,8 +616,7 @@ func GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	alternatives, err := services.GetShowAlternatives(cfg, showID)
+	alternatives, err := services.GetGlobalMetadataService().GetShowAlternatives(showID)
 	if err != nil {
 		slog.Error("Error getting show alternatives", "show_id", showID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -663,8 +659,7 @@ func RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	if err := services.RematchMovie(cfg, movieID, req.TMDBID); err != nil {
+	if err := services.GetGlobalMetadataService().RematchMovie(movieID, req.TMDBID); err != nil {
 		slog.Error("Error rematching movie", "movie_id", movieID, "tmdb_id", req.TMDBID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -706,8 +701,7 @@ func RematchShowHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	if err := services.RematchShow(cfg, showID, req.TVDBID); err != nil {
+	if err := services.GetGlobalMetadataService().RematchShow(showID, req.TVDBID); err != nil {
 		slog.Error("Error rematching show", "show_id", showID, "tvdb_id", req.TVDBID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

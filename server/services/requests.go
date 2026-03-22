@@ -81,9 +81,8 @@ func CreateRequest(req models.Request) error {
 	// This allows torrent searches to use both the localized and English titles
 	originalTitle := ""
 	if req.MediaType == "show" && req.TVDBID != "" {
-		cfg := config.Load()
-		if cfg.TVDBAPIKey != "" {
-			details, err := GetTVDBShowDetails(cfg, req.TVDBID)
+		if globalMetadata != nil && globalMetadata.cfg.TVDBAPIKey != "" {
+			details, err := globalMetadata.GetTVDBShowDetails(req.TVDBID)
 			if err == nil {
 				// 1. Try translations first
 				for _, trans := range details.Translations.NameTranslations {
@@ -302,8 +301,8 @@ func CheckLibraryStatus(mediaType string, externalID string) (LibraryStatus, err
 			// This prevents marking incomplete seasons as "in library"
 			// Fetch expected episodes from TVDB once (if available) to compare against
 			var expectedEpisodes []TVDBEpisode
-			if cfg.TVDBAPIKey != "" {
-				expectedEpisodes, _ = GetTVDBShowEpisodes(cfg, externalID)
+			if globalMetadata != nil && globalMetadata.cfg.TVDBAPIKey != "" {
+				expectedEpisodes, _ = globalMetadata.GetTVDBShowEpisodes(externalID)
 			}
 
 			// Build map of expected episode counts per season

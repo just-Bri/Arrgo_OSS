@@ -136,9 +136,9 @@ func main() {
 	}
 	defer database.Close()
 
-	// Initialize database schema
-	if err := database.InitSchema(); err != nil {
-		slog.Error("Failed to initialize database schema", "error", err)
+	// Run database migrations
+	if err := database.RunMigrations(); err != nil {
+		slog.Error("Failed to run database migrations", "error", err)
 		os.Exit(1)
 	}
 
@@ -147,6 +147,14 @@ func main() {
 		slog.Error("Failed to seed admin user", "error", err)
 		os.Exit(1)
 	}
+
+	// Initialize subtitle service
+	subtitleSvc := services.NewSubtitleService(cfg, database.DB)
+	services.SetGlobalSubtitleService(subtitleSvc)
+
+	// Initialize metadata service
+	metadataSvc := services.NewMetadataService(cfg, database.DB)
+	services.SetGlobalMetadataService(metadataSvc)
 
 	// Start background workers
 	services.StartIncomingScanner(cfg)

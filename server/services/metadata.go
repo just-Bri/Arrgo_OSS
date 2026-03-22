@@ -2,7 +2,6 @@ package services
 
 import (
 	"Arrgo/config"
-	"Arrgo/database"
 	"Arrgo/models"
 	"bytes"
 	"context"
@@ -19,15 +18,35 @@ import (
 	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
-var (
+// MetadataService encapsulates all metadata-fetching state (TVDB token, rate limiter, etc.)
+type MetadataService struct {
+	cfg             *config.Config
+	db              *sql.DB
 	tvdbToken       string
 	tvdbTokenExpiry time.Time
 	tvdbMutex       sync.Mutex
-
-	// Rate limiting for TMDB/TVDB
 	lastRequestTime time.Time
 	rateLimitMutex  sync.Mutex
+}
 
+// NewMetadataService creates a new MetadataService instance.
+func NewMetadataService(cfg *config.Config, db *sql.DB) *MetadataService {
+	return &MetadataService{cfg: cfg, db: db}
+}
+
+var globalMetadata *MetadataService
+
+// SetGlobalMetadataService sets the package-level MetadataService instance.
+func SetGlobalMetadataService(m *MetadataService) {
+	globalMetadata = m
+}
+
+// GetGlobalMetadataService returns the package-level MetadataService instance.
+func GetGlobalMetadataService() *MetadataService {
+	return globalMetadata
+}
+
+var (
 	tmdbGenres = map[int]string{
 		28:    "Action",
 		12:    "Adventure",
@@ -116,13 +135,13 @@ type TVDBSeasonEpisodesResponse struct {
 	} `json:"data"`
 }
 
-func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, error) {
-	if cfg.TMDBAPIKey == "" {
+func (s *MetadataService) GetTMDBMovieDetails(tmdbID string) (*TMDBMovieDetails, error) {
+	if s.cfg.TMDBAPIKey == "" {
 		return nil, fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
-	throttle()
-	apiURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, cfg.TMDBAPIKey)
+	s.throttle()
+	apiURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&language=en-US", tmdbID, s.cfg.TMDBAPIKey)
 
 	resp, err := sharedhttp.MakeRequest(context.Background(), apiURL, sharedhttp.LongTimeoutClient)
 	if err != nil {
@@ -137,17 +156,17 @@ func GetTMDBMovieDetails(cfg *config.Config, tmdbID string) (*TMDBMovieDetails, 
 	return &details, nil
 }
 
-func GetTVDBShowDetails(cfg *config.Config, tvdbID string) (*TVDBShowDetails, error) {
-	if cfg.TVDBAPIKey == "" {
+func (s *MetadataService) GetTVDBShowDetails(tvdbID string) (*TVDBShowDetails, error) {
+	if s.cfg.TVDBAPIKey == "" {
 		return nil, fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
-	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	token, err := s.getTVDBToken()
 	if err != nil {
 		return nil, err
 	}
 
-	throttle()
+	s.throttle()
 	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/extended?meta=translations&short=false", tvdbID)
 
 	req, _ := http.NewRequest("GET", url, nil)
@@ -183,17 +202,17 @@ type TVDBEpisode struct {
 	Aired        string `json:"aired"`
 }
 
-func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, error) {
-	if cfg.TVDBAPIKey == "" {
+func (s *MetadataService) GetTVDBShowEpisodes(tvdbID string) ([]TVDBEpisode, error) {
+	if s.cfg.TVDBAPIKey == "" {
 		return nil, fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
-	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	token, err := s.getTVDBToken()
 	if err != nil {
 		return nil, err
 	}
 
-	throttle()
+	s.throttle()
 	// Using default translation to get episode names in English
 	url := fmt.Sprintf("https://api4.thetvdb.com/v4/series/%s/episodes/default/eng", tvdbID)
 
@@ -222,15 +241,15 @@ func GetTVDBShowEpisodes(cfg *config.Config, tvdbID string) ([]TVDBEpisode, erro
 	return result.Data.Episodes, nil
 }
 
-func throttle() {
-	rateLimitMutex.Lock()
-	defer rateLimitMutex.Unlock()
+func (s *MetadataService) throttle() {
+	s.rateLimitMutex.Lock()
+	defer s.rateLimitMutex.Unlock()
 
-	elapsed := time.Since(lastRequestTime)
+	elapsed := time.Since(s.lastRequestTime)
 	if elapsed < 200*time.Millisecond {
 		time.Sleep(200*time.Millisecond - elapsed)
 	}
-	lastRequestTime = time.Now()
+	s.lastRequestTime = time.Now()
 }
 
 type TMDBMovieSearchResponse struct {
@@ -275,8 +294,8 @@ type SearchResult struct {
 	Genres     []string `json:"genres"`
 }
 
-func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
-	if cfg.TMDBAPIKey == "" {
+func (s *MetadataService) SearchTMDB(query string) ([]SearchResult, error) {
+	if s.cfg.TMDBAPIKey == "" {
 		return nil, fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
@@ -289,9 +308,9 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 
 	// Search each variant and merge results
 	for _, variant := range variants {
-		throttle()
+		s.throttle()
 		searchURL := sharedhttp.BuildQueryURL("https://api.themoviedb.org/3/search/movie", map[string]string{
-			"api_key":  cfg.TMDBAPIKey,
+			"api_key":  s.cfg.TMDBAPIKey,
 			"query":    variant,
 			"language": "en-US",
 		})
@@ -343,12 +362,12 @@ func SearchTMDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	return allResults, nil
 }
 
-func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
-	if cfg.TVDBAPIKey == "" {
+func (s *MetadataService) SearchTVDB(query string) ([]SearchResult, error) {
+	if s.cfg.TVDBAPIKey == "" {
 		return nil, fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
-	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	token, err := s.getTVDBToken()
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +381,7 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 
 	// Search each variant and merge results
 	for _, variant := range variants {
-		throttle()
+		s.throttle()
 		searchURL := sharedhttp.BuildQueryURL("https://api4.thetvdb.com/v4/search", map[string]string{
 			"query": variant,
 			"type":  "series",
@@ -413,16 +432,16 @@ func SearchTVDB(cfg *config.Config, query string) ([]SearchResult, error) {
 	return allResults, nil
 }
 
-func getTVDBToken(apiKey string) (string, error) {
-	tvdbMutex.Lock()
-	defer tvdbMutex.Unlock()
+func (s *MetadataService) getTVDBToken() (string, error) {
+	s.tvdbMutex.Lock()
+	defer s.tvdbMutex.Unlock()
 
-	if tvdbToken != "" && time.Now().Before(tvdbTokenExpiry) {
-		return tvdbToken, nil
+	if s.tvdbToken != "" && time.Now().Before(s.tvdbTokenExpiry) {
+		return s.tvdbToken, nil
 	}
 
 	slog.Info("Authenticating with TVDB")
-	payload, _ := json.Marshal(map[string]string{"apikey": apiKey})
+	payload, _ := json.Marshal(map[string]string{"apikey": s.cfg.TVDBAPIKey})
 	req, _ := http.NewRequest("POST", "https://api4.thetvdb.com/v4/login", bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := sharedhttp.LongTimeoutClient.Do(req)
@@ -444,17 +463,17 @@ func getTVDBToken(apiKey string) (string, error) {
 		return "", fmt.Errorf("failed to get token from TVDB: %s", auth.Status)
 	}
 
-	tvdbToken = auth.Data.Token
-	tvdbTokenExpiry = time.Now().Add(23 * time.Hour) // Tokens usually last 24h
-	return tvdbToken, nil
+	s.tvdbToken = auth.Data.Token
+	s.tvdbTokenExpiry = time.Now().Add(23 * time.Hour) // Tokens usually last 24h
+	return s.tvdbToken, nil
 }
 
-func MatchMovie(cfg *config.Config, movieID int) error {
+func (s *MetadataService) MatchMovie(movieID int) error {
 	// 1. Fetch movie from DB
 	var m models.Movie
 	var tmdbID, imdbID sql.NullString
 	query := `SELECT id, title, year, tmdb_id, imdb_id FROM movies WHERE id = $1`
-	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID)
+	err := s.db.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID, &imdbID)
 	if err != nil {
 		slog.Error("Error fetching movie from DB", "movie_id", movieID, "error", err)
 		return err
@@ -466,7 +485,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	var existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
 	checkQuery := `SELECT tmdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM movies WHERE title = $1 AND year = $2 AND status = 'matched' AND tmdb_id IS NOT NULL AND tmdb_id != '' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
+	err = s.db.QueryRow(checkQuery, m.Title, m.Year).Scan(&existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
 		slog.Info("Found existing metadata in DB, reusing", "title", m.Title, "year", m.Year)
 		updateQuery := `
@@ -474,16 +493,16 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 			SET tmdb_id = $1, imdb_id = $2, overview = $3, poster_path = $4, genres = $5, status = 'matched', raw_metadata = $6, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $7
 		`
-		_, err = database.DB.Exec(updateQuery, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
+		_, err = s.db.Exec(updateQuery, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, m.ID)
 		if err != nil {
 			return err
 		}
 		// Update the request with proper metadata if this movie is linked to a request
-		updateRequestFromMatchedMovie(m.ID, m.Title, m.Year, existingTMDBID.String, existingIMDBID.String, existingOverview.String, existingPosterPath.String)
+		s.updateRequestFromMatchedMovie(m.ID, m.Title, m.Year, existingTMDBID.String, existingIMDBID.String, existingOverview.String, existingPosterPath.String)
 		return nil
 	}
 
-	if cfg.TMDBAPIKey == "" {
+	if s.cfg.TMDBAPIKey == "" {
 		return fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
@@ -492,16 +511,16 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	// 2. Check if movie is linked to a request with TMDB ID via torrent hash
 	if matchedTMDBID == "" {
 		var torrentHash sql.NullString
-		err = database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
+		err = s.db.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
 		if err == nil && torrentHash.Valid && torrentHash.String != "" {
 			var requestTMDBID sql.NullString
-			err = database.DB.QueryRow(`
-				SELECT r.tmdb_id 
-				FROM requests r 
-				JOIN downloads d ON r.id = d.request_id 
-				WHERE LOWER(d.torrent_hash) = LOWER($1) 
+			err = s.db.QueryRow(`
+				SELECT r.tmdb_id
+				FROM requests r
+				JOIN downloads d ON r.id = d.request_id
+				WHERE LOWER(d.torrent_hash) = LOWER($1)
 				AND r.media_type = 'movie'
-				AND r.tmdb_id IS NOT NULL 
+				AND r.tmdb_id IS NOT NULL
 				AND r.tmdb_id != ''
 				LIMIT 1`, torrentHash.String).Scan(&requestTMDBID)
 			if err == nil && requestTMDBID.Valid && requestTMDBID.String != "" {
@@ -516,9 +535,9 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 		// Clean the title before searching to remove quality tags and other metadata
 		cleanedTitle := cleanTitleTags(m.Title)
 		slog.Info("Searching TMDB for movie", "title", cleanedTitle, "original_title", m.Title, "year", m.Year)
-		throttle()
+		s.throttle()
 		params := map[string]string{
-			"api_key":  cfg.TMDBAPIKey,
+			"api_key":  s.cfg.TMDBAPIKey,
 			"query":    cleanedTitle,
 			"language": "en-US",
 		}
@@ -585,7 +604,7 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 	slog.Info("Using TMDB ID, fetching full details", "tmdb_id", matchedTMDBID)
 
 	// 3. Fetch full details
-	details, err := GetTMDBMovieDetails(cfg, matchedTMDBID)
+	details, err := s.GetTMDBMovieDetails(matchedTMDBID)
 	if err != nil {
 		slog.Error("Error fetching full details for TMDB ID", "tmdb_id", matchedTMDBID, "error", err)
 		return err
@@ -617,63 +636,63 @@ func MatchMovie(cfg *config.Config, movieID int) error {
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
+	_, err = s.db.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, m.ID)
 	if err != nil {
 		slog.Error("Error updating DB for movie", "title", m.Title, "error", err)
 		return err
 	}
 
 	// Update the request with proper metadata if this movie is linked to a request via torrent hash
-	updateRequestFromMatchedMovie(m.ID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
+	s.updateRequestFromMatchedMovie(m.ID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
 
 	return nil
 }
 
-func MatchShow(cfg *config.Config, showID int) error {
-	var s models.Show
+func (s *MetadataService) MatchShow(showID int) error {
+	var sh models.Show
 	var tvdbID, tmdbID, imdbID sql.NullString
 	query := `SELECT id, title, year, tvdb_id, tmdb_id, imdb_id FROM shows WHERE id = $1`
-	err := database.DB.QueryRow(query, showID).Scan(&s.ID, &s.Title, &s.Year, &tvdbID, &tmdbID, &imdbID)
+	err := s.db.QueryRow(query, showID).Scan(&sh.ID, &sh.Title, &sh.Year, &tvdbID, &tmdbID, &imdbID)
 	if err != nil {
 		slog.Error("Error fetching show from DB", "show_id", showID, "error", err)
 		return err
 	}
-	s.TVDBID = tvdbID.String
-	s.TMDBID = tmdbID.String
-	s.IMDBID = imdbID.String
+	sh.TVDBID = tvdbID.String
+	sh.TMDBID = tmdbID.String
+	sh.IMDBID = imdbID.String
 
 	// 1. Check if we already have metadata for this Title and Year in the DB
 	var existingTVDBID, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres sql.NullString
 	var existingRawMetadata []byte
 	checkQuery := `SELECT tvdb_id, tmdb_id, imdb_id, overview, poster_path, genres, raw_metadata FROM shows WHERE title = $1 AND year = $2 AND status = 'matched' AND tvdb_id IS NOT NULL AND tvdb_id != '' LIMIT 1`
-	err = database.DB.QueryRow(checkQuery, s.Title, s.Year).Scan(&existingTVDBID, &existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
+	err = s.db.QueryRow(checkQuery, sh.Title, sh.Year).Scan(&existingTVDBID, &existingTMDBID, &existingIMDBID, &existingOverview, &existingPosterPath, &existingGenres, &existingRawMetadata)
 	if err == nil {
-		slog.Info("Found existing metadata for show in DB, reusing", "title", s.Title, "year", s.Year)
+		slog.Info("Found existing metadata for show in DB, reusing", "title", sh.Title, "year", sh.Year)
 		updateQuery := `
 			UPDATE shows
 			SET tvdb_id = $1, tmdb_id = $2, imdb_id = $3, overview = $4, poster_path = $5, genres = $6, status = 'matched', raw_metadata = $7, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $8
 		`
-		_, err = database.DB.Exec(updateQuery, existingTVDBID, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, s.ID)
+		_, err = s.db.Exec(updateQuery, existingTVDBID, existingTMDBID, existingIMDBID, existingOverview, existingPosterPath, existingGenres, existingRawMetadata, sh.ID)
 		return err
 	}
 
-	if cfg.TVDBAPIKey == "" {
+	if s.cfg.TVDBAPIKey == "" {
 		return fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
 	var matchedTVDBID string
 
 	// 2. Try to match by IDs first
-	if s.TVDBID != "" {
-		matchedTVDBID = s.TVDBID
-	} else if s.TMDBID != "" || s.IMDBID != "" {
-		idToSearch := s.TMDBID
+	if sh.TVDBID != "" {
+		matchedTVDBID = sh.TVDBID
+	} else if sh.TMDBID != "" || sh.IMDBID != "" {
+		idToSearch := sh.TMDBID
 		if idToSearch == "" {
-			idToSearch = s.IMDBID
+			idToSearch = sh.IMDBID
 		}
 		slog.Info("Searching TVDB by remote ID", "remote_id", idToSearch)
-		results, err := SearchTVDBByRemoteID(cfg, idToSearch)
+		results, err := s.SearchTVDBByRemoteID(idToSearch)
 		if err == nil && len(results) > 0 {
 			matchedTVDBID = results[0].ID
 		}
@@ -682,9 +701,9 @@ func MatchShow(cfg *config.Config, showID int) error {
 	// 3. Fallback to title search if IDs didn't work
 	if matchedTVDBID == "" {
 		// Clean the title before searching to remove quality tags and other metadata
-		cleanedTitle := cleanTitleTags(s.Title)
-		slog.Info("Searching TVDB for show", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
-		results, err := SearchTVDB(cfg, cleanedTitle)
+		cleanedTitle := cleanTitleTags(sh.Title)
+		slog.Info("Searching TVDB for show", "title", cleanedTitle, "original_title", sh.Title, "year", sh.Year)
+		results, err := s.SearchTVDB(cleanedTitle)
 		if err == nil && len(results) > 0 {
 			// Select the best matching result
 			// Prefer exact title matches, then matches that contain the search title
@@ -708,10 +727,10 @@ func MatchShow(cfg *config.Config, showID int) error {
 				}
 
 				// Bonus points if year matches
-				if s.Year > 0 && res.Year > 0 {
-					if res.Year == s.Year {
+				if sh.Year > 0 && res.Year > 0 {
+					if res.Year == sh.Year {
 						score += 10
-					} else if res.Year >= s.Year-1 && res.Year <= s.Year+1 {
+					} else if res.Year >= sh.Year-1 && res.Year <= sh.Year+1 {
 						// Small bonus for being close (sometimes metadata has slight variant years)
 						score += 5
 					}
@@ -731,16 +750,16 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	if matchedTVDBID == "" {
-		slog.Info("No TVDB results found for show", "title", s.Title)
-		return fmt.Errorf("no matches found on TVDB for %s", s.Title)
+		slog.Info("No TVDB results found for show", "title", sh.Title)
+		return fmt.Errorf("no matches found on TVDB for %s", sh.Title)
 	}
 
-	slog.Info("Found TVDB match for show, fetching full details", "title", s.Title, "tvdb_id", matchedTVDBID)
+	slog.Info("Found TVDB match for show, fetching full details", "title", sh.Title, "tvdb_id", matchedTVDBID)
 
 	// 4. Fetch full details
-	details, err := GetTVDBShowDetails(cfg, matchedTVDBID)
-	finalIMDBID := s.IMDBID
-	finalTMDBID := s.TMDBID
+	details, err := s.GetTVDBShowDetails(matchedTVDBID)
+	finalIMDBID := sh.IMDBID
+	finalTMDBID := sh.TMDBID
 
 	if err == nil {
 		for _, rid := range details.RemoteIDs {
@@ -795,16 +814,16 @@ func MatchShow(cfg *config.Config, showID int) error {
 		SET title = $1, year = $2, tvdb_id = $3, tmdb_id = $4, imdb_id = $5, overview = $6, poster_path = $7, genres = $8, status = 'matched', raw_metadata = $9, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $10
 	`
-	matchedYear := s.Year
+	matchedYear := sh.Year
 	if len(details.FirstAired) >= 4 {
 		if year, err := strconv.Atoi(details.FirstAired[:4]); err == nil {
 			matchedYear = year
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, s.ID)
+	_, err = s.db.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, sh.ID)
 	if err != nil {
-		slog.Error("Error updating DB for show", "title", s.Title, "error", err)
+		slog.Error("Error updating DB for show", "title", sh.Title, "error", err)
 		return err
 	}
 
@@ -815,11 +834,11 @@ func MatchShow(cfg *config.Config, showID int) error {
 			"primary_title", details.Name,
 			"english_title", englishTitle)
 
-		_, err = database.DB.Exec(`
-			UPDATE requests 
-			SET original_title = $1, updated_at = CURRENT_TIMESTAMP 
-			WHERE tvdb_id = $2 
-			AND media_type = 'show' 
+		_, err = s.db.Exec(`
+			UPDATE requests
+			SET original_title = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE tvdb_id = $2
+			AND media_type = 'show'
 			AND status IN ('pending', 'downloading')
 			AND (original_title IS NULL OR original_title = '')`,
 			englishTitle, matchedTVDBID)
@@ -839,11 +858,11 @@ func MatchShow(cfg *config.Config, showID int) error {
 			"primary_title", details.Name,
 			"english_title", englishTitle)
 
-		_, err = database.DB.Exec(`
-			UPDATE requests 
-			SET original_title = $1, updated_at = CURRENT_TIMESTAMP 
-			WHERE tvdb_id = $2 
-			AND media_type = 'show' 
+		_, err = s.db.Exec(`
+			UPDATE requests
+			SET original_title = $1, updated_at = CURRENT_TIMESTAMP
+			WHERE tvdb_id = $2
+			AND media_type = 'show'
 			AND status IN ('pending', 'downloading')
 			AND (original_title IS NULL OR original_title = '')`,
 			englishTitle, matchedTVDBID)
@@ -857,22 +876,22 @@ func MatchShow(cfg *config.Config, showID int) error {
 	}
 
 	// 6. Sync episode titles from TVDB
-	SyncShowEpisodes(cfg, s.ID)
+	s.SyncShowEpisodes(sh.ID)
 
 	return nil
 }
 
-func SearchTVDBByRemoteID(cfg *config.Config, remoteID string) ([]SearchResult, error) {
-	if cfg.TVDBAPIKey == "" {
+func (s *MetadataService) SearchTVDBByRemoteID(remoteID string) ([]SearchResult, error) {
+	if s.cfg.TVDBAPIKey == "" {
 		return nil, fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
-	token, err := getTVDBToken(cfg.TVDBAPIKey)
+	token, err := s.getTVDBToken()
 	if err != nil {
 		return nil, err
 	}
 
-	throttle()
+	s.throttle()
 	searchURL := fmt.Sprintf("https://api4.thetvdb.com/v4/search/remoteid/%s", remoteID)
 
 	req, _ := http.NewRequest("GET", searchURL, nil)
@@ -910,14 +929,14 @@ func SearchTVDBByRemoteID(cfg *config.Config, remoteID string) ([]SearchResult, 
 	return results, nil
 }
 
-func SyncShowEpisodes(cfg *config.Config, showID int) error {
+func (s *MetadataService) SyncShowEpisodes(showID int) error {
 	var tvdbID string
-	err := database.DB.QueryRow("SELECT tvdb_id FROM shows WHERE id = $1", showID).Scan(&tvdbID)
+	err := s.db.QueryRow("SELECT tvdb_id FROM shows WHERE id = $1", showID).Scan(&tvdbID)
 	if err != nil || tvdbID == "" {
 		return fmt.Errorf("show has no TVDB ID")
 	}
 
-	episodes, err := GetTVDBShowEpisodes(cfg, tvdbID)
+	episodes, err := s.GetTVDBShowEpisodes(tvdbID)
 	if err != nil {
 		return err
 	}
@@ -932,7 +951,7 @@ func SyncShowEpisodes(cfg *config.Config, showID int) error {
 				overview = EXCLUDED.overview,
 				aired = EXCLUDED.aired
 		`
-		database.DB.Exec(query, showID, ep.SeasonNumber, ep.Number, ep.Name, ep.Overview, ep.Aired)
+		s.db.Exec(query, showID, ep.SeasonNumber, ep.Number, ep.Name, ep.Overview, ep.Aired)
 	}
 
 	// 2. Then, update existing episodes in the episodes table with official titles
@@ -943,7 +962,7 @@ func SyncShowEpisodes(cfg *config.Config, showID int) error {
 			WHERE season_id IN (SELECT id FROM seasons WHERE show_id = $2 AND season_number = $3)
 			AND episode_number = $4
 		`
-		database.DB.Exec(query, ep.Name, showID, ep.SeasonNumber, ep.Number)
+		s.db.Exec(query, ep.Name, showID, ep.SeasonNumber, ep.Number)
 	}
 
 	slog.Info("Synced episodes for show", "episode_count", len(episodes), "show_id", showID)
@@ -964,30 +983,30 @@ func interfaceToInt(v interface{}) int {
 	}
 }
 
-func FetchMetadataForAllDiscovered(cfg *config.Config) {
+func (s *MetadataService) FetchMetadataForAllDiscovered() {
 	slog.Info("Starting background metadata fetching")
 	// Movies
 	movieQuery := `SELECT id FROM movies WHERE status = 'discovered'`
-	movieRows, err := database.DB.Query(movieQuery)
+	movieRows, err := s.db.Query(movieQuery)
 	if err == nil {
 		defer movieRows.Close()
 		for movieRows.Next() {
 			var id int
 			if err := movieRows.Scan(&id); err == nil {
-				MatchMovie(cfg, id)
+				s.MatchMovie(id)
 			}
 		}
 	}
 
 	// Shows
 	showQuery := `SELECT id FROM shows WHERE status = 'discovered'`
-	showRows, err := database.DB.Query(showQuery)
+	showRows, err := s.db.Query(showQuery)
 	if err == nil {
 		defer showRows.Close()
 		for showRows.Next() {
 			var id int
 			if err := showRows.Scan(&id); err == nil {
-				MatchShow(cfg, id)
+				s.MatchShow(id)
 			}
 		}
 	}
@@ -996,16 +1015,16 @@ func FetchMetadataForAllDiscovered(cfg *config.Config) {
 
 // GetMovieAlternatives searches TMDB for alternative matches for a movie
 // Returns up to 10 results
-func GetMovieAlternatives(cfg *config.Config, movieID int) ([]SearchResult, error) {
+func (s *MetadataService) GetMovieAlternatives(movieID int) ([]SearchResult, error) {
 	var m models.Movie
 	var tmdbID sql.NullString
 	query := `SELECT id, title, year, tmdb_id FROM movies WHERE id = $1`
-	err := database.DB.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID)
+	err := s.db.QueryRow(query, movieID).Scan(&m.ID, &m.Title, &m.Year, &tmdbID)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.TMDBAPIKey == "" {
+	if s.cfg.TMDBAPIKey == "" {
 		return nil, fmt.Errorf("TMDB_API_KEY is not set")
 	}
 
@@ -1013,9 +1032,9 @@ func GetMovieAlternatives(cfg *config.Config, movieID int) ([]SearchResult, erro
 	cleanedTitle := cleanTitleTags(m.Title)
 	slog.Info("Searching TMDB for alternatives", "title", cleanedTitle, "original_title", m.Title, "year", m.Year)
 
-	throttle()
+	s.throttle()
 	params := map[string]string{
-		"api_key":  cfg.TMDBAPIKey,
+		"api_key":  s.cfg.TMDBAPIKey,
 		"query":    cleanedTitle,
 		"language": "en-US",
 	}
@@ -1070,24 +1089,24 @@ func GetMovieAlternatives(cfg *config.Config, movieID int) ([]SearchResult, erro
 
 // GetShowAlternatives searches TVDB for alternative matches for a show
 // Returns up to 10 results
-func GetShowAlternatives(cfg *config.Config, showID int) ([]SearchResult, error) {
-	var s models.Show
+func (s *MetadataService) GetShowAlternatives(showID int) ([]SearchResult, error) {
+	var sh models.Show
 	var tvdbID sql.NullString
 	query := `SELECT id, title, year, tvdb_id FROM shows WHERE id = $1`
-	err := database.DB.QueryRow(query, showID).Scan(&s.ID, &s.Title, &s.Year, &tvdbID)
+	err := s.db.QueryRow(query, showID).Scan(&sh.ID, &sh.Title, &sh.Year, &tvdbID)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.TVDBAPIKey == "" {
+	if s.cfg.TVDBAPIKey == "" {
 		return nil, fmt.Errorf("TVDB_API_KEY is not set")
 	}
 
 	// Clean the title before searching
-	cleanedTitle := cleanTitleTags(s.Title)
-	slog.Info("Searching TVDB for alternatives", "title", cleanedTitle, "original_title", s.Title, "year", s.Year)
+	cleanedTitle := cleanTitleTags(sh.Title)
+	slog.Info("Searching TVDB for alternatives", "title", cleanedTitle, "original_title", sh.Title, "year", sh.Year)
 
-	results, err := SearchTVDB(cfg, cleanedTitle)
+	results, err := s.SearchTVDB(cleanedTitle)
 	if err != nil {
 		return nil, err
 	}
@@ -1103,10 +1122,10 @@ func GetShowAlternatives(cfg *config.Config, showID int) ([]SearchResult, error)
 
 // updateRequestFromMatchedMovie updates the request with proper metadata from a matched movie
 // This ensures requests show the correct title, poster, and other metadata instead of the raw filename
-func updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID string, imdbID string, overview string, posterPath string) {
+func (s *MetadataService) updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID string, imdbID string, overview string, posterPath string) {
 	// Get the torrent hash from the movie
 	var torrentHash sql.NullString
-	err := database.DB.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
+	err := s.db.QueryRow("SELECT torrent_hash FROM movies WHERE id = $1", movieID).Scan(&torrentHash)
 	if err != nil || !torrentHash.Valid || torrentHash.String == "" {
 		// No torrent hash linked, so no request to update
 		return
@@ -1114,10 +1133,10 @@ func updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID s
 
 	// Find the request_id via the downloads table
 	var requestID int
-	err = database.DB.QueryRow(`
-		SELECT request_id 
-		FROM downloads 
-		WHERE LOWER(torrent_hash) = LOWER($1) 
+	err = s.db.QueryRow(`
+		SELECT request_id
+		FROM downloads
+		WHERE LOWER(torrent_hash) = LOWER($1)
 		AND request_id IS NOT NULL
 		LIMIT 1
 	`, torrentHash.String).Scan(&requestID)
@@ -1128,11 +1147,11 @@ func updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID s
 
 	// Update the request with proper metadata
 	updateQuery := `
-		UPDATE requests 
+		UPDATE requests
 		SET title = $1, year = $2, tmdb_id = $3, imdb_id = $4, overview = $5, poster_path = $6, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $7 AND media_type = 'movie'
 	`
-	_, err = database.DB.Exec(updateQuery, title, year, tmdbID, imdbID, overview, posterPath, requestID)
+	_, err = s.db.Exec(updateQuery, title, year, tmdbID, imdbID, overview, posterPath, requestID)
 	if err != nil {
 		slog.Error("Error updating request with matched movie metadata", "request_id", requestID, "movie_id", movieID, "error", err)
 		return
@@ -1141,9 +1160,9 @@ func updateRequestFromMatchedMovie(movieID int, title string, year int, tmdbID s
 	slog.Info("Updated request with matched movie metadata", "request_id", requestID, "movie_id", movieID, "title", title)
 }
 
-func RematchMovie(cfg *config.Config, movieID int, newTMDBID string) error {
+func (s *MetadataService) RematchMovie(movieID int, newTMDBID string) error {
 	// Fetch full details for the new TMDB ID
-	details, err := GetTMDBMovieDetails(cfg, newTMDBID)
+	details, err := s.GetTMDBMovieDetails(newTMDBID)
 	if err != nil {
 		return err
 	}
@@ -1173,23 +1192,23 @@ func RematchMovie(cfg *config.Config, movieID int, newTMDBID string) error {
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, movieID)
+	_, err = s.db.Exec(updateQuery, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath, genreString, rawMetadata, movieID)
 	if err != nil {
 		slog.Error("Error updating DB for movie rematch", "movie_id", movieID, "error", err)
 		return err
 	}
 
 	// Update the request with proper metadata if this movie is linked to a request via torrent hash
-	updateRequestFromMatchedMovie(movieID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
+	s.updateRequestFromMatchedMovie(movieID, details.Title, matchedYear, fmt.Sprintf("%d", details.ID), details.IMDBID, details.Overview, details.PosterPath)
 
 	slog.Info("Movie rematched successfully", "movie_id", movieID, "new_tmdb_id", newTMDBID)
 	return nil
 }
 
 // RematchShow updates a show with a new TVDB ID and fetches full metadata
-func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
+func (s *MetadataService) RematchShow(showID int, newTVDBID string) error {
 	// Fetch full details for the new TVDB ID
-	details, err := GetTVDBShowDetails(cfg, newTVDBID)
+	details, err := s.GetTVDBShowDetails(newTVDBID)
 	if err != nil {
 		return err
 	}
@@ -1249,14 +1268,14 @@ func RematchShow(cfg *config.Config, showID int, newTVDBID string) error {
 		}
 	}
 
-	_, err = database.DB.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, showID)
+	_, err = s.db.Exec(updateQuery, displayName, matchedYear, fmt.Sprintf("%d", details.ID), finalTMDBID, finalIMDBID, details.Overview, details.Image, genreString, rawMetadata, showID)
 	if err != nil {
 		slog.Error("Error updating DB for show rematch", "show_id", showID, "error", err)
 		return err
 	}
 
 	// Sync episode titles from TVDB
-	SyncShowEpisodes(cfg, showID)
+	s.SyncShowEpisodes(showID)
 
 	slog.Info("Show rematched successfully", "show_id", showID, "new_tvdb_id", newTVDBID)
 	return nil

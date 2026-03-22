@@ -19,16 +19,16 @@ type SearchResult struct {
 type Indexer interface {
 	SearchMovies(ctx context.Context, query string) ([]SearchResult, error)
 	SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error)
-	GetName() string
+	Name() string
 }
 
-// GetIndexers returns all built-in indexers
-func GetIndexers() ([]Indexer, error) {
-	return getDefaultIndexers(), nil
+// Indexers returns all built-in indexers
+func Indexers() []Indexer {
+	return defaultIndexers()
 }
 
-// getDefaultIndexers returns the default hardcoded indexers
-func getDefaultIndexers() []Indexer {
+// defaultIndexers returns the default hardcoded indexers
+func defaultIndexers() []Indexer {
 	return []Indexer{
 		&YTSIndexer{},
 		NewNyaaIndexer(),

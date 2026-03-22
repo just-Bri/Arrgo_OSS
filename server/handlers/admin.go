@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 )
@@ -21,7 +21,7 @@ var adminTmpl *template.Template
 
 func init() {
 	var err error
-	funcMap := GetFuncMap()
+	funcMap := FuncMap()
 	adminTmpl, err = template.New("admin").Funcs(funcMap).ParseFiles(
 		"templates/layouts/base.html",
 		"templates/pages/admin.html",
@@ -35,7 +35,8 @@ func init() {
 		"templates/components/admin_incoming_media.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse admin template:", err)
+		slog.Error("Failed to parse admin template", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -317,7 +318,7 @@ func ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	// Check for force refresh parameter
 	forceRefresh := r.URL.Query().Get("force") == "true"
 
-	result, err := services.ScanAllMediaForSubtitles(forceRefresh)
+	result, err := services.GetGlobalSubtitleService().ScanAllMediaForSubtitles(forceRefresh)
 	if err != nil {
 		slog.Error("Error scanning subtitles", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -340,7 +341,7 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queuedCount, err := services.QueueMissingSubtitles()
+	queuedCount, err := services.GetGlobalSubtitleService().QueueMissingSubtitles()
 	if err != nil {
 		slog.Error("Error queueing missing subtitles", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -374,8 +375,7 @@ func MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	if err := services.SyncSubtitlesForMovie(cfg, movieID); err != nil {
+	if err := services.GetGlobalSubtitleService().SyncSubtitlesForMovie(movieID); err != nil {
 		slog.Error("Manual subtitle sync failed for movie", "movie_id", movieID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -403,8 +403,7 @@ func EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := config.Load()
-	if err := services.SyncSubtitlesForEpisode(cfg, episodeID); err != nil {
+	if err := services.GetGlobalSubtitleService().SyncSubtitlesForEpisode(episodeID); err != nil {
 		slog.Error("Manual subtitle sync failed for episode", "episode_id", episodeID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -425,8 +424,6 @@ func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	cfg := config.Load()
 
 	// Gather all movies and episodes that need syncing
 	type syncTask struct {
@@ -460,21 +457,22 @@ func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process tasks sequentially in a single background goroutine
-	go func(cfg *config.Config, tasks []syncTask) {
+	subtitleSvc := services.GetGlobalSubtitleService()
+	go func(tasks []syncTask) {
 		slog.Info("Starting sequential background subtitle sync", "total_tasks", len(tasks))
 		for _, task := range tasks {
 			var err error
 			if task.isMovie {
-				err = services.SyncSubtitlesForMovie(cfg, task.id)
+				err = subtitleSvc.SyncSubtitlesForMovie(task.id)
 			} else {
-				err = services.SyncSubtitlesForEpisode(cfg, task.id)
+				err = subtitleSvc.SyncSubtitlesForEpisode(task.id)
 			}
 			if err != nil {
 				slog.Error("Sequential background subtitle sync failed", "is_movie", task.isMovie, "id", task.id, "error", err)
 			}
 		}
 		slog.Info("Finished sequential background subtitle sync", "total_tasks", len(tasks))
-	}(cfg, tasks)
+	}(tasks)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

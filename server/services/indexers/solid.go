@@ -25,7 +25,7 @@ func NewSolidTorrentsIndexer() *SolidTorrentsIndexer {
 	return &SolidTorrentsIndexer{}
 }
 
-func (s *SolidTorrentsIndexer) GetName() string {
+func (s *SolidTorrentsIndexer) Name() string {
 	return "SolidTorrents"
 }
 

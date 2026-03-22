@@ -380,7 +380,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	}
 
 	// Fetch metadata immediately
-	MatchShow(cfg, showID)
+	globalMetadata.MatchShow(showID)
 
 	// Always scan the current path's seasons/episodes
 	// Even if we reused an existing show, we need to scan this new path
@@ -402,7 +402,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 					"tvdb_id", episodeTVDBID)
 				// Update the show with the TVDB ID and re-match
 				database.DB.Exec("UPDATE shows SET tvdb_id = $1 WHERE id = $2", episodeTVDBID, showID)
-				MatchShow(cfg, showID)
+				globalMetadata.MatchShow(showID)
 			}
 		}
 	}

@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,14 +20,15 @@ var showDetailsTmpl *template.Template
 
 func init() {
 	var err error
-	funcMap := GetFuncMap()
+	funcMap := FuncMap()
 	showsTmpl, err = template.New("shows").Funcs(funcMap).ParseFiles(
 		"templates/layouts/base.html",
 		"templates/pages/shows.html",
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse shows template:", err)
+		slog.Error("Failed to parse shows template", "error", err)
+		os.Exit(1)
 	}
 
 	showDetailsTmpl, err = template.New("showDetails").Funcs(funcMap).ParseFiles(
@@ -36,7 +37,8 @@ func init() {
 		"templates/components/navigation.html",
 	)
 	if err != nil {
-		log.Fatal("Failed to parse show details template:", err)
+		slog.Error("Failed to parse show details template", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -146,8 +148,6 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.URL.Query().Get("id")
 	tvdbID := r.URL.Query().Get("tvdb_id")
 
-	cfg := config.Load()
-
 	if idStr != "" {
 		id, _ := strconv.Atoi(idStr)
 		show, err = services.GetShowByID(id)
@@ -159,11 +159,11 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 		// If we have a TVDB ID, fetch all episodes to show what's missing
 		if show.TVDBID != "" {
-			allEpisodes, _ = services.GetTVDBShowEpisodes(cfg, show.TVDBID)
+			allEpisodes, _ = services.GetGlobalMetadataService().GetTVDBShowEpisodes(show.TVDBID)
 		}
 	} else if tvdbID != "" {
 		// External search result
-		details, err := services.GetTVDBShowDetails(cfg, tvdbID)
+		details, err := services.GetGlobalMetadataService().GetTVDBShowDetails(tvdbID)
 		if err != nil {
 			slog.Error("Error getting TVDB show details", "error", err, "tvdb_id", tvdbID)
 			http.Error(w, "Show details not found", http.StatusNotFound)
@@ -190,7 +190,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Fetch all episodes from TVDB
-		allEpisodes, _ = services.GetTVDBShowEpisodes(cfg, tvdbID)
+		allEpisodes, _ = services.GetGlobalMetadataService().GetTVDBShowEpisodes(tvdbID)
 
 		// Check library status
 		status, _ := services.CheckLibraryStatus("show", tvdbID)
