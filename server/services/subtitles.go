@@ -801,17 +801,30 @@ func HasSubtitles(videoPath string) bool {
 		return true
 	}
 
-	// Check directory for any .srt file containing the video base name
+	// Check directory for any .srt file matching by name or season/episode pattern
 	dir := filepath.Dir(videoPath)
 	files, err := os.ReadDir(dir)
 	if err == nil {
 		videoBase := strings.ToLower(filepath.Base(base))
+		// Extract S##E## pattern from video filename for fallback matching
+		sePattern := regexp.MustCompile(`(?i)(s\d+e\d+)`)
+		seMatch := sePattern.FindString(videoBase)
+
 		for _, f := range files {
-			if !f.IsDir() {
-				name := strings.ToLower(f.Name())
-				if strings.HasSuffix(name, ".srt") && strings.Contains(name, videoBase) {
-					return true
-				}
+			if f.IsDir() {
+				continue
+			}
+			name := strings.ToLower(f.Name())
+			if !strings.HasSuffix(name, ".srt") {
+				continue
+			}
+			// Match by full video base name
+			if strings.Contains(name, videoBase) {
+				return true
+			}
+			// Match by S##E## pattern (handles mismatched episode titles)
+			if seMatch != "" && strings.Contains(name, seMatch) {
+				return true
 			}
 		}
 	}
@@ -853,7 +866,7 @@ func NormalizeSubtitleFilename(videoPath string) bool {
 		return true
 	}
 
-	// Check directory for an .srt matching the video base name but without a language tag
+	// Check directory for an .srt matching by name or S##E## pattern
 	dir := filepath.Dir(videoPath)
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -861,28 +874,55 @@ func NormalizeSubtitleFilename(videoPath string) bool {
 	}
 
 	videoBase := strings.ToLower(filepath.Base(base))
+	sePattern := regexp.MustCompile(`(?i)(s\d+e\d+)`)
+	seMatch := sePattern.FindString(videoBase)
+
 	for _, f := range files {
 		if f.IsDir() {
 			continue
 		}
 		name := f.Name()
 		nameLower := strings.ToLower(name)
-		if !strings.HasSuffix(nameLower, ".srt") || !strings.Contains(nameLower, videoBase) {
+		if !strings.HasSuffix(nameLower, ".srt") {
 			continue
 		}
+
+		// Match by full video base name or S##E## pattern
+		nameMatches := strings.Contains(nameLower, videoBase)
+		seMatches := seMatch != "" && strings.Contains(nameLower, seMatch)
+		if !nameMatches && !seMatches {
+			continue
+		}
+
 		// Skip if it already has a language tag
 		if strings.Contains(nameLower, ".en.") || strings.Contains(nameLower, ".eng.") {
+			// File has a language tag but doesn't match the video name — rename to match video
+			if !nameMatches && seMatches {
+				oldPath := filepath.Join(dir, name)
+				// Determine suffix (.en.srt, .en.sdh.srt, etc.)
+				suffix := ".en.srt"
+				if strings.Contains(nameLower, ".sdh.") {
+					suffix = ".en.sdh.srt"
+				}
+				newPath := base + suffix
+				if err := os.Rename(oldPath, newPath); err != nil {
+					slog.Warn("Failed to rename subtitle to match video", "from", oldPath, "to", newPath, "error", err)
+					return false
+				}
+				slog.Info("Renamed subtitle to match video filename", "from", name, "to", filepath.Base(newPath))
+				return true
+			}
 			return false
 		}
-		// Rename: insert .en before .srt
+
+		// No language tag — rename to match video base name with .en.srt
 		oldPath := filepath.Join(dir, name)
-		newName := strings.TrimSuffix(name, filepath.Ext(name)) + ".en.srt"
-		newPath := filepath.Join(dir, newName)
+		newPath := base + ".en.srt"
 		if err := os.Rename(oldPath, newPath); err != nil {
 			slog.Warn("Failed to rename subtitle file", "from", oldPath, "to", newPath, "error", err)
 			return false
 		}
-		slog.Info("Renamed subtitle to include language tag", "from", name, "to", newName)
+		slog.Info("Renamed subtitle to include language tag", "from", name, "to", filepath.Base(newPath))
 		return true
 	}
 
