@@ -795,21 +795,95 @@ func HasSubtitles(videoPath string) bool {
 		}
 	}
 
-	// Also check for a simple .srt if there's only one in the folder (loose check)
+	// Also check for a bare .srt matching the video name (no language tag)
+	bareSrt := base + ".srt"
+	if _, err := os.Stat(bareSrt); err == nil {
+		return true
+	}
+
+	// Check directory for any .srt file containing the video base name
 	dir := filepath.Dir(videoPath)
 	files, err := os.ReadDir(dir)
 	if err == nil {
-		videoBase := filepath.Base(base)
+		videoBase := strings.ToLower(filepath.Base(base))
 		for _, f := range files {
 			if !f.IsDir() {
 				name := strings.ToLower(f.Name())
-				if strings.HasSuffix(name, ".srt") && strings.Contains(name, strings.ToLower(videoBase)) {
-					if strings.Contains(name, ".en") || strings.Contains(name, ".eng") {
-						return true
-					}
+				if strings.HasSuffix(name, ".srt") && strings.Contains(name, videoBase) {
+					return true
 				}
 			}
 		}
+	}
+
+	return false
+}
+
+// NormalizeSubtitleFilename checks if a video has a bare .srt file (no language tag)
+// and renames it to include .en for Plex compatibility. Returns true if a rename occurred.
+func NormalizeSubtitleFilename(videoPath string) bool {
+	if videoPath == "" {
+		return false
+	}
+
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+
+	// Already has a properly tagged subtitle — nothing to do
+	tagged := []string{
+		base + ".en.srt",
+		base + ".en.sdh.srt",
+		base + ".eng.srt",
+		base + ".eng.sdh.srt",
+	}
+	for _, t := range tagged {
+		if _, err := os.Stat(t); err == nil {
+			return false
+		}
+	}
+
+	// Check for bare .srt with exact video base name
+	bareSrt := base + ".srt"
+	if _, err := os.Stat(bareSrt); err == nil {
+		newPath := base + ".en.srt"
+		if err := os.Rename(bareSrt, newPath); err != nil {
+			slog.Warn("Failed to rename subtitle file", "from", bareSrt, "to", newPath, "error", err)
+			return false
+		}
+		slog.Info("Renamed subtitle to include language tag", "from", filepath.Base(bareSrt), "to", filepath.Base(newPath))
+		return true
+	}
+
+	// Check directory for an .srt matching the video base name but without a language tag
+	dir := filepath.Dir(videoPath)
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+
+	videoBase := strings.ToLower(filepath.Base(base))
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		name := f.Name()
+		nameLower := strings.ToLower(name)
+		if !strings.HasSuffix(nameLower, ".srt") || !strings.Contains(nameLower, videoBase) {
+			continue
+		}
+		// Skip if it already has a language tag
+		if strings.Contains(nameLower, ".en.") || strings.Contains(nameLower, ".eng.") {
+			return false
+		}
+		// Rename: insert .en before .srt
+		oldPath := filepath.Join(dir, name)
+		newName := strings.TrimSuffix(name, filepath.Ext(name)) + ".en.srt"
+		newPath := filepath.Join(dir, newName)
+		if err := os.Rename(oldPath, newPath); err != nil {
+			slog.Warn("Failed to rename subtitle file", "from", oldPath, "to", newPath, "error", err)
+			return false
+		}
+		slog.Info("Renamed subtitle to include language tag", "from", name, "to", newName)
+		return true
 	}
 
 	return false
@@ -892,6 +966,7 @@ func (s *SubtitleService) ScanAllMediaForSubtitles(forceRefresh bool) (*Subtitle
 	result.TotalMovies = len(movies)
 	for _, movie := range movies {
 		if movie.Path != "" {
+			NormalizeSubtitleFilename(movie.Path)
 			if HasSubtitles(movie.Path) {
 				result.MoviesWithSubs++
 			} else {
@@ -917,6 +992,7 @@ func (s *SubtitleService) ScanAllMediaForSubtitles(forceRefresh bool) (*Subtitle
 
 		result.TotalEpisodes++
 		if filePath != "" {
+			NormalizeSubtitleFilename(filePath)
 			if HasSubtitles(filePath) {
 				result.EpisodesWithSubs++
 			} else {
@@ -945,11 +1021,14 @@ func (s *SubtitleService) QueueMissingSubtitles() (int, error) {
 	}
 
 	for _, movie := range movies {
-		if movie.Path != "" && !HasSubtitles(movie.Path) {
-			if err := s.QueueSubtitleDownload("movie", movie.ID); err != nil {
-				slog.Warn("Failed to queue subtitle for movie", "movie_id", movie.ID, "error", err)
-			} else {
-				queuedCount++
+		if movie.Path != "" {
+			NormalizeSubtitleFilename(movie.Path)
+			if !HasSubtitles(movie.Path) {
+				if err := s.QueueSubtitleDownload("movie", movie.ID); err != nil {
+					slog.Warn("Failed to queue subtitle for movie", "movie_id", movie.ID, "error", err)
+				} else {
+					queuedCount++
+				}
 			}
 		}
 	}
@@ -969,11 +1048,14 @@ func (s *SubtitleService) QueueMissingSubtitles() (int, error) {
 			continue
 		}
 
-		if filePath != "" && !HasSubtitles(filePath) {
-			if err := s.QueueSubtitleDownload("episode", episodeID); err != nil {
-				slog.Warn("Failed to queue subtitle for episode", "episode_id", episodeID, "error", err)
-			} else {
-				queuedCount++
+		if filePath != "" {
+			NormalizeSubtitleFilename(filePath)
+			if !HasSubtitles(filePath) {
+				if err := s.QueueSubtitleDownload("episode", episodeID); err != nil {
+					slog.Warn("Failed to queue subtitle for episode", "episode_id", episodeID, "error", err)
+				} else {
+					queuedCount++
+				}
 			}
 		}
 	}
