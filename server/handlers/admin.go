@@ -350,6 +350,13 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Info("Finished queueing missing subtitles", "queued_count", queuedCount)
+
+		// Trigger immediate queue processing instead of waiting for the 60-minute ticker
+		if queuedCount > 0 {
+			if svc := services.GetGlobalAutomationService(); svc != nil {
+				svc.ProcessSubtitleQueue(context.Background())
+			}
+		}
 	}()
 
 	response := map[string]interface{}{
