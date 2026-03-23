@@ -48,7 +48,7 @@
         })
             .then(response => response.json())
             .then(data => {
-                alert(data.message || `Queued ${data.queued_count || 0} media items for subtitle download`);
+                alert(data.message || 'Subtitle queueing started in the background');
                 btn.disabled = false;
                 btn.textContent = '📥 Queue Missing Subtitles';
             })

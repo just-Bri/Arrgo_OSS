@@ -341,16 +341,19 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queuedCount, err := services.GetGlobalSubtitleService().QueueMissingSubtitles()
-	if err != nil {
-		slog.Error("Error queueing missing subtitles", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// Run in background to avoid hitting the server's WriteTimeout
+	// with large libraries (filesystem checks on every media item)
+	go func() {
+		queuedCount, err := services.GetGlobalSubtitleService().QueueMissingSubtitles()
+		if err != nil {
+			slog.Error("Error queueing missing subtitles", "error", err)
+			return
+		}
+		slog.Info("Finished queueing missing subtitles", "queued_count", queuedCount)
+	}()
 
 	response := map[string]interface{}{
-		"queued_count": queuedCount,
-		"message":      fmt.Sprintf("Queued %d media items for subtitle download", queuedCount),
+		"message": "Subtitle queueing started in the background",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
