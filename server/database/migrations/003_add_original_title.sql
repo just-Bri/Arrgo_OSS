@@ -1,0 +1,1 @@
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS original_title VARCHAR(255);

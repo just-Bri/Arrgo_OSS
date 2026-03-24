@@ -1,0 +1,156 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync" // Added for mutex
+	"time"
+
+	"log/slog"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	sharedlogger "github.com/justbri/arrgo/shared/logger"
+)
+
+type SyncRequest struct {
+	Video    string `json:"video"`
+	Subtitle string `json:"subtitle"`
+}
+
+var (
+	// syncMutex ensures only one ffsubsync process runs at a time to prevent CPU exhaustion.
+	syncMutex sync.Mutex
+
+	moviesPath string
+	showsPath  string
+)
+
+func isPathAllowed(path string) bool {
+	// If paths aren't set, allow all (backward compatibility/default behavior)
+	if moviesPath == "" && showsPath == "" {
+		return true
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+
+	if moviesPath != "" && strings.HasPrefix(absPath, moviesPath) {
+		return true
+	}
+	if showsPath != "" && strings.HasPrefix(absPath, showsPath) {
+		return true
+	}
+
+	return false
+}
+
+func main() {
+	moviesPath = os.Getenv("MOVIES_PATH")
+	showsPath = os.Getenv("SHOWS_PATH")
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "development"
+	}
+	debug := os.Getenv("DEBUG") == "true"
+
+	// Initialize structured logging
+	sharedlogger.Init(env, debug)
+
+	slog.Info("SubSync API starting...",
+		"allowed_movies_path", moviesPath,
+		"allowed_shows_path", showsPath)
+
+	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.CleanPath)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			slog.Debug("HTTP request",
+				"remote_addr", r.RemoteAddr,
+				"method", r.Method,
+				"path", r.URL.Path)
+			next.ServeHTTP(w, r)
+		})
+	})
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(10 * time.Minute))
+	r.Use(middleware.Compress(5))
+
+	r.Post("/sync", func(w http.ResponseWriter, r *http.Request) {
+		req := new(SyncRequest)
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			http.Error(w, "Invalid JSON format", http.StatusBadRequest)
+			return
+		}
+
+		if req.Video == "" || req.Subtitle == "" {
+			http.Error(w, "Missing video or subtitle path", http.StatusBadRequest)
+			return
+		}
+
+		// Use the absolute path provided in the request as they are mapped in the same way
+		// between Arrgo and this container via the shared media volume.
+		videoPath := req.Video
+		subtitlePath := req.Subtitle
+
+		if !isPathAllowed(videoPath) || !isPathAllowed(subtitlePath) {
+			slog.Warn("Access denied for paths outside of allowed directories",
+				"video_path", videoPath,
+				"subtitle_path", subtitlePath)
+			http.Error(w, "Access denied: paths must be within MOVIES_PATH or SHOWS_PATH", http.StatusForbidden)
+			return
+		}
+
+		// Acquire lock to serialize sync tasks
+		syncMutex.Lock()
+		defer syncMutex.Unlock()
+
+		slog.Info("Starting subtitle sync",
+			"video", filepath.Base(videoPath),
+			"subtitle", filepath.Base(subtitlePath))
+
+		// ffsubsync <video> -i <subtitle> -o <subtitle>
+		// We use the same path for input and output, directly overwriting the file.
+		// Wrapped in 'nice -n 15' to give it lower CPU priority.
+		cmd := exec.Command("nice", "-n", "15", "ffsubsync", videoPath, "-i", subtitlePath, "-o", subtitlePath)
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			slog.Error("ffsubsync failed",
+				"error", err,
+				"output", string(output))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":   "Failed to process subtitle",
+				"details": string(output),
+			})
+			return
+		}
+
+		slog.Info("Successfully synced subtitle",
+			"subtitle", filepath.Base(subtitlePath))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "success"})
+	})
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+
+	// Start server
+	slog.Info("Starting server on :8080")
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		slog.Error("Server failed", "error", err)
+		os.Exit(1)
+	}
+}

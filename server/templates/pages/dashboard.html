@@ -1,0 +1,47 @@
+{{define "title"}}Dashboard - Arrgo{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <h1 style="margin-bottom: 20px; color: var(--text-color); font-size: 24px;">Dashboard</h1>
+    <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); margin-bottom: 25px; display: flex; flex-direction: column; gap: 10px;">
+        <p style="font-size: 16px; color: var(--text-color); margin: 0;">Welcome, <strong>{{.Username}}</strong>!</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+        <a href="/movies" style="text-decoration: none; color: inherit;">
+            <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;">
+                <div style="font-size: 36px; font-weight: bold; color: var(--accent-color); margin-bottom: 5px;">{{.MovieCount}}</div>
+                <div style="font-size: 18px; color: var(--text-color); font-weight: 500;">Movies</div>
+                {{if .IsAdmin}}
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px;">
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--accent-color);">{{.IncomingMovieCount}}</strong> Incoming
+                    </div>
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--accent-color);">{{.MovieRequestCount}}</strong> Requests
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </a>
+
+        <a href="/shows" style="text-decoration: none; color: inherit;">
+            <div style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); text-align: center; transition: transform 0.2s, box-shadow 0.2s;">
+                <div style="font-size: 36px; font-weight: bold; color: var(--success-color); margin-bottom: 5px;">{{.ShowCount}}</div>
+                <div style="font-size: 18px; color: var(--text-color); font-weight: 500;">Shows</div>
+                {{if .IsAdmin}}
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px;">
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--success-color);">{{.IncomingShowCount}}</strong> Incoming
+                    </div>
+                    <div style="color: var(--muted-text); font-size: 12px;">
+                        <strong style="color: var(--success-color);">{{.ShowRequestCount}}</strong> Requests
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </a>
+    </div>
+</div>
+{{end}}

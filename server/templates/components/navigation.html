@@ -1,0 +1,79 @@
+{{define "navigation"}}
+<nav class="main-nav" style="background: var(--header-bg); border-bottom: 1px solid var(--border-color); padding: 10px 0; position: sticky; top: 0; z-index: 100;">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 0 15px; gap: 20px;">
+        
+        <!-- Desktop Links - Left -->
+        <div class="desktop-nav" style="display: flex; align-items: center; gap: 10px;">
+            <style>
+                .desktop-link {
+                    color: var(--text-color);
+                    text-decoration: none;
+                    font-weight: 500;
+                    padding: 6px 12px;
+                    border-radius: 6px;
+                    transition: all 0.2s;
+                    white-space: nowrap;
+                }
+                .desktop-link:hover {
+                    background: rgba(255,255,255,0.05);
+                }
+                [data-theme="light"] .desktop-link:hover {
+                    background: rgba(0,0,0,0.05);
+                }
+                .desktop-link.active {
+                    color: var(--accent-color);
+                    background: rgba(0, 123, 255, 0.1);
+                }
+                .desktop-link.admin-link {
+                    color: var(--accent-color);
+                }
+                .desktop-link.admin-link.active {
+                    background: var(--accent-color);
+                    color: white;
+                }
+            </style>
+            <ul style="list-style: none; display: flex; gap: 5px; margin: 0; padding: 0;">
+                <li><a href="/dashboard" class="desktop-link {{if eq .CurrentPage "/dashboard"}}active{{end}}">Dashboard</a></li>
+                <li><a href="/movies" class="desktop-link {{if eq .CurrentPage "/movies"}}active{{end}}">Movies</a></li>
+                <li><a href="/shows" class="desktop-link {{if eq .CurrentPage "/shows"}}active{{end}}">Shows</a></li>
+                <li><a href="/requests" class="desktop-link {{if eq .CurrentPage "/requests"}}active{{end}}">Requests</a></li>
+                {{if .IsAdmin}}
+                <li><a href="/admin" class="desktop-link admin-link {{if eq .CurrentPage "/admin"}}active{{end}}">Admin</a></li>
+                {{end}}
+            </ul>
+        </div>
+
+        <!-- Search Bar - Middle on Desktop, Primary on Mobile -->
+        <form action="/search" method="GET" style="flex: 1; max-width: 500px; position: relative;">
+            <input type="text" name="q" placeholder="Search..." 
+                dir="ltr"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                style="width: 100%; padding: 8px 35px 8px 12px; border-radius: 20px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); font-size: 14px;"
+                value="{{.SearchQuery}}">
+            <button type="submit" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted-text);">
+                🔍
+            </button>
+        </form>
+
+        <!-- Desktop User Actions - Right -->
+        <div class="desktop-nav" style="display: flex; align-items: center; gap: 15px;">
+            <div style="display: flex; align-items: center; gap: 15px; border-left: 1px solid var(--border-color); padding-left: 20px;">
+                <button onclick="toggleTheme()" style="background: none; border: 1px solid var(--border-color); color: var(--text-color); padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                    🌓
+                </button>
+                <span style="color: var(--muted-text); font-size: 14px; white-space: nowrap;">{{.Username}}</span>
+                <a href="/logout" style="color: var(--accent-color); text-decoration: none; font-weight: 500; font-size: 14px; white-space: nowrap;">Logout</a>
+            </div>
+        </div>
+
+        <!-- Mobile Toggle -->
+        <button class="mobile-nav-toggle" onclick="toggleSidebar()" style="display: none; background: none; border: none; color: var(--text-color); font-size: 24px; cursor: pointer; padding: 5px; flex-shrink: 0;">
+            ☰
+        </button>
+    </div>
+</nav>
+{{end}}
+

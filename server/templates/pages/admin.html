@@ -1,0 +1,19 @@
+{{define "title"}}Admin - Arrgo{{end}}
+
+{{define "content"}}
+{{template "navigation" .}}
+<div class="container">
+    <h1 style="margin-bottom: 20px; color: var(--text-color); font-size: 24px;">Admin Dashboard</h1>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+        {{template "admin_library_management" .}}
+        {{template "admin_subtitle_management" .}}
+        {{template "admin_library_maintenance" .}}
+        {{template "admin_jellyfin" .}}
+        {{template "admin_user_info" .}}
+        {{template "admin_danger_zone" .}}
+    </div>
+
+    {{template "admin_incoming_media" .}}
+</div>
+{{end}}

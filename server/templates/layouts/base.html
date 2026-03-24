@@ -1,0 +1,218 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}Arrgo{{end}}</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="manifest" href="/static/site.webmanifest">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        :root {
+            /* Dark mode (default) */
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --container-bg: #2d2d2d;
+            --border-color: #444;
+            --muted-text: #b0b0b0;
+            --accent-color: #007bff;
+            --success-color: #28a745;
+            --header-bg: #252525;
+            --card-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            --badge-bg: #3d3d3d;
+            --badge-text: #e0f7fa;
+            --quality-bg: #4a3728;
+            --quality-text: #ffcc80;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f5f5f5;
+            --text-color: #333333;
+            --container-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --muted-text: #666666;
+            --accent-color: #007bff;
+            --success-color: #28a745;
+            --header-bg: #ffffff;
+            --card-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            --badge-bg: #e0f7fa;
+            --badge-text: #00838f;
+            --quality-bg: #fff3e0;
+            --quality-text: #e65100;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            transition: background 0.3s, color 0.3s;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Mobile First Sidebar */
+        .sidebar {
+            position: fixed;
+            right: -280px;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            background: var(--header-bg);
+            border-left: 1px solid var(--border-color);
+            z-index: 1100;
+            transition: right 0.3s ease;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sidebar.active {
+            right: 0;
+        }
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1050;
+            display: none;
+        }
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Navigation Links Styling */
+        .nav-link {
+            color: var(--text-color);
+            text-decoration: none;
+            font-size: 18px;
+            display: block;
+            padding: 12px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--border-color);
+        }
+        [data-theme="light"] .nav-link:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .nav-link:active {
+            transform: scale(0.98);
+        }
+        .nav-link.active {
+            background: var(--bg-color);
+            border-color: var(--border-color);
+            font-weight: 600;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .nav-link.admin {
+            color: var(--accent-color);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .desktop-nav {
+                display: none !important;
+            }
+            .mobile-nav-toggle {
+                display: block !important;
+            }
+            .container {
+                padding: 15px;
+            }
+            .main-nav {
+                position: fixed !important;
+                top: auto !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                border-bottom: none !important;
+                border-top: 1px solid var(--border-color) !important;
+                padding-bottom: env(safe-area-inset-bottom, 10px) !important;
+                z-index: 1000 !important;
+            }
+            body {
+                padding-bottom: 80px; /* Space for bottom nav */
+            }
+        }
+        @media (min-width: 769px) {
+            .desktop-nav {
+                display: flex !important;
+            }
+            .mobile-nav-toggle {
+                display: none !important;
+            }
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+    {{block "styles" .}}{{end}}
+    <script>
+        // Apply theme on load
+        (function() {
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+    </script>
+</head>
+<body>
+    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div class="sidebar">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <a href="/dashboard" style="text-decoration: none; color: var(--text-color);"><h2 style="margin: 0; font-size: 24px;">Arrgo</h2></a>
+                <button onclick="toggleSidebar()" style="background: none; border: none; color: var(--text-color); font-size: 32px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0;">
+                <li><a href="/dashboard" class="nav-link {{if eq .CurrentPage "/dashboard"}}active{{end}}">Dashboard</a></li>
+                <li><a href="/movies" class="nav-link {{if eq .CurrentPage "/movies"}}active{{end}}">Movies</a></li>
+                <li><a href="/shows" class="nav-link {{if eq .CurrentPage "/shows"}}active{{end}}">Shows</a></li>
+                <li><a href="/requests" class="nav-link {{if eq .CurrentPage "/requests"}}active{{end}}">Requests</a></li>
+                {{if .IsAdmin}}
+                <li><a href="/admin" class="nav-link admin {{if eq .CurrentPage "/admin"}}active{{end}}">Admin</a></li>
+                {{end}}
+            </ul>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 5px 0;">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button onclick="toggleTheme(); toggleSidebar();" style="width: 100%; text-align: left; background: none; border: 1px solid var(--border-color); color: var(--text-color); padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                    🌓 Toggle Theme
+                </button>
+                <div style="padding: 12px; color: var(--muted-text); font-size: 14px;">Logged in as: <strong>{{.Username}}</strong></div>
+                <a href="/logout" style="color: white; background: var(--accent-color); text-decoration: none; font-weight: 500; padding: 12px; border-radius: 8px; text-align: center;">Logout</a>
+            </div>
+        </div>
+    </div>
+    {{block "content" .}}{{end}}
+</body>
+</html>
+{{end}}
+

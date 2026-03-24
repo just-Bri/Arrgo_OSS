@@ -1,0 +1,197 @@
+{{define "admin_incoming_media"}}
+{{if or .IncomingMovies .IncomingShows}}
+<div style="display: flex; justify-content: space-between; align-items: flex-end; margin: 30px 0 20px 0;">
+    <h1 style="margin: 0; color: var(--text-color); font-size: 24px;">Incoming Media</h1>
+    <div style="display: flex; gap: 10px;">
+        {{if .IncomingMovies}}
+        <form action="/import/movies/all" method="POST">
+            <button type="submit"
+                style="padding: 8px 15px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                🎬 Import All Movies
+            </button>
+        </form>
+        {{end}}
+        {{if .IncomingShows}}
+        <form action="/import/shows/all" method="POST">
+            <button type="submit"
+                style="padding: 8px 15px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">
+                📺 Import All Shows
+            </button>
+        </form>
+        {{end}}
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 15px;">
+    <!-- Incoming Movies -->
+    {{if .IncomingMovies}}
+    <div
+        style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--accent-color);">
+        <h2 style="margin: 0 0 15px 0; font-size: 18px; color: var(--accent-color);">Movies ({{len
+            .IncomingMovies}})</h2>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+            {{range .IncomingMovies}}
+            <li
+                style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                {{if .PosterPath}}
+                <a href="/movies/details?id={{.ID}}" style="flex-shrink: 0;">
+                    <img src="/images/movie/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75"
+                        style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                </a>
+                {{else}}
+                <div
+                    style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">
+                    No Poster</div>
+                {{end}}
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
+                        <div style="min-width: 0;">
+                            <a href="/movies/details?id={{.ID}}" style="text-decoration: none;">
+                                <div
+                                    style="font-size: 14px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                            </a>
+                            <div
+                                style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                                <span
+                                    style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
+                                {{if .Quality}}
+                                <span
+                                    style="background: var(--quality-bg); padding: 1px 4px; border-radius: 4px; color: var(--quality-text);">{{.Quality}}</span>
+                                {{end}}
+                                {{if .SeedingStatus}}
+                                {{if .SeedingStatus.TorrentExists}}
+                                {{if .SeedingStatus.IsSeeding}}
+                                {{if .SeedingStatus.MeetsCriteria}}
+                                <span
+                                    style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                    title="Seeding complete ({{printf " %.1f" .SeedingStatus.Ratio}} ratio,
+                                    {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                {{else}}
+                                <span
+                                    style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                    title="Ratio: {{printf " %.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f"
+                                    .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                {{end}}
+                                {{else}}
+                                <span
+                                    style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸
+                                    Not Seeding</span>
+                                {{end}}
+                                {{end}}
+                                {{end}}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                            {{if .IsDownloading}}
+                            <button type="button" disabled
+                                style="padding: 4px 8px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; font-size: 11px; cursor: not-allowed;"
+                                title="Wait for download to finish">Downloading...</button>
+                            {{else}}
+                            {{if eq .Status "matched"}}
+                            <form action="/rename/movie?id={{.ID}}" method="POST">
+                                <button type="submit"
+                                    style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Import</button>
+                            </form>
+                            {{else if eq .Status "discovered"}}
+                            <form action="/movies/details?id={{.ID}}" method="GET">
+                                <button type="submit"
+                                    style="padding: 4px 8px; background: var(--warning-color, #ff9800); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Match</button>
+                            </form>
+                            {{end}}
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+            </li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <!-- Incoming Shows -->
+    {{if .IncomingShows}}
+    <div
+        style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 2px solid var(--success-color);">
+        <h2 style="margin: 0 0 15px 0; font-size: 18px; color: var(--success-color);">Shows ({{len .IncomingShows}})
+        </h2>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+            {{range .IncomingShows}}
+            <li
+                style="padding: 12px 0; border-bottom: 1px solid var(--border-color); display: flex; align-items: flex-start; gap: 12px;">
+                {{if .PosterPath}}
+                <a href="/shows/details?id={{.ID}}" style="flex-shrink: 0;">
+                    <img src="/images/shows/{{.ID}}" alt="{{.Title}}" loading="lazy" width="50" height="75"
+                        style="width: 50px; height: 75px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                </a>
+                {{else}}
+                <div
+                    style="width: 50px; height: 75px; background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 9px; text-align: center; flex-shrink: 0;">
+                    No Poster</div>
+                {{end}}
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 5px;">
+                        <div style="min-width: 0;">
+                            <a href="/shows/details?id={{.ID}}" style="text-decoration: none;">
+                                <div
+                                    style="font-size: 14px; font-weight: 500; color: var(--text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {{.Title}} {{if .Year}}({{.Year}}){{end}}</div>
+                            </a>
+                            <div
+                                style="font-size: 11px; color: var(--muted-text); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                                <span
+                                    style="background: var(--badge-bg); padding: 1px 4px; border-radius: 4px; color: var(--badge-text);">{{.Status}}</span>
+                                {{if .Seasons}}
+                                <span
+                                    style="background: var(--accent-color); padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">
+                                    Seasons: {{range $i, $s := .Seasons}}{{if $i}}, {{end}}S{{printf "%02d"
+                                    $s}}{{end}}
+                                </span>
+                                {{end}}
+                                {{if .SeedingStatus}}
+                                {{if .SeedingStatus.TorrentExists}}
+                                {{if .SeedingStatus.IsSeeding}}
+                                {{if .SeedingStatus.MeetsCriteria}}
+                                <span
+                                    style="background: #ff9800; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                    title="Seeding complete ({{printf " %.1f" .SeedingStatus.Ratio}} ratio,
+                                    {{printf "%.0f" .SeedingStatus.SeedingTimeMinutes}} min)">✓ Seeding Done</span>
+                                {{else}}
+                                <span
+                                    style="background: #4caf50; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;"
+                                    title="Ratio: {{printf " %.2f" .SeedingStatus.Ratio}}, Time: {{printf "%.0f"
+                                    .SeedingStatus.SeedingTimeMinutes}} min">🌱 Seeding</span>
+                                {{end}}
+                                {{else}}
+                                <span
+                                    style="background: #9e9e9e; padding: 1px 6px; border-radius: 4px; color: white; font-weight: 500;">⏸
+                                    Not Seeding</span>
+                                {{end}}
+                                {{end}}
+                                {{end}}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                            {{if .IsDownloading}}
+                            <button type="button" disabled
+                                style="padding: 4px 8px; background: var(--border-color); color: var(--muted-text); border: none; border-radius: 4px; font-size: 11px; cursor: not-allowed;"
+                                title="Wait for download to finish">Downloading...</button>
+                            {{else}}
+                            {{if eq .Status "matched"}}
+                            <form action="/rename/show?id={{.ID}}" method="POST">
+                                <button type="submit"
+                                    style="padding: 4px 8px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Move</button>
+                            </form>
+                            {{end}}
+                            {{end}}
+                        </div>
+                    </div>
+                </div>
+            </li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}
