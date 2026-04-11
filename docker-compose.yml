@@ -5,10 +5,13 @@ services:
       args:
         - GO_VERSION=${GO_VERSION:-1.26.1}
     container_name: arrgo
+    # Port 5003 stays mapped so you can still hit it via Unraid IP if needed,
+    # but Caddy will now talk to it via the 'coven' bridge.
     ports:
-      - "5003:5003"
+      - 5003:5003
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://arrgo:${POSTGRES_PASSWORD}@db:5432/arrgo?sslmode=disable}
+      # Use service names defined in this file or other 'coven' containers
+      - DATABASE_URL=${DATABASE_URL:-postgres://arrgo:${POSTGRES_PASSWORD}@arrgo-db:5432/arrgo?sslmode=disable}
       - SESSION_SECRET=${SESSION_SECRET}
       - PORT=${PORT:-5003}
       - ENV=${ENV:-development}
@@ -26,10 +29,11 @@ services:
       - OPENSUBTITLES_API_KEY=${OPENSUBTITLES_API_KEY}
       - OPENSUBTITLES_USER=${OPENSUBTITLES_USER}
       - OPENSUBTITLES_PASS=${OPENSUBTITLES_PASS}
-      - QBITTORRENT_URL=${QBITTORRENT_URL:-http://qbittorrent:8080}
+      - QBITTORRENT_URL=${QBITTORRENT_URL:-http://arrgo-qbittorrent:8080}
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
       - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+      # Point to the Jellyfin container name on the coven network
       - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
@@ -38,21 +42,18 @@ services:
       - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}
       - FFSUBSYNC_URL=${FFSUBSYNC_URL:-http://ffsubsync-api:8080}
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
       qbittorrent:
         condition: service_started
-      # flaresolverr dependency removed - using existing Flaresolverr instance
-      # If you want to run Flaresolverr in this stack, uncomment the dependency above
     volumes:
       - ./server/templates:/app/templates:ro
       - ./server/static:/app/static:ro
       - ./posters:/app/data/posters
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     networks:
-      - default
       - coven
     restart: unless-stopped
     labels:
@@ -70,12 +71,18 @@ services:
     volumes:
       - ./data/db:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - 5433:5432
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arrgo} -d ${POSTGRES_DB:-arrgo}" ]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-arrgo} -d ${POSTGRES_DB:-arrgo}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - coven
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: arrgo-db
@@ -88,41 +95,29 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      - 8080:8080 # qBittorrent WebUI
-      - 6881:6881 # qBittorrent TCP
-      - 6881:6881/udp # qBittorrent UDP
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
     environment:
-      # VPN Provider - Private Internet Access (PIA) ONLY
-      # IMPORTANT: You must manually download PIA OpenVPN config files:
-      # 1. Download from: https://www.privateinternetaccess.com/openvpn/openvpn.zip
-      # 2. Extract the .ovpn files to: ./config/qbittorrent/openvpn/
-      # 3. The container will use these files with your PIA credentials below
       - VPN_ENABLED=${VPN_ENABLED:-yes}
       - VPN_PROV=${VPN_PROV:-pia}
       - VPN_CLIENT=openvpn
       - VPN_USER=${PIA_USER}
       - VPN_PASS=${PIA_PASSWORD}
-      # VPN Server selection (optional - leave empty for auto-select)
-      # You can specify a specific server .ovpn file name, or leave empty for auto
-      - VPN_REMOTE=${PIA_REMOTE:-} # e.g., "us-california.privacy.network" or leave empty for auto
-      # Port forwarding (PIA supports port forwarding)
-      - ENABLE_PRIVOXY=no
-      - LAN_NETWORK=${LAN_NETWORK:-192.168.1.0/24}
-      # qBittorrent settings
+      - LAN_NETWORK=${LAN_NETWORK:-192.168.10.0/24} # Verified for your .10 subnet
       - WEBUI_PORT=8080
       - UMASK=000
       - PUID=99
       - PGID=100
-      - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
-      # Timezone
-      - TZ=${TZ:-America/Los_Angeles}
+      - TZ=${TZ:-America/New_York}
     volumes:
       - ./config/qbittorrent:/config
       - ${MEDIA_PATH:-/mnt/user/media}/incoming:/data/incoming
+    networks:
+      - coven
     restart: unless-stopped
     labels:
       net.unraid.docker.managed: arrgo-qbittorrent
-      net.unraid.docker.webui: http://${SERVER_IP:-127.0.0.1}:8080
 
   ffsubsync-api:
     build:
@@ -136,7 +131,7 @@ services:
       - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
       - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
       - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
-    command: >
+    command: |
       sh -c "if [ \"$${ENABLE_SUBSYNC}\" = \"true\" ]; then
         exec ./ffsubsync-api;
       else
@@ -145,9 +140,9 @@ services:
       fi"
     volumes:
       - ${MEDIA_PATH:-/mnt/user/media}:/data
+    networks:
+      - coven
     restart: unless-stopped
-    labels:
-      net.unraid.docker.managed: ffsubsync-api
 
 networks:
   coven:
