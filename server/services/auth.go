@@ -93,6 +93,36 @@ func GetUserByID(userID int64) (*models.User, error) {
 	return &user, nil
 }
 
+func ChangePassword(userID int64, currentPassword, newPassword string) error {
+	var passwordHash string
+	err := database.DB.QueryRow(
+		"SELECT password_hash FROM users WHERE id = $1",
+		userID,
+	).Scan(&passwordHash)
+	if err != nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect")
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	_, err = database.DB.Exec(
+		"UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+		string(newHash), userID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}
+
 func GetAllUsers() ([]models.User, error) {
 	rows, err := database.DB.Query("SELECT id, username, email, is_admin, created_at, updated_at FROM users ORDER BY username ASC")
 	if err != nil {

@@ -56,6 +56,7 @@ func setupRoutes(h *handlers.Handlers) *chi.Mux {
 
 		// UI / General
 		r.Get("/dashboard", handlers.DashboardHandler)
+			r.HandleFunc("/settings", handlers.SettingsHandler)
 		r.Get("/search", h.SearchHandler)
 		r.Get("/requests", handlers.RequestsHandler)
 		r.Post("/requests/create", h.CreateRequestHandler)
