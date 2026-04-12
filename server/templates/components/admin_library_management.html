@@ -1,6 +1,6 @@
 {{define "admin_library_management"}}
-<article>
-    <h2>Library Management</h2>
+<fieldset>
+    <legend>Library Management</legend>
     <p><small>Detect new files and fetch metadata from TMDB/TVDB.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;"
         id="scan-buttons">
@@ -92,5 +92,5 @@
         updateScanButtons();
         intervalId = setInterval(updateScanButtons, pollInterval);
     </script>
-</article>
+</fieldset>
 {{end}}

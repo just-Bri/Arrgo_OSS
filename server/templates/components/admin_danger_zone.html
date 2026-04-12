@@ -1,6 +1,6 @@
 {{define "admin_danger_zone"}}
-<article style="border-color: #c0392b;">
-    <h2 style="color: #c0392b;">Danger Zone</h2>
+<fieldset style="border-color: #c0392b;">
+    <legend style="color: #c0392b;">Danger Zone</legend>
     <p><small>These actions are permanent and cannot be undone.</small></p>
     <form action="/admin/nuke" method="POST"
         onsubmit="return confirm('WARNING: This will permanently delete ALL movies, shows, and requests from the database. This cannot be undone. Are you absolutely sure?')">
@@ -8,5 +8,5 @@
             ☢️ Nuke Database (Library &amp; Requests)
         </button>
     </form>
-</article>
+</fieldset>
 {{end}}

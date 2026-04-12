@@ -42,8 +42,8 @@
     }
 </script>
 
-<article>
-    <h2>Library Maintenance</h2>
+<fieldset>
+    <legend>Library Maintenance</legend>
     <p><small>Deduplicate movies and shows by merging duplicate folders and keeping the largest video files.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
         <button id="dedupe-movies-btn" onclick="deduplicate('movies')" style="width: 100%;">
@@ -67,5 +67,5 @@
         <strong>Results:</strong>
         <div id="dedupe-result-content"></div>
     </div>
-</article>
+</fieldset>
 {{end}}

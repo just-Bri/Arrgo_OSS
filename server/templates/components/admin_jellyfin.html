@@ -1,6 +1,6 @@
 {{define "admin_jellyfin"}}
-<article>
-    <h2>Jellyfin Integration</h2>
+<fieldset>
+    <legend>Jellyfin Integration</legend>
     <p><small>Sync users and trigger library scans on your Jellyfin server.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
         <button id="jellyfin-sync-users-btn" onclick="jellyfinSyncUsers()" style="width: 100%;">
@@ -13,7 +13,7 @@
     <div id="jellyfin-result" style="display: none; margin-top: 1rem;">
         <p id="jellyfin-result-content"></p>
     </div>
-</article>
+</fieldset>
 
 <script>
     function jellyfinSyncUsers() {
