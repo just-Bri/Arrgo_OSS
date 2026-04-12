@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/justbri/arrgo/shared/format"
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 type TorrentGalaxyResponse struct {
@@ -55,13 +56,13 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 
 	// Try using a proxy API endpoint if available
 	// Note: These endpoints may not be stable - consider using Jackett/Prowlarr instead
-	apiURL := BuildQueryURL("https://torrentgalaxy.to/api/search", map[string]string{
+	apiURL := sharedhttp.BuildQueryURL("https://torrentgalaxy.to/api/search", map[string]string{
 		"q":        query,
 		"category": category,
 	})
 
 	slog.Info("Fetching from TorrentGalaxy", "query", query, "category", category)
-	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
+	resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
 	if err != nil {
 		slog.Warn("TorrentGalaxy request failed", "query", query, "category", category, "error", err)
 		// Graceful degradation - return empty results instead of error
@@ -70,7 +71,7 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 	}
 
 	var apiResp TorrentGalaxyResponse
-	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &apiResp); err != nil {
 		slog.Warn("TorrentGalaxy decode failed", "query", query, "category", category, "error", err)
 		// If JSON decode fails, return empty results (graceful degradation)
 		return []SearchResult{}, nil

@@ -37,3 +37,5 @@ server/server
 arrgo
 
 ffsubsync-api/tmp_verify
+server/tmp_arrgo
+server/tmp_verify

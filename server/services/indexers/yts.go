@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 type YTSResponse struct {
@@ -77,7 +79,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 		apiURL := fmt.Sprintf("%s/api/v2/list_movies.json?%s", baseURL, queryParam)
 		slog.Info("Fetching from YTS", "query", query, "endpoint", baseURL, "attempt", i+1, "total_endpoints", len(baseURLs))
 
-		resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
+		resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
 		if err != nil {
 			lastErr = err
 			if i < len(baseURLs)-1 {
@@ -88,7 +90,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 		}
 
 		var ytsResp YTSResponse
-		if err := DecodeJSONResponse(resp, &ytsResp); err != nil {
+		if err := sharedhttp.DecodeJSONResponse(resp, &ytsResp); err != nil {
 			resp.Body.Close()
 			lastErr = err
 			if i < len(baseURLs)-1 {

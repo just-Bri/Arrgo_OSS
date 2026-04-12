@@ -16,7 +16,7 @@ var jellyfinClient = &http.Client{Timeout: 10 * time.Second}
 // skipJellyfinSync returns true for users that should not get a Jellyfin account.
 func skipJellyfinSync(username string) bool {
 	lower := strings.ToLower(username)
-	return lower == "admin" || lower == "justbri"
+	return lower == "admin"
 }
 
 // CreateJellyfinUser creates a new user in Jellyfin with the given username and password.

@@ -10,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"Arrgo/services"
-	"Arrgo/services/indexers"
-
+	"github.com/justbri/arrgo/indexer/providers"
 	"github.com/justbri/arrgo/shared/config"
 )
 
@@ -239,7 +237,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 		seasonsParam = strconv.Itoa(season)
 	}
 
-	results, err := services.SearchTorrents(ctx, searchQuery, searchType, seasonsParam, "")
+	results, err := searchTorrents(ctx, searchQuery, searchType, seasonsParam)
 	if err != nil {
 		slog.Warn("Search failed", "error", err)
 		writeTorznabError(w, "500", fmt.Sprintf("Search failed: %v", err))
@@ -254,7 +252,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	// Apply pagination
 	totalResults := len(results)
 	if offset >= totalResults {
-		results = []indexers.SearchResult{}
+		results = []providers.SearchResult{}
 	} else {
 		end := offset + limit
 		if end > totalResults {
@@ -277,7 +275,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 }
 
 // convertToTorznabRSS converts SearchResult to Torznab RSS format
-func convertToTorznabRSS(results []indexers.SearchResult, baseURL string, extended bool) TorznabRSS {
+func convertToTorznabRSS(results []providers.SearchResult, baseURL string, extended bool) TorznabRSS {
 	rss := TorznabRSS{
 		Version:   "2.0",
 		TorznabNS: "http://torznab.com/schemas/2015/feed",
@@ -298,7 +296,7 @@ func convertToTorznabRSS(results []indexers.SearchResult, baseURL string, extend
 }
 
 // convertToTorznabItem converts a SearchResult to a TorznabItem
-func convertToTorznabItem(result indexers.SearchResult, baseURL string, extended bool) TorznabItem {
+func convertToTorznabItem(result providers.SearchResult, baseURL string, extended bool) TorznabItem {
 	item := TorznabItem{
 		Title:       result.Title,
 		Guid:        result.InfoHash,
@@ -425,7 +423,7 @@ func determineCategory(source, resolution string) string {
 }
 
 // filterByCategory filters results by Torznab category
-func filterByCategory(results []indexers.SearchResult, catStr string, searchType string) []indexers.SearchResult {
+func filterByCategory(results []providers.SearchResult, catStr string, searchType string) []providers.SearchResult {
 	// Parse category IDs
 	cats := strings.Split(catStr, ",")
 	catMap := make(map[string]bool)
@@ -433,7 +431,7 @@ func filterByCategory(results []indexers.SearchResult, catStr string, searchType
 		catMap[strings.TrimSpace(c)] = true
 	}
 
-	filtered := make([]indexers.SearchResult, 0)
+	filtered := make([]providers.SearchResult, 0)
 	for _, result := range results {
 		categoryID := determineCategory(result.Source, result.Resolution)
 		if catMap[categoryID] {
@@ -458,6 +456,50 @@ func writeTorznabError(w http.ResponseWriter, code, description string) {
 	if encodeErr := encoder.Encode(err); encodeErr != nil {
 		slog.Error("Failed to encode Torznab error", "error", encodeErr)
 	}
+}
+
+// searchTorrents runs a query across all local providers.
+func searchTorrents(ctx context.Context, query, searchType, seasons string) ([]providers.SearchResult, error) {
+	var seasonNums []int
+	if seasons != "" {
+		for _, s := range strings.Split(seasons, ",") {
+			s = strings.TrimSpace(s)
+			if n, err := strconv.Atoi(s); err == nil {
+				seasonNums = append(seasonNums, n)
+			}
+		}
+	}
+
+	var results []providers.SearchResult
+	for _, idx := range providers.Indexers() {
+		var res []providers.SearchResult
+		var err error
+
+		if searchType == "show" || searchType == "tv" {
+			if idx.Name() == "YTS" {
+				continue
+			}
+			if len(seasonNums) > 0 {
+				for _, sn := range seasonNums {
+					sRes, sErr := idx.SearchShows(ctx, query, sn, 0)
+					if sErr == nil {
+						res = append(res, sRes...)
+					}
+				}
+			} else {
+				res, err = idx.SearchShows(ctx, query, 0, 0)
+			}
+		} else {
+			res, err = idx.SearchMovies(ctx, query)
+		}
+
+		if err != nil {
+			slog.Debug("Indexer search failed", "indexer", idx.Name(), "error", err)
+			continue
+		}
+		results = append(results, res...)
+	}
+	return results, nil
 }
 
 // getBaseURL constructs the base URL from the request

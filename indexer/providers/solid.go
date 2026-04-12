@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/justbri/arrgo/shared/format"
+	sharedhttp "github.com/justbri/arrgo/shared/http"
 )
 
 type SolidTorrentsResponse struct {
@@ -45,21 +46,21 @@ func (s *SolidTorrentsIndexer) SearchShows(ctx context.Context, query string, se
 
 func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
 	// API: https://solidtorrents.to/api/v1/search?q=...&category=Video&sort=seeders
-	apiURL := BuildQueryURL("https://solidtorrents.to/api/v1/search", map[string]string{
+	apiURL := sharedhttp.BuildQueryURL("https://solidtorrents.to/api/v1/search", map[string]string{
 		"q":        query,
 		"category": category,
 		"sort":     "seeders",
 	})
 
 	slog.Info("Fetching from SolidTorrents", "query", query, "category", category)
-	resp, err := MakeHTTPRequest(ctx, apiURL, DefaultHTTPClient)
+	resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
 	if err != nil {
 		slog.Warn("SolidTorrents request failed", "query", query, "category", category, "error", err)
 		return nil, err
 	}
 
 	var apiResp SolidTorrentsResponse
-	if err := DecodeJSONResponse(resp, &apiResp); err != nil {
+	if err := sharedhttp.DecodeJSONResponse(resp, &apiResp); err != nil {
 		slog.Warn("SolidTorrents decode failed", "query", query, "category", category, "error", err)
 		return nil, err
 	}

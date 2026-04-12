@@ -142,7 +142,7 @@ services:
       - ${MEDIA_PATH:-/mnt/user/media}:/data
     networks:
       - coven
-    restart: unless-stopped
+    restart: on-failure
 
 networks:
   coven:

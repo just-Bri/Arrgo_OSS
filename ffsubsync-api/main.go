@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	sharedlogger "github.com/justbri/arrgo/shared/logger"
+	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 )
 
 type SyncRequest struct {
@@ -72,15 +73,7 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.CleanPath)
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			slog.Debug("HTTP request",
-				"remote_addr", r.RemoteAddr,
-				"method", r.Method,
-				"path", r.URL.Path)
-			next.ServeHTTP(w, r)
-		})
-	})
+	r.Use(sharedmiddleware.Logging)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(10 * time.Minute))
 	r.Use(middleware.Compress(5))

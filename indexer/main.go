@@ -32,7 +32,7 @@ func main() {
 
 	// Create server with shared configuration
 	srvConfig := server.DefaultConfig(":" + port)
-	srv := server.CreateServer(srvConfig, sharedmiddleware.LoggingSimple(mux))
+	srv := server.CreateServer(srvConfig, mux)
 
 	slog.Info("Indexer service starting", "port", port)
 	if err := srv.ListenAndServe(); err != nil {

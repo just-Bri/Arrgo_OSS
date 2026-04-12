@@ -100,6 +100,8 @@ func setupRoutes() *chi.Mux {
 		r.Post("/api/admin/dedupe/shows", handlers.DeduplicateShowsHandler)
 		r.Post("/api/admin/jellyfin/sync-users", handlers.JellyfinSyncUsersHandler)
 		r.Post("/api/admin/jellyfin/refresh-library", handlers.JellyfinRefreshLibraryHandler)
+		r.Post("/requests/approve", handlers.ApproveRequestHandler)
+		r.Post("/requests/deny", handlers.DenyRequestHandler)
 	})
 
 	// Root redirect
@@ -200,7 +202,7 @@ func main() {
 
 	// Create HTTP server with shared configuration
 	srvConfig := sharedserver.DefaultConfig(addr)
-	srv := sharedserver.CreateServer(srvConfig, sharedmiddleware.Logging(mux))
+	srv := sharedserver.CreateServer(srvConfig, mux)
 
 	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
