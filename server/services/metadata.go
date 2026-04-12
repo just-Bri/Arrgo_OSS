@@ -34,17 +34,6 @@ func NewMetadataService(cfg *config.Config, db *sql.DB) *MetadataService {
 	return &MetadataService{cfg: cfg, db: db}
 }
 
-var globalMetadata *MetadataService
-
-// SetGlobalMetadataService sets the package-level MetadataService instance.
-func SetGlobalMetadataService(m *MetadataService) {
-	globalMetadata = m
-}
-
-// GetGlobalMetadataService returns the package-level MetadataService instance.
-func GetGlobalMetadataService() *MetadataService {
-	return globalMetadata
-}
 
 var (
 	tmdbGenres = map[int]string{

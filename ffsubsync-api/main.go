@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync" // Added for mutex
+	"sync"
+	"syscall"
 	"time"
 
 	"log/slog"
@@ -140,10 +143,32 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	// Start server
-	slog.Info("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		slog.Error("Server failed", "error", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		slog.Info("Starting server on :8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-quit
+	slog.Info("Shutdown signal received, waiting for in-flight syncs to complete...")
+
+	// Allow up to 30 minutes for any in-flight ffsubsync process to finish before exiting.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server shutdown error", "error", err)
+	} else {
+		slog.Info("Server shutdown complete")
 	}
 }

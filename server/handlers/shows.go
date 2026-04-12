@@ -135,7 +135,7 @@ func ShowsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -159,11 +159,11 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 
 		// If we have a TVDB ID, fetch all episodes to show what's missing
 		if show.TVDBID != "" {
-			allEpisodes, _ = services.GetGlobalMetadataService().GetTVDBShowEpisodes(show.TVDBID)
+			allEpisodes, _ = h.Metadata.GetTVDBShowEpisodes(show.TVDBID)
 		}
 	} else if tvdbID != "" {
 		// External search result
-		details, err := services.GetGlobalMetadataService().GetTVDBShowDetails(tvdbID)
+		details, err := h.Metadata.GetTVDBShowDetails(tvdbID)
 		if err != nil {
 			slog.Error("Error getting TVDB show details", "error", err, "tvdb_id", tvdbID)
 			http.Error(w, "Show details not found", http.StatusNotFound)
@@ -190,7 +190,7 @@ func ShowDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Fetch all episodes from TVDB
-		allEpisodes, _ = services.GetGlobalMetadataService().GetTVDBShowEpisodes(tvdbID)
+		allEpisodes, _ = h.Metadata.GetTVDBShowEpisodes(tvdbID)
 
 		// Check library status
 		status, _ := services.CheckLibraryStatus("show", tvdbID)

@@ -27,18 +27,6 @@ type AutomationService struct {
 	qb  *QBittorrentClient
 }
 
-// Global instance for immediate triggering
-var globalAutomationService *AutomationService
-
-// SetGlobalAutomationService sets the global automation service instance
-func SetGlobalAutomationService(service *AutomationService) {
-	globalAutomationService = service
-}
-
-// GetGlobalAutomationService returns the global automation service instance
-func GetGlobalAutomationService() *AutomationService {
-	return globalAutomationService
-}
 
 type TorrentSearchResult struct {
 	Title      string `json:"title"`

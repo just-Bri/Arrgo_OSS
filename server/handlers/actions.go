@@ -443,7 +443,7 @@ func RenameShowHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
-func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -470,7 +470,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		// If IMDB ID is missing, try to re-match it first
 		if m.IMDBID == "" {
 			slog.Info("IMDB ID missing for movie, attempting re-match", "movie_id", m.ID, "title", m.Title)
-			if err := services.GetGlobalMetadataService().MatchMovie(m.ID); err == nil {
+			if err := h.Metadata.MatchMovie(m.ID); err == nil {
 				// Reload movie to get new IMDB ID
 				m, _ = services.GetMovieByID(id)
 			}
@@ -481,7 +481,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.GetGlobalSubtitleService().DownloadSubtitlesForMovie(m.ID); err != nil {
+		if err := h.Subtitle.DownloadSubtitlesForMovie(m.ID); err != nil {
 			slog.Error("Manual subtitle download failed for movie", "movie_id", m.ID, "title", m.Title, "error", err)
 			http.Error(w, "Download failed", http.StatusInternalServerError)
 			return
@@ -507,7 +507,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 		// If IMDB ID is missing, try to re-match the parent show first
 		if sh.IMDBID == "" {
 			slog.Info("IMDB ID missing for show, attempting re-match", "show_id", sh.ID, "title", sh.Title)
-			if err := services.GetGlobalMetadataService().MatchShow(sh.ID); err == nil {
+			if err := h.Metadata.MatchShow(sh.ID); err == nil {
 				// Reload IMDB ID
 				database.DB.QueryRow("SELECT imdb_id FROM shows WHERE id = $1", sh.ID).Scan(&sh.IMDBID)
 			}
@@ -518,7 +518,7 @@ func DownloadSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := services.GetGlobalSubtitleService().DownloadSubtitlesForEpisode(e.ID); err != nil {
+		if err := h.Subtitle.DownloadSubtitlesForEpisode(e.ID); err != nil {
 			slog.Error("Manual subtitle download failed for episode",
 				"episode_id", e.ID,
 				"show_title", sh.Title,
@@ -594,7 +594,7 @@ func NukeLibraryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetMovieAlternativesHandler returns alternative matches for a movie
-func GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -612,7 +612,7 @@ func GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alternatives, err := services.GetGlobalMetadataService().GetMovieAlternatives(movieID)
+	alternatives, err := h.Metadata.GetMovieAlternatives(movieID)
 	if err != nil {
 		slog.Error("Error getting movie alternatives", "movie_id", movieID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -624,7 +624,7 @@ func GetMovieAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetShowAlternativesHandler returns alternative matches for a show
-func GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -642,7 +642,7 @@ func GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alternatives, err := services.GetGlobalMetadataService().GetShowAlternatives(showID)
+	alternatives, err := h.Metadata.GetShowAlternatives(showID)
 	if err != nil {
 		slog.Error("Error getting show alternatives", "show_id", showID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -654,7 +654,7 @@ func GetShowAlternativesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // RematchMovieHandler updates a movie with a new TMDB ID
-func RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -685,7 +685,7 @@ func RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.GetGlobalMetadataService().RematchMovie(movieID, req.TMDBID); err != nil {
+	if err := h.Metadata.RematchMovie(movieID, req.TMDBID); err != nil {
 		slog.Error("Error rematching movie", "movie_id", movieID, "tmdb_id", req.TMDBID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -696,7 +696,7 @@ func RematchMovieHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // RematchShowHandler updates a show with a new TVDB ID
-func RematchShowHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) RematchShowHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -727,7 +727,7 @@ func RematchShowHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.GetGlobalMetadataService().RematchShow(showID, req.TVDBID); err != nil {
+	if err := h.Metadata.RematchShow(showID, req.TVDBID); err != nil {
 		slog.Error("Error rematching show", "show_id", showID, "tvdb_id", req.TVDBID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/justbri/arrgo/indexer/providers"
+	sharedindexers "github.com/justbri/arrgo/shared/indexers"
 )
 
 var indexTmpl *template.Template
@@ -25,7 +25,7 @@ func init() {
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	indexers := providers.Indexers()
+	indexers := sharedindexers.Indexers()
 	var names []string
 	for _, idx := range indexers {
 		names = append(names, idx.Name())
@@ -97,8 +97,8 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // performSearch executes the search across all indexers based on search type
-func performSearch(ctx context.Context, query, searchType string, seasons string) ([]providers.SearchResult, []error) {
-	var results []providers.SearchResult
+func performSearch(ctx context.Context, query, searchType string, seasons string) ([]sharedindexers.SearchResult, []error) {
+	var results []sharedindexers.SearchResult
 	var errs []error
 
 	// Parse seasons for show searches
@@ -116,7 +116,7 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 	case searchType == "show" || searchType == "tv":
 		// For shows, use all indexers except YTS (which only supports movies)
 		slog.Debug("Searching for show", "query", query, "seasons", seasons)
-		indexers := providers.Indexers()
+		indexers := sharedindexers.Indexers()
 		for _, idx := range indexers {
 			if idx.Name() == "YTS" {
 				slog.Debug("Skipping YTS indexer for show search")
@@ -124,7 +124,7 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 			}
 
 			slog.Info("Searching indexer for show", "indexer", idx.Name(), "query", query, "seasons", seasons)
-			var res []providers.SearchResult
+			var res []sharedindexers.SearchResult
 			var err error
 
 			// If multiple seasons requested, perform search for each
@@ -159,7 +159,7 @@ func performSearch(ctx context.Context, query, searchType string, seasons string
 		// 3. SolidTorrents/TorrentGalaxy (last resort)
 		
 		slog.Debug("Searching for movie", "query", query)
-		allIndexers := providers.Indexers()
+		allIndexers := sharedindexers.Indexers()
 		
 		// Priority groups for movies
 		priority1 := []string{"YTS"}                              // Highest priority
@@ -242,7 +242,7 @@ func contains(slice []string, item string) bool {
 }
 
 // writeJSONResponse writes search results as JSON
-func writeJSONResponse(w http.ResponseWriter, results []providers.SearchResult) {
+func writeJSONResponse(w http.ResponseWriter, results []sharedindexers.SearchResult) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(results); err != nil {
 		slog.Error("Error encoding JSON response", "error", err)
@@ -251,9 +251,9 @@ func writeJSONResponse(w http.ResponseWriter, results []providers.SearchResult) 
 }
 
 // writeHTMLResponse writes search results as HTML table
-func writeHTMLResponse(w http.ResponseWriter, results []providers.SearchResult, query string) {
+func writeHTMLResponse(w http.ResponseWriter, results []sharedindexers.SearchResult, query string) {
 	type TemplateData struct {
-		Results []providers.SearchResult
+		Results []sharedindexers.SearchResult
 		Query   string
 	}
 

@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/justbri/arrgo/indexer/handlers"
-	"github.com/justbri/arrgo/indexer/providers"
 	"github.com/justbri/arrgo/shared/config"
+	sharedindexers "github.com/justbri/arrgo/shared/indexers"
 	sharedlogger "github.com/justbri/arrgo/shared/logger"
 	sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 	"github.com/justbri/arrgo/shared/server"
@@ -28,7 +28,7 @@ func main() {
 	mux := setupRoutes()
 
 	// Start periodic cache cleanup for Nyaa RSS cache
-	go startCacheCleanup()
+	go startCacheCleanup(sharedindexers.CleanupNyaaCache)
 
 	// Create server with shared configuration
 	srvConfig := server.DefaultConfig(":" + port)
@@ -70,12 +70,12 @@ func setupRoutes() *chi.Mux {
 
 // startCacheCleanup runs periodic cleanup of expired cache entries
 // Cleans up every 6 hours to prevent memory leaks
-func startCacheCleanup() {
+func startCacheCleanup(cleanup func()) {
 	ticker := time.NewTicker(6 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		providers.CleanupNyaaCache()
+		cleanup()
 		slog.Debug("Cleaned up expired Nyaa RSS cache entries")
 	}
 }

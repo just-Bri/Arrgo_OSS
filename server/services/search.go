@@ -2,18 +2,19 @@ package services
 
 import (
 	"context"
-	"Arrgo/services/indexers"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
+
+	sharedindexers "github.com/justbri/arrgo/shared/indexers"
 )
 
 // SearchTorrents searches across all enabled indexers
-func SearchTorrents(ctx context.Context, query, searchType string, seasons string, episodes string) ([]indexers.SearchResult, error) {
-	indexerList := indexers.Indexers()
+func SearchTorrents(ctx context.Context, query, searchType string, seasons string, episodes string) ([]sharedindexers.SearchResult, error) {
+	indexerList := sharedindexers.Indexers()
 
-	var results []indexers.SearchResult
+	var results []sharedindexers.SearchResult
 	var errs []error
 
 	// Parse seasons and episodes for show searches
@@ -42,7 +43,7 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 				continue
 			}
 
-			var res []indexers.SearchResult
+			var res []sharedindexers.SearchResult
 			var err error
 
 			// If specific episode requested

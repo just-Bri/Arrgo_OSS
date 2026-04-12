@@ -66,10 +66,9 @@ func (y *YTSIndexer) Name() string {
 }
 
 func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchResult, error) {
-	// YTS API endpoints - try primary first, then fallback
 	baseURLs := []string{
-		"https://yts.torrentbay.st", // Primary
-		"https://yts.bz",            // Fallback
+		"https://yts.torrentbay.st",
+		"https://yts.bz",
 	}
 
 	queryParam := fmt.Sprintf("query_term=%s&sort_by=seeds", url.QueryEscape(query))
@@ -84,7 +83,7 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 			lastErr = err
 			if i < len(baseURLs)-1 {
 				slog.Debug("YTS primary endpoint failed, trying fallback", "url", baseURL, "error", err)
-				continue // Try next URL
+				continue
 			}
 			return nil, fmt.Errorf("failed to fetch results from all YTS endpoints: %w", err)
 		}
@@ -95,19 +94,16 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 			lastErr = err
 			if i < len(baseURLs)-1 {
 				slog.Debug("YTS primary endpoint response invalid, trying fallback", "url", baseURL, "error", err)
-				continue // Try next URL
+				continue
 			}
 			return nil, fmt.Errorf("failed to decode response from all YTS endpoints: %w", err)
 		}
 		resp.Body.Close()
 
-		// Success - process results
 		slog.Info("YTS request successful", "endpoint", baseURL, "query", query)
 		results := []SearchResult{}
 		for _, movie := range ytsResp.Data.Movies {
 			for _, torrent := range movie.Torrents {
-				// Construct magnet link (YTS usually provides a hash, we can build the magnet link)
-				// tr are trackers
 				magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s&tr=udp://open.demonii.com:1337/announce&tr=udp://tracker.openbittorrent.com:80&tr=udp://tracker.coppersurfer.tk:6969&tr=udp://glotorrents.pw:6969/announce&tr=udp://tracker.opentrackr.org:1337/announce",
 					torrent.Hash, url.QueryEscape(movie.TitleLong))
 
@@ -136,6 +132,5 @@ func (y *YTSIndexer) SearchMovies(ctx context.Context, query string) ([]SearchRe
 }
 
 func (y *YTSIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// YTS only does movies
 	return nil, nil
 }

@@ -70,7 +70,7 @@ func RequestsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -165,7 +165,7 @@ func CreateRequestHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Request created successfully", "user_id", req.UserID, "title", req.Title, "media_type", req.MediaType, "seasons", req.Seasons)
 
 	// Trigger immediate processing if automation service is available
-	if automation := services.GetGlobalAutomationService(); automation != nil {
+	if automation := h.Automation; automation != nil {
 		// Use background context with longer timeout for immediate processing
 		// Don't cancel immediately - let the goroutine complete or timeout naturally
 		processCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

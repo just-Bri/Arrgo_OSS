@@ -24,7 +24,7 @@ import (
 )
 
 // setupRoutes configures all HTTP routes
-func setupRoutes() *chi.Mux {
+func setupRoutes(h *handlers.Handlers) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -56,40 +56,40 @@ func setupRoutes() *chi.Mux {
 
 		// UI / General
 		r.Get("/dashboard", handlers.DashboardHandler)
-		r.Get("/search", handlers.SearchHandler)
+		r.Get("/search", h.SearchHandler)
 		r.Get("/requests", handlers.RequestsHandler)
-		r.Post("/requests/create", handlers.CreateRequestHandler)
+		r.Post("/requests/create", h.CreateRequestHandler)
 		r.Post("/requests/delete", handlers.DeleteRequestHandler)
 
 		// Movies
 		r.Get("/movies", handlers.MoviesHandler)
-		r.Get("/movies/details", handlers.MovieDetailsHandler)
+		r.Get("/movies/details", h.MovieDetailsHandler)
 		r.Post("/scan/movies", handlers.ScanMoviesHandler)
 		r.Post("/scan/incoming/movies", handlers.ScanIncomingMoviesHandler)
 		r.Post("/import/movies/all", handlers.ImportAllMoviesHandler)
 		r.Post("/rename/movie", handlers.RenameMovieHandler)
 		r.Post("/rename/library/movies", handlers.RenameAllLibraryMoviesHandler)
-		r.Get("/api/movies/alternatives", handlers.GetMovieAlternativesHandler)
-		r.Post("/api/movies/rematch", handlers.RematchMovieHandler)
+		r.Get("/api/movies/alternatives", h.GetMovieAlternativesHandler)
+		r.Post("/api/movies/rematch", h.RematchMovieHandler)
 
 		// Shows
 		r.Get("/shows", handlers.ShowsHandler)
-		r.Get("/shows/details", handlers.ShowDetailsHandler)
+		r.Get("/shows/details", h.ShowDetailsHandler)
 		r.Post("/scan/shows", handlers.ScanShowsHandler)
 		r.Post("/scan/incoming/shows", handlers.ScanIncomingShowsHandler)
 		r.Post("/import/shows/all", handlers.ImportAllShowsHandler)
 		r.Post("/rename/show", handlers.RenameShowHandler)
 		r.Post("/rename/library/shows", handlers.RenameAllLibraryShowsHandler)
-		r.Get("/api/shows/alternatives", handlers.GetShowAlternativesHandler)
-		r.Post("/api/shows/rematch", handlers.RematchShowHandler)
+		r.Get("/api/shows/alternatives", h.GetShowAlternativesHandler)
+		r.Post("/api/shows/rematch", h.RematchShowHandler)
 
 		// Subtitles
-		r.Post("/subtitles/download", handlers.DownloadSubtitlesHandler)
-		r.Post("/admin/subtitles/scan", handlers.ScanSubtitlesHandler)
-		r.Post("/admin/subtitles/queue", handlers.QueueMissingSubtitlesHandler)
-		r.Post("/api/admin/subtitles/sync/movie", handlers.MovieSubtitlesSyncHandler)
-		r.Post("/api/admin/subtitles/sync/episode", handlers.EpisodeSubtitlesSyncHandler)
-		r.Post("/api/admin/subtitles/sync/all", handlers.SyncAllSubtitlesHandler)
+		r.Post("/subtitles/download", h.DownloadSubtitlesHandler)
+		r.Post("/admin/subtitles/scan", h.ScanSubtitlesHandler)
+		r.Post("/admin/subtitles/queue", h.QueueMissingSubtitlesHandler)
+		r.Post("/api/admin/subtitles/sync/movie", h.MovieSubtitlesSyncHandler)
+		r.Post("/api/admin/subtitles/sync/episode", h.EpisodeSubtitlesSyncHandler)
+		r.Post("/api/admin/subtitles/sync/all", h.SyncAllSubtitlesHandler)
 
 		// Admin & System
 		r.Get("/admin", handlers.AdminHandler)
@@ -152,11 +152,9 @@ func main() {
 
 	// Initialize subtitle service
 	subtitleSvc := services.NewSubtitleService(cfg, database.DB)
-	services.SetGlobalSubtitleService(subtitleSvc)
 
 	// Initialize metadata service
 	metadataSvc := services.NewMetadataService(cfg, database.DB)
-	services.SetGlobalMetadataService(metadataSvc)
 
 	// Start background workers
 	services.StartIncomingScanner(cfg)
@@ -168,6 +166,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var automationSvc *services.AutomationService
 	qb, err := services.NewQBittorrentClient(cfg)
 	if err != nil {
 		slog.Error("Failed to initialize qBittorrent client", "error", err)
@@ -182,16 +181,16 @@ func main() {
 		} else {
 			slog.Info("Successfully connected to qBittorrent")
 		}
-		automation := services.NewAutomationService(cfg, qb)
-		services.SetGlobalAutomationService(automation)
-		go automation.Start(ctx)
+		automationSvc = services.NewAutomationService(cfg, qb)
+		go automationSvc.Start(ctx)
 
 		// Start seeding cleanup worker
 		services.StartSeedingCleanupWorker(cfg, qb)
 	}
 
-	// Setup routes
-	mux := setupRoutes()
+	// Wire up dependency injection and setup routes
+	h := handlers.NewHandlers(metadataSvc, subtitleSvc, automationSvc)
+	mux := setupRoutes(h)
 
 	// Start server with graceful shutdown
 	addr := ":" + cfg.ServerPort

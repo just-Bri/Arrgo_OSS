@@ -303,7 +303,7 @@ func ScanStatusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
-func ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -318,7 +318,7 @@ func ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	// Check for force refresh parameter
 	forceRefresh := r.URL.Query().Get("force") == "true"
 
-	result, err := services.GetGlobalSubtitleService().ScanAllMediaForSubtitles(forceRefresh)
+	result, err := h.Subtitle.ScanAllMediaForSubtitles(forceRefresh)
 	if err != nil {
 		slog.Error("Error scanning subtitles", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -329,7 +329,7 @@ func ScanSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -344,7 +344,7 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	// Run in background to avoid hitting the server's WriteTimeout
 	// with large libraries (filesystem checks on every media item)
 	go func() {
-		queuedCount, err := services.GetGlobalSubtitleService().QueueMissingSubtitles()
+		queuedCount, err := h.Subtitle.QueueMissingSubtitles()
 		if err != nil {
 			slog.Error("Error queueing missing subtitles", "error", err)
 			return
@@ -353,7 +353,7 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Trigger immediate queue processing instead of waiting for the 60-minute ticker
 		if queuedCount > 0 {
-			if svc := services.GetGlobalAutomationService(); svc != nil {
+			if svc := h.Automation; svc != nil {
 				svc.ProcessSubtitleQueue(context.Background())
 			}
 		}
@@ -367,7 +367,7 @@ func QueueMissingSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -385,7 +385,7 @@ func MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.GetGlobalSubtitleService().SyncSubtitlesForMovie(movieID); err != nil {
+	if err := h.Subtitle.SyncSubtitlesForMovie(movieID); err != nil {
 		slog.Error("Manual subtitle sync failed for movie", "movie_id", movieID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -395,7 +395,7 @@ func MovieSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Subtitle sync completed"))
 }
 
-func EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -413,7 +413,7 @@ func EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := services.GetGlobalSubtitleService().SyncSubtitlesForEpisode(episodeID); err != nil {
+	if err := h.Subtitle.SyncSubtitlesForEpisode(episodeID); err != nil {
 		slog.Error("Manual subtitle sync failed for episode", "episode_id", episodeID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -423,7 +423,7 @@ func EpisodeSubtitlesSyncHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Subtitle sync completed"))
 }
 
-func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil || !user.IsAdmin {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -467,7 +467,7 @@ func SyncAllSubtitlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process tasks sequentially in a single background goroutine
-	subtitleSvc := services.GetGlobalSubtitleService()
+	subtitleSvc := h.Subtitle
 	go func(tasks []syncTask) {
 		slog.Info("Starting sequential background subtitle sync", "total_tasks", len(tasks))
 		for _, task := range tasks {

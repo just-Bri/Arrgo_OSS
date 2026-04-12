@@ -1,165 +1,90 @@
 # Migration Guide: Using the Shared Library
 
-This guide shows how to migrate both the server and indexer apps to use the shared library.
+## Status: Complete
 
-## Shared Components Identified
+All migrations described below have been applied. This document records what was done and why.
 
-### 1. **HTTP Client Utilities** (`shared/http`)
-- **Current duplication**: 
-  - `indexer/providers/http_client.go` - DefaultHTTPClient
-  - `indexer/providers/utils.go` - MakeHTTPRequest, BuildQueryURL
-  - `server/services/metadata.go` - httpClient variable
-  - `server/services/subtitles.go` - Multiple http.Client creations
-  - `server/services/automation.go` - httpClient field
-  - `server/services/qbittorrent.go` - client field
+## What Was Migrated
 
-- **Shared solution**: Use `shared/http` package
+### 1. HTTP Client Utilities → `shared/http`
+**Removed from:**
+- `indexer/providers/http_client.go` (deleted)
+- `indexer/providers/utils.go` (deleted)
+- Inline `http.Client` constructions in server services
 
-### 2. **Byte Formatting** (`shared/format`)
-- **Current duplication**:
-  - `indexer/providers/utils.go` - FormatBytes()
-  - `server/handlers/utils.go` - formatSize template function
-
-- **Shared solution**: Use `shared/format.Bytes()`
-
-### 3. **Environment Variables** (`shared/config`)
-- **Current duplication**:
-  - `indexer/main.go` - getEnv()
-  - `server/config/config.go` - getEnv()
-
-- **Shared solution**: Use `shared/config.GetEnv()`
-
-### 4. **Logging Middleware** (`shared/middleware`)
-- **Current duplication**:
-  - `indexer/main.go` - loggingMiddleware()
-  - `server/main.go` - loggingMiddleware()
-
-- **Shared solution**: Use `shared/middleware.Logging()` or `LoggingSimple()`
-
-### 5. **Server Configuration** (`shared/server`)
-- **Current duplication**:
-  - Both apps create http.Server with similar timeout configurations
-
-- **Shared solution**: Use `shared/server.CreateServer()` with `DefaultConfig()`
-
-## Migration Steps
-
-### Step 1: Add Shared Library to go.mod
-
-**Server (`server/go.mod`)**:
+**Use instead:**
 ```go
-require github.com/justbri/arrgo/shared v0.0.0
+import sharedhttp "github.com/justbri/arrgo/shared/http"
 
-replace github.com/justbri/arrgo/shared => ../shared
+resp, err := sharedhttp.MakeRequest(ctx, url, sharedhttp.DefaultClient)
+apiURL := sharedhttp.BuildQueryURL("https://...", map[string]string{"q": query})
 ```
 
-**Indexer (`indexer/go.mod`)**:
-```go
-require github.com/justbri/arrgo/shared v0.0.0
+### 2. Byte Formatting → `shared/format`
+**Removed from:** `indexer/providers/utils.go`, `server/handlers/utils.go`
 
-replace github.com/justbri/arrgo/shared => ../shared
-```
-
-### Step 2: Update Server App
-
-**server/config/config.go**:
-```go
-import "github.com/justbri/arrgo/shared/config"
-
-// Replace getEnv() calls with:
-config.GetEnv("DATABASE_URL", "postgres://...")
-```
-
-**server/main.go**:
-```go
-import (
-    "github.com/justbri/arrgo/shared/middleware"
-    "github.com/justbri/arrgo/shared/server"
-)
-
-// Replace loggingMiddleware with:
-Handler: middleware.Logging(mux)
-
-// Replace server creation with:
-srv := server.CreateServer(server.DefaultConfig(":"+cfg.ServerPort), loggingMiddleware(mux))
-```
-
-**server/handlers/utils.go**:
+**Use instead:**
 ```go
 import "github.com/justbri/arrgo/shared/format"
 
-// Replace formatSize function with:
-"formatSize": format.Bytes,
+sizeStr := format.Bytes(fileSize)
 ```
 
-**server/services/metadata.go**:
+### 3. Environment Variables → `shared/config`
+**Removed from:** `indexer/main.go` (local `getEnv`), `server/config/config.go`
+
+**Use instead:**
 ```go
-import sharedhttp "github.com/justbri/arrgo/shared/http"
+import "github.com/justbri/arrgo/shared/config"
 
-// Replace httpClient variable with:
-var httpClient = sharedhttp.DefaultClient
-
-// Replace http.Get() calls with:
-resp, err := sharedhttp.MakeRequest(ctx, url, sharedhttp.DefaultClient)
-```
-
-### Step 3: Update Indexer App
-
-**indexer/main.go**:
-```go
-import (
-    "github.com/justbri/arrgo/shared/config"
-    "github.com/justbri/arrgo/shared/middleware"
-    "github.com/justbri/arrgo/shared/server"
-)
-
-// Replace getEnv with:
 port := config.GetEnv("PORT", "5004")
-
-// Replace loggingMiddleware with:
-Handler: middleware.LoggingSimple(mux)
-
-// Replace server creation with:
-srv := server.CreateServer(server.DefaultConfig(":"+port), middleware.LoggingSimple(mux))
 ```
 
-**indexer/providers/utils.go**:
+### 4. Logging Middleware → `shared/middleware`
+**Removed from:** Inline `loggingMiddleware` functions in both apps.
+
+Note: `LoggingSimple` was removed — both apps use `sharedmiddleware.Logging`.
+
+**Use:**
 ```go
-import (
-    sharedhttp "github.com/justbri/arrgo/shared/http"
-    "github.com/justbri/arrgo/shared/format"
-)
+import sharedmiddleware "github.com/justbri/arrgo/shared/middleware"
 
-// Remove MakeHTTPRequest, BuildQueryURL, FormatBytes
-// Use sharedhttp.MakeRequest, sharedhttp.BuildQueryURL, format.Bytes instead
+r.Use(sharedmiddleware.Logging)
 ```
 
-**indexer/providers/http_client.go**:
+### 5. Server Configuration → `shared/server`
+**Use:**
 ```go
-// Delete this file, use sharedhttp.DefaultClient instead
+import "github.com/justbri/arrgo/shared/server"
+
+srvConfig := server.DefaultConfig(":" + port)
+srv := server.CreateServer(srvConfig, mux)
 ```
 
-**indexer/providers/yts.go** and **solid.go**:
+### 6. Torrent Indexers → `shared/indexers`
+**Removed from:**
+- `server/services/indexers/` (all files deleted)
+- `indexer/providers/` (all files deleted)
+
+**Use instead:**
 ```go
-import sharedhttp "github.com/justbri/arrgo/shared/http"
+import sharedindexers "github.com/justbri/arrgo/shared/indexers"
 
-// Replace MakeHTTPRequest with:
-resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
+for _, idx := range sharedindexers.Indexers() {
+    results, _ := idx.SearchMovies(ctx, query)
+}
 
-// Replace BuildQueryURL with:
-apiURL := sharedhttp.BuildQueryURL("https://...", map[string]string{...})
+// Periodic Nyaa cache cleanup:
+sharedindexers.CleanupNyaaCache()
 ```
 
-## Benefits
+## go.mod Setup
 
-1. **Consistency**: Both apps use the same HTTP client configuration
-2. **Maintainability**: Fix bugs or improve utilities in one place
-3. **DRY Principle**: Eliminates ~200+ lines of duplicate code
-4. **Testing**: Shared utilities can be tested once
-5. **Future-proof**: Easy to add new shared utilities
+Each service that uses `shared/indexers` (or any shared package) needs:
 
-## Estimated Code Reduction
+```
+replace github.com/justbri/arrgo/shared => ../shared
+require github.com/justbri/arrgo/shared v0.0.0-00010101000000-000000000000
+```
 
-- **Server**: ~100 lines removed
-- **Indexer**: ~80 lines removed
-- **Total**: ~180 lines of duplicate code eliminated
+The `shared` module itself requires `golang.org/x/net` (for 1337x HTML parsing and Nyaa HTTP).

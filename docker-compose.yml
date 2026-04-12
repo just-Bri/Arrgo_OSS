@@ -104,7 +104,7 @@ services:
       - VPN_CLIENT=openvpn
       - VPN_USER=${PIA_USER}
       - VPN_PASS=${PIA_PASSWORD}
-      - LAN_NETWORK=${LAN_NETWORK:-192.168.10.0/24} # Verified for your .10 subnet
+      - LAN_NETWORK=${LAN_NETWORK:-192.168.10.0/24}
       - WEBUI_PORT=8080
       - UMASK=000
       - PUID=99

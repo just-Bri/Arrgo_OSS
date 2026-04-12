@@ -1,4 +1,4 @@
-package providers
+package indexers
 
 import (
 	"context"
@@ -14,8 +14,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-type X1337Indexer struct {
-}
+type X1337Indexer struct{}
 
 func NewX1337Indexer() *X1337Indexer {
 	return &X1337Indexer{}
@@ -30,37 +29,46 @@ func (x *X1337Indexer) SearchMovies(ctx context.Context, query string) ([]Search
 }
 
 func (x *X1337Indexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// Enhance query with season info if provided
 	searchQuery := query
-	if season > 0 {
-		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
+	if season > 0 && episode > 0 {
+		searchQuery = fmt.Sprintf("%s S%02dE%02d", query, season, episode)
+	} else if season > 0 {
 		searchQuery = fmt.Sprintf("%s S%02d", query, season)
 	}
 	return x.search(ctx, searchQuery, "TV")
 }
 
 func (x *X1337Indexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
-	// Build 1337x search URL
-	// 1337x search format: https://1337x.to/search/{query}/1/
 	searchPath := url.PathEscape(query)
 	searchURL := fmt.Sprintf("https://1337x.to/search/%s/1/", searchPath)
 
-	slog.Info("Fetching from 1337x", "query", query, "category", category, "url", searchURL)
-	// Use Cloudflare bypass service to fetch the page
+	slog.Debug("Fetching from 1337x", "query", query, "category", category, "url", searchURL)
 	htmlContent, err := sharedhttp.FetchViaBypass(ctx, searchURL)
 	if err != nil {
-		slog.Warn("1337x request failed", "query", query, "category", category, "error", err)
-		// Graceful degradation - return empty results instead of error
+		slog.Debug("1337x request failed", "query", query, "category", category, "error", err)
 		return []SearchResult{}, nil
 	}
 
-	// Parse HTML and extract torrent results
 	results := x.parseSearchResults(htmlContent)
-	slog.Info("1337x request successful", "query", query, "category", category, "results", len(results))
+
+	if len(results) == 0 && strings.Contains(query, " S") {
+		baseQuery := strings.Split(query, " S")[0]
+		slog.Debug("No 1337x results for specific season, trying broad search", "base_query", baseQuery)
+		broadURL := fmt.Sprintf("https://1337x.to/search/%s/1/", url.PathEscape(baseQuery))
+		htmlContent, err = sharedhttp.FetchViaBypass(ctx, broadURL)
+		if err == nil {
+			results = x.parseSearchResults(htmlContent)
+		}
+	}
+
+	if len(results) == 0 {
+		slog.Debug("1337x returned 0 results", "query", query, "html_preview", format.Preview(htmlContent, 200))
+	} else {
+		slog.Debug("1337x request successful", "query", query, "results", len(results))
+	}
 	return results, nil
 }
 
-// parseSearchResults parses HTML from 1337x search results page
 func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 	var results []SearchResult
 
@@ -69,13 +77,11 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 		return results
 	}
 
-	// Find all table rows that contain torrent links
 	var findTorrentRows func(*html.Node) []*html.Node
 	findTorrentRows = func(n *html.Node) []*html.Node {
 		var rows []*html.Node
 
 		if n.Type == html.ElementNode && n.Data == "tr" {
-			// Check if this row contains a link to /torrent/
 			hasTorrentLink := false
 			var walk func(*html.Node)
 			walk = func(node *html.Node) {
@@ -107,7 +113,6 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 
 	torrentRows := findTorrentRows(doc)
 
-	// Extract data from each row
 	for _, row := range torrentRows {
 		var title, link string
 		var seeders, leechers int
@@ -118,7 +123,6 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 			if c.Type == html.ElementNode && c.Data == "td" {
 				text := strings.TrimSpace(x.getTextContent(c))
 
-				// Try to find link in this cell
 				var findLink func(*html.Node)
 				findLink = func(node *html.Node) {
 					if node.Type == html.ElementNode && node.Data == "a" {
@@ -136,9 +140,7 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 				}
 				findLink(c)
 
-				// Parse numeric values (seeders, leechers)
 				if cellIndex > 0 && text != "" {
-					// Try to parse as number (could be seeders or leechers)
 					if val, err := strconv.Atoi(text); err == nil {
 						if seeders == 0 {
 							seeders = val
@@ -147,7 +149,6 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 						}
 					}
 
-					// Check if this looks like a size (contains MB, GB, etc.)
 					if strings.Contains(strings.ToUpper(text), "MB") ||
 						strings.Contains(strings.ToUpper(text), "GB") ||
 						strings.Contains(strings.ToUpper(text), "KB") ||
@@ -160,9 +161,7 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 			}
 		}
 
-		// Create result if we have title and link
 		if title != "" && link != "" {
-			// Build full URL if needed
 			magnetLink := link
 			if !strings.HasPrefix(link, "http") {
 				magnetLink = "https://1337x.to" + link
@@ -188,7 +187,6 @@ func (x *X1337Indexer) parseSearchResults(htmlContent string) []SearchResult {
 	return results
 }
 
-// getTextContent extracts all text content from a node
 func (x *X1337Indexer) getTextContent(n *html.Node) string {
 	var text strings.Builder
 	var extractText func(*html.Node)
@@ -204,17 +202,16 @@ func (x *X1337Indexer) getTextContent(n *html.Node) string {
 	return text.String()
 }
 
-// parseSize converts size string like "1.5 GB" to bytes
+// parseSize converts a size string like "1.5 GB" to bytes.
+// Used by 1337x and TorrentGalaxy providers.
 func parseSize(sizeStr string) int64 {
 	if sizeStr == "" {
 		return 0
 	}
 
-	// Remove commas and spaces
 	sizeStr = strings.ReplaceAll(sizeStr, ",", "")
 	sizeStr = strings.TrimSpace(sizeStr)
 
-	// Match number and unit
 	re := regexp.MustCompile(`(?i)(\d+\.?\d*)\s*(KB|MB|GB|TB)`)
 	matches := re.FindStringSubmatch(sizeStr)
 	if len(matches) != 3 {
@@ -226,8 +223,7 @@ func parseSize(sizeStr string) int64 {
 		return 0
 	}
 
-	unit := strings.ToUpper(matches[2])
-	switch unit {
+	switch strings.ToUpper(matches[2]) {
 	case "KB":
 		return int64(value * 1024)
 	case "MB":
@@ -241,11 +237,11 @@ func parseSize(sizeStr string) int64 {
 	return 0
 }
 
-// extractQualityInfo extracts quality and resolution from title
+// extractQualityInfo extracts quality and resolution from a torrent title.
+// Used by 1337x, Nyaa, and TorrentGalaxy providers.
 func extractQualityInfo(title string) (quality, resolution string) {
 	titleLower := strings.ToLower(title)
 
-	// Check for resolution
 	if strings.Contains(titleLower, "2160p") || strings.Contains(titleLower, "4k") {
 		resolution = "2160p"
 		quality = "4K"
@@ -260,7 +256,6 @@ func extractQualityInfo(title string) (quality, resolution string) {
 		quality = "480p"
 	}
 
-	// Check for quality indicators
 	if strings.Contains(titleLower, "bluray") || strings.Contains(titleLower, "bdrip") {
 		quality = "BluRay"
 	} else if strings.Contains(titleLower, "webrip") || strings.Contains(titleLower, "web-dl") {

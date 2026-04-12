@@ -1,9 +1,8 @@
-package providers
+package indexers
 
-import (
-	"context"
-)
+import "context"
 
+// SearchResult holds a single torrent search result from any indexer.
 type SearchResult struct {
 	Title      string `json:"title"`
 	Size       string `json:"size"`
@@ -16,12 +15,14 @@ type SearchResult struct {
 	Quality    string `json:"quality"`
 }
 
+// Indexer is the common interface implemented by every torrent provider.
 type Indexer interface {
 	SearchMovies(ctx context.Context, query string) ([]SearchResult, error)
 	SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error)
 	Name() string
 }
 
+// Indexers returns all built-in indexer implementations.
 func Indexers() []Indexer {
 	return []Indexer{
 		&YTSIndexer{},

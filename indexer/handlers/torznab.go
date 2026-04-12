@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justbri/arrgo/indexer/providers"
 	"github.com/justbri/arrgo/shared/config"
+	sharedindexers "github.com/justbri/arrgo/shared/indexers"
 )
 
 // TorznabError represents an error response in Torznab format
@@ -252,7 +252,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 	// Apply pagination
 	totalResults := len(results)
 	if offset >= totalResults {
-		results = []providers.SearchResult{}
+		results = []sharedindexers.SearchResult{}
 	} else {
 		end := offset + limit
 		if end > totalResults {
@@ -275,7 +275,7 @@ func handleSearch(w http.ResponseWriter, r *http.Request, ctx context.Context, f
 }
 
 // convertToTorznabRSS converts SearchResult to Torznab RSS format
-func convertToTorznabRSS(results []providers.SearchResult, baseURL string, extended bool) TorznabRSS {
+func convertToTorznabRSS(results []sharedindexers.SearchResult, baseURL string, extended bool) TorznabRSS {
 	rss := TorznabRSS{
 		Version:   "2.0",
 		TorznabNS: "http://torznab.com/schemas/2015/feed",
@@ -296,7 +296,7 @@ func convertToTorznabRSS(results []providers.SearchResult, baseURL string, exten
 }
 
 // convertToTorznabItem converts a SearchResult to a TorznabItem
-func convertToTorznabItem(result providers.SearchResult, baseURL string, extended bool) TorznabItem {
+func convertToTorznabItem(result sharedindexers.SearchResult, baseURL string, extended bool) TorznabItem {
 	item := TorznabItem{
 		Title:       result.Title,
 		Guid:        result.InfoHash,
@@ -423,7 +423,7 @@ func determineCategory(source, resolution string) string {
 }
 
 // filterByCategory filters results by Torznab category
-func filterByCategory(results []providers.SearchResult, catStr string, searchType string) []providers.SearchResult {
+func filterByCategory(results []sharedindexers.SearchResult, catStr string, searchType string) []sharedindexers.SearchResult {
 	// Parse category IDs
 	cats := strings.Split(catStr, ",")
 	catMap := make(map[string]bool)
@@ -431,7 +431,7 @@ func filterByCategory(results []providers.SearchResult, catStr string, searchTyp
 		catMap[strings.TrimSpace(c)] = true
 	}
 
-	filtered := make([]providers.SearchResult, 0)
+	filtered := make([]sharedindexers.SearchResult, 0)
 	for _, result := range results {
 		categoryID := determineCategory(result.Source, result.Resolution)
 		if catMap[categoryID] {
@@ -459,7 +459,7 @@ func writeTorznabError(w http.ResponseWriter, code, description string) {
 }
 
 // searchTorrents runs a query across all local providers.
-func searchTorrents(ctx context.Context, query, searchType, seasons string) ([]providers.SearchResult, error) {
+func searchTorrents(ctx context.Context, query, searchType, seasons string) ([]sharedindexers.SearchResult, error) {
 	var seasonNums []int
 	if seasons != "" {
 		for _, s := range strings.Split(seasons, ",") {
@@ -470,9 +470,9 @@ func searchTorrents(ctx context.Context, query, searchType, seasons string) ([]p
 		}
 	}
 
-	var results []providers.SearchResult
-	for _, idx := range providers.Indexers() {
-		var res []providers.SearchResult
+	var results []sharedindexers.SearchResult
+	for _, idx := range sharedindexers.Indexers() {
+		var res []sharedindexers.SearchResult
 		var err error
 
 		if searchType == "show" || searchType == "tv" {

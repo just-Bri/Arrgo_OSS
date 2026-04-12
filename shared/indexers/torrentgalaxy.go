@@ -1,4 +1,4 @@
-package providers
+package indexers
 
 import (
 	"context"
@@ -37,24 +37,16 @@ func (tg *TorrentGalaxyIndexer) SearchMovies(ctx context.Context, query string) 
 }
 
 func (tg *TorrentGalaxyIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// Enhance query with season info if provided
 	searchQuery := query
-	if season > 0 {
-		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
+	if season > 0 && episode > 0 {
+		searchQuery = fmt.Sprintf("%s S%02dE%02d", query, season, episode)
+	} else if season > 0 {
 		searchQuery = fmt.Sprintf("%s S%02d", query, season)
 	}
 	return tg.search(ctx, searchQuery, "TV")
 }
 
 func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
-	// TorrentGalaxy doesn't have an official public API
-	// Options:
-	// 1. Use a proxy API service (if available)
-	// 2. Use Jackett/Prowlarr which provides Torznab API for TorrentGalaxy
-	// 3. Implement HTML scraping (requires more maintenance)
-
-	// Try using a proxy API endpoint if available
-	// Note: These endpoints may not be stable - consider using Jackett/Prowlarr instead
 	apiURL := sharedhttp.BuildQueryURL("https://torrentgalaxy.to/api/search", map[string]string{
 		"q":        query,
 		"category": category,
@@ -64,15 +56,12 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 	resp, err := sharedhttp.MakeRequest(ctx, apiURL, sharedhttp.DefaultClient)
 	if err != nil {
 		slog.Warn("TorrentGalaxy request failed", "query", query, "category", category, "error", err)
-		// Graceful degradation - return empty results instead of error
-		// This allows other indexers to still work
 		return []SearchResult{}, nil
 	}
 
 	var apiResp TorrentGalaxyResponse
 	if err := sharedhttp.DecodeJSONResponse(resp, &apiResp); err != nil {
 		slog.Warn("TorrentGalaxy decode failed", "query", query, "category", category, "error", err)
-		// If JSON decode fails, return empty results (graceful degradation)
 		return []SearchResult{}, nil
 	}
 
@@ -80,15 +69,12 @@ func (tg *TorrentGalaxyIndexer) search(ctx context.Context, query string, catego
 		slog.Warn("TorrentGalaxy returned non-success status", "query", query, "category", category, "status", apiResp.Status)
 		return []SearchResult{}, nil
 	}
-	
+
 	slog.Info("TorrentGalaxy request successful", "query", query, "category", category, "results", len(apiResp.Results))
 
 	var results []SearchResult
 	for _, r := range apiResp.Results {
-		// Parse size string to bytes
 		sizeBytes := parseSize(r.Size)
-
-		// Extract quality/resolution from title
 		quality, resolution := extractQualityInfo(r.Title)
 
 		results = append(results, SearchResult{

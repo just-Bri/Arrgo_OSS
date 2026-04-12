@@ -39,15 +39,6 @@ func NewSubtitleService(cfg *config.Config, db *sql.DB) *SubtitleService {
 	}
 }
 
-var globalSubtitle *SubtitleService
-
-func SetGlobalSubtitleService(s *SubtitleService) {
-	globalSubtitle = s
-}
-
-func GetGlobalSubtitleService() *SubtitleService {
-	return globalSubtitle
-}
 
 type OpenSubtitlesError struct {
 	Message      string `json:"message"`

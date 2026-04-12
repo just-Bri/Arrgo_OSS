@@ -167,7 +167,7 @@ func MoviesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -187,7 +187,7 @@ func MovieDetailsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if tmdbID != "" {
 		// External search result
-		details, err := services.GetGlobalMetadataService().GetTMDBMovieDetails(tmdbID)
+		details, err := h.Metadata.GetTMDBMovieDetails(tmdbID)
 		if err != nil {
 			slog.Error("Error getting TMDB movie details", "error", err, "tmdb_id", tmdbID)
 			http.Error(w, "Movie details not found", http.StatusNotFound)

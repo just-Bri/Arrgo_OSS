@@ -35,19 +35,16 @@ func (s *SolidTorrentsIndexer) SearchMovies(ctx context.Context, query string) (
 }
 
 func (s *SolidTorrentsIndexer) SearchShows(ctx context.Context, query string, season, episode int) ([]SearchResult, error) {
-	// Enhance query with season/episode info if provided
 	searchQuery := query
 	if season > 0 && episode > 0 {
 		searchQuery = fmt.Sprintf("%s S%02dE%02d", query, season, episode)
 	} else if season > 0 {
-		// Try multiple formats: "Show Name S02" and "Show Name Season 2"
 		searchQuery = fmt.Sprintf("%s S%02d", query, season)
 	}
 	return s.search(ctx, searchQuery, "Video")
 }
 
 func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, category string) ([]SearchResult, error) {
-	// API: https://solidtorrents.to/api/v1/search?q=...&category=Video&sort=seeders
 	apiURL := sharedhttp.BuildQueryURL("https://solidtorrents.to/api/v1/search", map[string]string{
 		"q":        query,
 		"category": category,
@@ -66,7 +63,7 @@ func (s *SolidTorrentsIndexer) search(ctx context.Context, query string, categor
 		slog.Debug("SolidTorrents decode failed", "query", query, "category", category, "error", err)
 		return nil, err
 	}
-	
+
 	slog.Debug("SolidTorrents request successful", "query", query, "category", category, "results", len(apiResp.Results))
 
 	var results []SearchResult

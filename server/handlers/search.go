@@ -47,7 +47,7 @@ type SearchPageData struct {
 	Shows       []UnifiedSearchResult
 }
 
-func SearchHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := GetCurrentUser(r)
 	if err != nil || user == nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -110,7 +110,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 3. Search External (TMDB/TVDB)
-		movieResults, _ := services.GetGlobalMetadataService().SearchTMDB(query)
+		movieResults, _ := h.Metadata.SearchTMDB(query)
 		for _, res := range movieResults {
 			// Skip if already in movies from local search
 			existsLocally := false
@@ -145,7 +145,7 @@ func SearchHandler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		showResults, _ := services.GetGlobalMetadataService().SearchTVDB(query)
+		showResults, _ := h.Metadata.SearchTVDB(query)
 		for _, res := range showResults {
 			// Skip if already in shows from local search
 			existsLocally := false
