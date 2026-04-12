@@ -32,7 +32,7 @@ services:
       - QBITTORRENT_URL=${QBITTORRENT_URL:-http://arrgo-qbittorrent:8080}
       - QBITTORRENT_USER=${QBITTORRENT_USER}
       - QBITTORRENT_PASS=${QBITTORRENT_PASS}
-      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://host.docker.internal:8191}
+      - CLOUDFLARE_BYPASS_URL=${CLOUDFLARE_BYPASS_URL:-http://byparr:8191}
       # Point to the Jellyfin container name on the coven network
       - JELLYFIN_URL=${JELLYFIN_URL:-http://jellyfin:8096}
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
@@ -41,13 +41,13 @@ services:
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@arrgo.local}
       - ENABLE_SUBSYNC=${ENABLE_SUBSYNC:-false}
       - FFSUBSYNC_URL=${FFSUBSYNC_URL:-http://ffsubsync-api:8080}
-    extra_hosts:
-      - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
       qbittorrent:
         condition: service_started
+      byparr:
+        condition: service_healthy
     volumes:
       - ./server/templates:/app/templates:ro
       - ./server/static:/app/static:ro
@@ -57,7 +57,7 @@ services:
       - coven
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: arrgo
+      net.unraid.docker.managed: dockge
       net.unraid.docker.webui: http://${SERVER_IP:-127.0.0.1}:5003
 
   db:
@@ -85,7 +85,7 @@ services:
       - coven
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: arrgo-db
+      net.unraid.docker.managed: dockge-db
 
   qbittorrent:
     image: binhex/arch-qbittorrentvpn:latest
@@ -117,7 +117,21 @@ services:
       - coven
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: arrgo-qbittorrent
+      net.unraid.docker.managed: dockge-qbittorrent
+
+  byparr:
+    image: ghcr.io/thephaseless/byparr
+    container_name: byparr
+    environment:
+      - TZ=${TZ:-America/New_York}
+    networks:
+      - coven
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   ffsubsync-api:
     build:
