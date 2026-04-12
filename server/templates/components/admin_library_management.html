@@ -7,11 +7,11 @@
         <div id="incoming-shows-button">
             {{if .ScanningIncomingShows}}
             <form action="/scan/stop?type=incoming_shows" method="POST">
-                <button type="submit" class="bad" style="width: 100%;">⏹️ Stop Incoming Shows</button>
+                <button type="submit" style="width: 100%;">⏹️ Stop Incoming Shows</button>
             </form>
             {{else}}
             <form action="/scan/incoming/shows" method="POST">
-                <button type="submit" class="primary" style="width: 100%;">📥 Scan Incoming Shows</button>
+                <button type="submit" style="width: 100%;">📥 Scan Incoming Shows</button>
             </form>
             {{end}}
         </div>
@@ -19,11 +19,11 @@
         <div id="incoming-movies-button">
             {{if .ScanningIncomingMovies}}
             <form action="/scan/stop?type=incoming_movies" method="POST">
-                <button type="submit" class="bad" style="width: 100%;">⏹️ Stop Incoming Movies</button>
+                <button type="submit" style="width: 100%;">⏹️ Stop Incoming Movies</button>
             </form>
             {{else}}
             <form action="/scan/incoming/movies" method="POST">
-                <button type="submit" class="primary" style="width: 100%;">📥 Scan Incoming Movies</button>
+                <button type="submit" style="width: 100%;">📥 Scan Incoming Movies</button>
             </form>
             {{end}}
         </div>
@@ -31,11 +31,11 @@
         <div id="show-library-button">
             {{if .ScanningShowLibrary}}
             <form action="/scan/stop?type=show_library" method="POST">
-                <button type="submit" class="bad" style="width: 100%;">⏹️ Stop Show Library Scan</button>
+                <button type="submit" style="width: 100%;">⏹️ Stop Show Library Scan</button>
             </form>
             {{else}}
             <form action="/scan/shows" method="POST">
-                <button type="submit" class="ok" style="width: 100%;">🚀 Scan Show Library</button>
+                <button type="submit" style="width: 100%;">🚀 Scan Show Library</button>
             </form>
             {{end}}
         </div>
@@ -43,11 +43,11 @@
         <div id="movie-library-button">
             {{if .ScanningMovieLibrary}}
             <form action="/scan/stop?type=movie_library" method="POST">
-                <button type="submit" class="bad" style="width: 100%;">⏹️ Stop Movie Library Scan</button>
+                <button type="submit" style="width: 100%;">⏹️ Stop Movie Library Scan</button>
             </form>
             {{else}}
             <form action="/scan/movies" method="POST">
-                <button type="submit" class="ok" style="width: 100%;">🚀 Scan Movie Library</button>
+                <button type="submit" style="width: 100%;">🚀 Scan Movie Library</button>
             </form>
             {{end}}
         </div>
@@ -71,20 +71,20 @@
                     }
 
                     document.getElementById('incoming-shows-button').innerHTML = status.incoming_shows
-                        ? `<form action="/scan/stop?type=incoming_shows" method="POST"><button type="submit" class="bad" style="width:100%">⏹️ Stop Incoming Shows</button></form>`
-                        : `<form action="/scan/incoming/shows" method="POST"><button type="submit" class="primary" style="width:100%">📥 Scan Incoming Shows</button></form>`;
+                        ? `<form action="/scan/stop?type=incoming_shows" method="POST"><button type="submit" style="width:100%">⏹️ Stop Incoming Shows</button></form>`
+                        : `<form action="/scan/incoming/shows" method="POST"><button type="submit" style="width:100%">📥 Scan Incoming Shows</button></form>`;
 
                     document.getElementById('incoming-movies-button').innerHTML = status.incoming_movies
-                        ? `<form action="/scan/stop?type=incoming_movies" method="POST"><button type="submit" class="bad" style="width:100%">⏹️ Stop Incoming Movies</button></form>`
-                        : `<form action="/scan/incoming/movies" method="POST"><button type="submit" class="primary" style="width:100%">📥 Scan Incoming Movies</button></form>`;
+                        ? `<form action="/scan/stop?type=incoming_movies" method="POST"><button type="submit" style="width:100%">⏹️ Stop Incoming Movies</button></form>`
+                        : `<form action="/scan/incoming/movies" method="POST"><button type="submit" style="width:100%">📥 Scan Incoming Movies</button></form>`;
 
                     document.getElementById('show-library-button').innerHTML = status.show_library
-                        ? `<form action="/scan/stop?type=show_library" method="POST"><button type="submit" class="bad" style="width:100%">⏹️ Stop Show Library Scan</button></form>`
-                        : `<form action="/scan/shows" method="POST"><button type="submit" class="ok" style="width:100%">🚀 Scan Show Library</button></form>`;
+                        ? `<form action="/scan/stop?type=show_library" method="POST"><button type="submit" style="width:100%">⏹️ Stop Show Library Scan</button></form>`
+                        : `<form action="/scan/shows" method="POST"><button type="submit" style="width:100%">🚀 Scan Show Library</button></form>`;
 
                     document.getElementById('movie-library-button').innerHTML = status.movie_library
-                        ? `<form action="/scan/stop?type=movie_library" method="POST"><button type="submit" class="bad" style="width:100%">⏹️ Stop Movie Library Scan</button></form>`
-                        : `<form action="/scan/movies" method="POST"><button type="submit" class="ok" style="width:100%">🚀 Scan Movie Library</button></form>`;
+                        ? `<form action="/scan/stop?type=movie_library" method="POST"><button type="submit" style="width:100%">⏹️ Stop Movie Library Scan</button></form>`
+                        : `<form action="/scan/movies" method="POST"><button type="submit" style="width:100%">🚀 Scan Movie Library</button></form>`;
                 })
                 .catch(err => console.error('Error fetching scan status:', err));
         }

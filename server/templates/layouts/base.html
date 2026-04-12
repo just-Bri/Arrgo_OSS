@@ -46,8 +46,41 @@
         .nav-link.active { color: var(--accent-color); background: rgba(0,123,255,0.1); }
         .nav-link.admin { color: var(--accent-color); }
 
-        button.primary { background: var(--accent-color); color: white; border-color: var(--accent-color); }
-        button.warn { background: #ff9800; color: white; border-color: #ff9800; }
+
+        /* Poster grid cards */
+        .poster-card { text-decoration: none; color: inherit; display: flex; flex-direction: column; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--container-bg); transition: transform 0.2s ease, border-color 0.2s ease; }
+        .poster-card:hover { transform: scale(1.05); border-color: var(--accent-color); }
+        .poster-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
+        .poster-placeholder { width: 100%; aspect-ratio: 2/3; background: var(--border-color); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); font-size: 12px; text-align: center; margin-bottom: 8px; }
+        .poster-title { font-size: 14px; font-weight: 500; text-align: center; line-height: 1.4; padding: 0 4px; margin-top: auto; }
+
+        /* Details page layout */
+        .details-card { display: flex; flex-direction: column; gap: 20px; }
+        .details-poster img { width: 100%; max-width: 260px; border-radius: 8px; }
+        .details-poster .poster-placeholder { width: 260px; height: 390px; }
+        @media (min-width: 769px) { .details-card { flex-direction: row; gap: 40px; } }
+
+        /* Media list rows (requests, incoming) */
+        .media-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+        .media-thumb { object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+        .thumb-placeholder { background: var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted-text); text-align: center; flex-shrink: 0; }
+
+        /* Info grid (key/value pairs in details) */
+        .info-grid { display: grid; grid-template-columns: 80px 1fr; gap: 8px; font-size: 13px; }
+        .info-grid .label { color: var(--muted-text); }
+
+        /* Modal overlay */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; }
+        .modal-box { max-width: 800px; margin: 50px auto; padding: 30px; }
+
+        /* Spinner */
+        .spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Season checkboxes */
+        .season-checkbox-label { display: flex; align-items: center; gap: 8px; background: var(--container-bg); padding: 8px 12px; border-radius: 4px; font-size: 14px; border: 1px solid var(--border-color); cursor: pointer; position: relative; }
+        .season-checkbox-label.season-requested { border-color: var(--accent-color); }
+        .season-checkbox-label.season-disabled { cursor: not-allowed; opacity: 0.6; }
     </style>
     {{block "styles" .}}{{end}}
 </head>

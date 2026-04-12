@@ -46,19 +46,19 @@
     <h2>Library Maintenance</h2>
     <p><small>Deduplicate movies and shows by merging duplicate folders and keeping the largest video files.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-        <button id="dedupe-movies-btn" onclick="deduplicate('movies')" class="primary" style="width: 100%;">
+        <button id="dedupe-movies-btn" onclick="deduplicate('movies')" style="width: 100%;">
             🎬 Deduplicate Movies
         </button>
-        <button id="dedupe-shows-btn" onclick="deduplicate('shows')" class="ok" style="width: 100%;">
+        <button id="dedupe-shows-btn" onclick="deduplicate('shows')" style="width: 100%;">
             📺 Deduplicate Shows
         </button>
         <form action="/rename/library/movies" method="POST" onsubmit="return confirm('This will rename and move ALL movies in your library according to current naming rules. Continue?')">
-            <button type="submit" class="warn" style="width: 100%;">
+            <button type="submit" style="width: 100%;">
                 🎬 Rename All Library Movies
             </button>
         </form>
         <form action="/rename/library/shows" method="POST" onsubmit="return confirm('This will rename and move ALL shows and episodes in your library according to current naming rules. Continue?')">
-            <button type="submit" class="primary" style="width: 100%;">
+            <button type="submit" style="width: 100%;">
                 📺 Rename All Library Shows
             </button>
         </form>

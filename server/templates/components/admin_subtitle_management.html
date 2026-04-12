@@ -93,13 +93,13 @@
     <h2>Subtitle Management</h2>
     <p><small>Scan media items and queue missing subtitles for download. Results cached 24 hours. Hold Shift to force a fresh scan.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-        <button id="scan-subtitles-btn" onclick="scanSubtitles(event)" class="primary" style="width: 100%;">
+        <button id="scan-subtitles-btn" onclick="scanSubtitles(event)" style="width: 100%;">
             🔍 Scan All Media for Subtitles
         </button>
-        <button id="queue-subtitles-btn" onclick="queueMissingSubtitles()" class="ok" style="width: 100%;">
+        <button id="queue-subtitles-btn" onclick="queueMissingSubtitles()" style="width: 100%;">
             📥 Queue Missing Subtitles
         </button>
-        <button id="sync-subtitles-btn" onclick="syncAllSubtitles()" class="warn" style="width: 100%;">
+        <button id="sync-subtitles-btn" onclick="syncAllSubtitles()" style="width: 100%;">
             🔄 Sync All Subtitles
         </button>
     </div>
