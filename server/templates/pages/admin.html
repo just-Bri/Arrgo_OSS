@@ -3,9 +3,9 @@
 {{define "content"}}
 {{template "navigation" .}}
 <div class="container">
-    <h1 style="margin-bottom: 20px; color: var(--text-color); font-size: 24px;">Admin Dashboard</h1>
+    <h1>Admin Dashboard</h1>
 
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 1rem;">
         {{template "admin_library_management" .}}
         {{template "admin_subtitle_management" .}}
         {{template "admin_library_maintenance" .}}

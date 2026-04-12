@@ -21,11 +21,11 @@
             .then(data => {
                 const mbFreed = (data.bytes_freed / (1024 * 1024)).toFixed(2);
                 resultContent.innerHTML = `
-                <div style="margin-bottom: 4px;">Items Scanned: ${data.items_scanned || 0}</div>
-                <div style="margin-bottom: 4px;">Items Removed: ${data.items_removed || 0}</div>
-                <div style="margin-bottom: 4px;">Folders Merged/Removed: ${data.folders_removed || 0}</div>
-                <div style="margin-bottom: 4px; color: var(--success-color); font-weight: bold;">Space Freed: ${mbFreed} MB</div>
-                <div style="margin-top: 8px; font-size: 11px; max-height: 100px; overflow-y: auto;" class="custom-scrollbar">
+                <div>Items Scanned: ${data.items_scanned || 0}</div>
+                <div>Items Removed: ${data.items_removed || 0}</div>
+                <div>Folders Merged/Removed: ${data.folders_removed || 0}</div>
+                <div style="color: var(--success-color); font-weight: bold;">Space Freed: ${mbFreed} MB</div>
+                <div style="margin-top: 8px; font-size: 11px; max-height: 100px; overflow-y: auto;">
                     ${data.messages && data.messages.length > 0 ? data.messages.join('<br>') : 'No duplicates found.'}
                 </div>
             `;
@@ -42,39 +42,30 @@
     }
 </script>
 
-<div
-    style="background: var(--container-bg); padding: 20px; border-radius: 8px; box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
-    <h2 style="margin: 0 0 12px 0; color: var(--text-color); font-size: 18px;">Library Maintenance</h2>
-    <p style="color: var(--muted-text); font-size: 13px; margin-bottom: 20px;">Deduplicate movies and shows by
-        merging duplicate folders and keeping the largest video files when duplicates exist.</p>
+<article>
+    <h2>Library Maintenance</h2>
+    <p><small>Deduplicate movies and shows by merging duplicate folders and keeping the largest video files.</small></p>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-        <button id="dedupe-movies-btn" onclick="deduplicate('movies')"
-            style="width: 100%; padding: 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+        <button id="dedupe-movies-btn" onclick="deduplicate('movies')" class="primary" style="width: 100%;">
             🎬 Deduplicate Movies
         </button>
-        <button id="dedupe-shows-btn" onclick="deduplicate('shows')"
-            style="width: 100%; padding: 12px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+        <button id="dedupe-shows-btn" onclick="deduplicate('shows')" class="ok" style="width: 100%;">
             📺 Deduplicate Shows
         </button>
         <form action="/rename/library/movies" method="POST" onsubmit="return confirm('This will rename and move ALL movies in your library according to current naming rules. Continue?')">
-            <button type="submit"
-                style="width: 100%; padding: 12px; background: var(--warning-color, #ff9800); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+            <button type="submit" class="warn" style="width: 100%;">
                 🎬 Rename All Library Movies
             </button>
         </form>
         <form action="/rename/library/shows" method="POST" onsubmit="return confirm('This will rename and move ALL shows and episodes in your library according to current naming rules. Continue?')">
-            <button type="submit"
-                style="width: 100%; padding: 12px; background: var(--info-color, #2196f3); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+            <button type="submit" class="primary" style="width: 100%;">
                 📺 Rename All Library Shows
             </button>
         </form>
     </div>
-    <div id="dedupe-result"
-        style="margin-top: 15px; padding: 12px; background: var(--border-color); border-radius: 4px; display: none;">
-        <div style="color: var(--text-color); font-size: 13px;">
-            <div style="margin-bottom: 8px;"><strong>Results:</strong></div>
-            <div id="dedupe-result-content"></div>
-        </div>
+    <div id="dedupe-result" style="display: none; margin-top: 1rem;">
+        <strong>Results:</strong>
+        <div id="dedupe-result-content"></div>
     </div>
-</div>
+</article>
 {{end}}
