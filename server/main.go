@@ -181,7 +181,7 @@ func main() {
 		} else {
 			slog.Info("Successfully connected to qBittorrent")
 		}
-		automationSvc = services.NewAutomationService(cfg, qb)
+		automationSvc = services.NewAutomationService(cfg, qb, metadataSvc, subtitleSvc)
 		go automationSvc.Start(ctx)
 
 		// Start seeding cleanup worker

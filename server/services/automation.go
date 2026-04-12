@@ -22,11 +22,16 @@ import (
 	"golang.org/x/net/html"
 )
 
+// package-level service references used by standalone functions in movies.go, shows.go, renamer.go, requests.go
+var (
+	globalMetadata *MetadataService
+	globalSubtitle *SubtitleService
+)
+
 type AutomationService struct {
 	cfg *config.Config
 	qb  *QBittorrentClient
 }
-
 
 type TorrentSearchResult struct {
 	Title      string `json:"title"`
@@ -40,7 +45,9 @@ type TorrentSearchResult struct {
 	Quality    string `json:"quality"`
 }
 
-func NewAutomationService(cfg *config.Config, qb *QBittorrentClient) *AutomationService {
+func NewAutomationService(cfg *config.Config, qb *QBittorrentClient, metadata *MetadataService, subtitle *SubtitleService) *AutomationService {
+	globalMetadata = metadata
+	globalSubtitle = subtitle
 	return &AutomationService{
 		cfg: cfg,
 		qb:  qb,
