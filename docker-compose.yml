@@ -59,6 +59,7 @@ services:
     labels:
       net.unraid.docker.managed: dockge
       net.unraid.docker.webui: http://${SERVER_IP:-127.0.0.1}:5003
+      net.unraid.docker.icon: http://${SERVER_IP:-127.0.0.1}:5003/static/favicon-32x32.png
 
   db:
     image: postgres:16-alpine
@@ -85,7 +86,8 @@ services:
       - coven
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: dockge-db
+      net.unraid.docker.managed: dockge
+      net.unraid.docker.icon: https://raw.githubusercontent.com/docker-library/docs/01c12653951b2fe592c1f93a13b4e289ada0e3a1/postgres/logo.png
 
   qbittorrent:
     image: binhex/arch-qbittorrentvpn:latest
@@ -117,7 +119,9 @@ services:
       - coven
     restart: unless-stopped
     labels:
-      net.unraid.docker.managed: dockge-qbittorrent
+      net.unraid.docker.managed: dockge
+      net.unraid.docker.webui: http://${SERVER_IP:-127.0.0.1}:8080
+      net.unraid.docker.icon: https://raw.githubusercontent.com/binhex/docker-templates/master/binhex/images/qbittorrentvpn-icon.png
 
   byparr:
     image: ghcr.io/thephaseless/byparr
