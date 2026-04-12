@@ -15,8 +15,11 @@ if ! getent passwd "$PUID" > /dev/null 2>&1; then
     adduser -D -u "$PUID" -G "$(getent group "$PGID" | cut -d: -f1)" arrgo
 fi
 
-# Ensure the app directory is readable
-chown -R "$PUID:$PGID" /app
+# Ensure writable data directories have correct ownership
+# (templates/static are baked into the image and don't need chowning)
+for dir in /app/data /app/logs /app/cache; do
+    [ -d "$dir" ] && chown -R "$PUID:$PGID" "$dir"
+done
 
 echo "Running as UID=$PUID GID=$PGID"
 
