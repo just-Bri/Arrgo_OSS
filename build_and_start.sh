@@ -10,17 +10,17 @@ export GO_VERSION=$(grep 'go =' mise.toml | sed -E 's/.*"([^"]+)".*/\1/')
 echo "Building with Go version: ${GO_VERSION:-1.26.1}"
 
 # Stop and remove services (leave qbittorrent running)
-docker-compose stop arrgo db indexer ffsubsync-api 2>/dev/null || true
-docker-compose rm -f arrgo db indexer ffsubsync-api 2>/dev/null || true
+docker compose stop arrgo db indexer ffsubsync-api 2>/dev/null || true
+docker compose rm -f arrgo db indexer ffsubsync-api 2>/dev/null || true
 
 # Nuke old images, build new ones
 docker rmi arrgo-arrgo 2>/dev/null || true
 docker rmi arrgo-indexer 2>/dev/null || true
 docker rmi arrgo-ffsubsync-api 2>/dev/null || true
-docker-compose build --no-cache
+docker compose build --no-cache
 
 # Start the services (qbittorrent should already be running)
-docker-compose up -d --remove-orphans
+docker compose up -d --remove-orphans
 
 # Show logs
-docker-compose logs -f arrgo
+docker compose logs -f arrgo
