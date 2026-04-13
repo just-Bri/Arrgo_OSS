@@ -384,7 +384,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 
 	// Always scan the current path's seasons/episodes
 	// Even if we reused an existing show, we need to scan this new path
-	scanSeasons(showID, showPath, title)
+	scanSeasons(showID, showPath, title, cfg)
 
 	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
 	// This is a fallback in case the initial check didn't find a match
@@ -433,7 +433,12 @@ func upsertShow(show models.Show) (int, error) {
 	return id, err
 }
 
-func scanSeasons(showID int, showPath string, showTitle string) {
+func scanSeasons(showID int, showPath string, showTitle string, cfg ...*config.Config) {
+	var c *config.Config
+	if len(cfg) > 0 {
+		c = cfg[0]
+	}
+
 	if showTitle == "" {
 		database.DB.QueryRow("SELECT title FROM shows WHERE id = $1", showID).Scan(&showTitle)
 	}
@@ -469,7 +474,7 @@ func scanSeasons(showID int, showPath string, showTitle string) {
 			continue
 		}
 
-		scanEpisodes(showID, seasonID, seasonPath, showTitle)
+		scanEpisodes(showID, seasonID, seasonPath, showTitle, c)
 	}
 
 	// Second pass: if no standard Season folders found, try alternative patterns
@@ -492,7 +497,7 @@ func scanSeasons(showID int, showPath string, showTitle string) {
 				continue
 			}
 
-			scanEpisodes(showID, seasonID, seasonPath, showTitle)
+			scanEpisodes(showID, seasonID, seasonPath, showTitle, c)
 		}
 	}
 
@@ -513,18 +518,18 @@ func scanSeasons(showID int, showPath string, showTitle string) {
 			seasonNum, _ := strconv.Atoi(matches[1])
 			seasonID, err := upsertSeason(showID, seasonNum)
 			if err == nil {
-				scanEpisodes(showID, seasonID, showPath, showTitle)
+				scanEpisodes(showID, seasonID, showPath, showTitle, c)
 			}
 		} else {
 			// No season info in folder name, try to detect season from episode files
 			// Scan episodes directly from show folder and try to infer season from filenames
-			scanEpisodesFromShowFolder(showID, showPath, showTitle)
+			scanEpisodesFromShowFolder(showID, showPath, showTitle, c)
 		}
 	}
 }
 
 // scanEpisodesFromShowFolder scans episodes directly from show folder and infers season from filenames
-func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string) {
+func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string, cfg *config.Config) {
 	entries, err := os.ReadDir(showPath)
 	if err != nil {
 		return
@@ -605,8 +610,7 @@ func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string) {
 		upsertEpisode(seasonID, episodeNum, finalEpTitle, episodePath, quality, size)
 
 		// Try to link torrent hash if file is in incoming folder
-		cfg := config.Load()
-		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
+		if cfg != nil && strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
 			if qb, err := NewQBittorrentClient(cfg); err == nil {
 				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
 			}
@@ -627,7 +631,7 @@ func upsertSeason(showID int, seasonNum int) (int, error) {
 	return id, err
 }
 
-func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string) {
+func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string, cfg *config.Config) {
 	var seasonNum int
 	database.DB.QueryRow("SELECT season_number FROM seasons WHERE id = $1", seasonID).Scan(&seasonNum)
 
@@ -712,8 +716,7 @@ func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string)
 		upsertEpisode(seasonID, episodeNum, finalEpTitle, episodePath, quality, size)
 
 		// Try to link torrent hash if file is in incoming folder
-		cfg := config.Load()
-		if strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
+		if cfg != nil && strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
 			if qb, err := NewQBittorrentClient(cfg); err == nil {
 				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
 			}
@@ -768,9 +771,12 @@ func isCleanEnglishEpisodeTitle(title, showTitle, officialTitle string) bool {
 		}
 	}
 
-	// Reject if it's purely non-English characters (simplified)
+	// Reject if any character is outside Latin, Latin Extended, or common Unicode punctuation.
+	// This blocks CJK, Arabic, Cyrillic, etc. while allowing accented Latin (é, ñ, ü, ø, etc.).
+	// Range 0x0000–0x024F: Basic Latin + Latin-1 Supplement + Latin Extended A/B
+	// Range 0x2000–0x206F: General Punctuation (em-dash, en-dash, smart quotes, etc.)
 	for _, r := range title {
-		if r > 127 && (r < 0x2000 || r > 0x206F) { // Outside basic Latin and punctuation
+		if r > 0x024F && !(r >= 0x2000 && r <= 0x206F) {
 			return false
 		}
 	}
@@ -792,24 +798,28 @@ func GetShowCount(excludeIncomingPath string) (int, error) {
 func PurgeMissingShows() {
 	slog.Debug("Checking for missing shows")
 
-	// Check Shows
+	// Check Shows — collect IDs first, then delete after closing the cursor
 	rows, err := database.DB.Query("SELECT id, path FROM shows")
 	if err != nil {
 		return
 	}
-	defer rows.Close()
 
+	var showsToDelete []int
 	for rows.Next() {
 		var id int
 		var path string
 		if err := rows.Scan(&id, &path); err != nil {
 			continue
 		}
-
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			slog.Info("Removing missing show from DB", "show_id", id, "path", path)
-			database.DB.Exec("DELETE FROM shows WHERE id = $1", id)
+			showsToDelete = append(showsToDelete, id)
 		}
+	}
+	rows.Close()
+
+	for _, id := range showsToDelete {
+		slog.Info("Removing missing show from DB", "show_id", id)
+		database.DB.Exec("DELETE FROM shows WHERE id = $1", id)
 	}
 
 	// Also check individual episodes
@@ -817,8 +827,8 @@ func PurgeMissingShows() {
 	if err != nil {
 		return
 	}
-	defer epRows.Close()
 
+	var episodesToDelete []int
 	for epRows.Next() {
 		var id int
 		var path string
@@ -826,9 +836,14 @@ func PurgeMissingShows() {
 			continue
 		}
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			slog.Info("Removing missing episode from DB", "episode_id", id, "path", path)
-			database.DB.Exec("DELETE FROM episodes WHERE id = $1", id)
+			episodesToDelete = append(episodesToDelete, id)
 		}
+	}
+	epRows.Close()
+
+	for _, id := range episodesToDelete {
+		slog.Info("Removing missing episode from DB", "episode_id", id)
+		database.DB.Exec("DELETE FROM episodes WHERE id = $1", id)
 	}
 }
 

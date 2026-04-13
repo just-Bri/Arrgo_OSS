@@ -263,7 +263,7 @@ func cleanTitleTags(title string) string {
 		"REPACK", "PROPER", "READNFO", "NFO",
 		"EXTENDED", "EXTENDED CUT", "DIRECTOR'S CUT", "DIRECTORS CUT", "UNRATED", "UNRATED CUT",
 		"THEATRICAL", "THEATRICAL CUT", "FINAL CUT", "SPECIAL EDITION", "COLLECTOR'S EDITION",
-		"MOVIE", "THE MOVIE", "COMPLETE SERIES", "FULL SERIES", "OAV", "OVA", "ONASHIFT", "OAD", "ONA",
+		"COMPLETE SERIES", "FULL SERIES", "OAV", "OVA", "ONASHIFT", "OAD", "ONA",
 		"PLEX VERSIONS", "PLEX OPTIMIZED",
 	}
 
@@ -593,8 +593,11 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 
 	// Better episode title cleaning
 	epTitle := e.Title
-	// If title looks like a scene filename or raw file name, clean it
-	if strings.Contains(epTitle, ".") || strings.Contains(epTitle, "-") || strings.Contains(strings.ToLower(epTitle), "s0") {
+	// Only run the scene-name cleaner if the title actually looks like a raw scene filename:
+	// dots-as-separators OR explicit quality/codec tags. Hyphens alone are not a signal
+	// (many real episode titles contain them, e.g. "Spider-Man", "Step-by-Step").
+	sceneTagRegex := regexp.MustCompile(`(?i)\b(1080p|720p|2160p|480p|WEB-DL|WEBRip|BluRay|BDRip|x264|x265|HEVC|H264|H265)\b`)
+	if strings.Contains(epTitle, ".") || sceneTagRegex.MatchString(epTitle) {
 		// Clean the episode title using the shared parser
 		epTitle, _, _, _, _ = ParseMediaName(epTitle)
 	}
@@ -705,9 +708,9 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	// Rescan the show directory to ensure all episodes are detected and added to the database
 	// This is important after importing episodes so the library is up-to-date
 	if !skipRescan {
+		resolvedShowDirPath := showDirPath // capture already-resolved path (findExistingDirCaseInsensitive applied)
 		go func() {
-			showDirPath := filepath.Join(cfg.ShowsPath, showDirName)
-			scanSeasons(sh.ID, showDirPath, sh.Title)
+			scanSeasons(sh.ID, resolvedShowDirPath, sh.Title, cfg)
 			slog.Info("Rescanned show directory after episode import",
 				"show_id", sh.ID,
 				"show_title", sh.Title,
@@ -903,7 +906,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 
 	// Rescan the show directory once for all imported episodes
 	go func() {
-		scanSeasons(showID, destShowPath, sh.Title)
+		scanSeasons(showID, destShowPath, sh.Title, cfg)
 		slog.Info("Rescanned show directory after full show import", "show_id", showID)
 	}()
 

@@ -86,7 +86,7 @@ func DeduplicateMovies(cfg *config.Config) (*DedupeResult, error) {
 				}
 
 				ext := strings.ToLower(filepath.Ext(file.Name()))
-				if ext == ".mkv" || ext == ".mp4" || ext == ".avi" {
+				if MovieExtensions[ext] {
 					fullPath := filepath.Join(folder, file.Name())
 					info, err := file.Info()
 					if err == nil {
@@ -251,7 +251,7 @@ func dedupeEpisodesInShow(showPath string, result *DedupeResult) {
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".mkv" || ext == ".mp4" || ext == ".avi" {
+		if MovieExtensions[ext] {
 			match := seasonEpRegex.FindString(path)
 			if match != "" {
 				key := strings.ToUpper(match)
@@ -318,8 +318,11 @@ func mergeShowFolders(srcShowPath, destShowPath string, result *DedupeResult) {
 		if _, err := os.Stat(destPath); os.IsNotExist(err) {
 			slog.Info("Moving file to primary show folder", "from", path, "to", destPath)
 			if err := os.Rename(path, destPath); err != nil {
-				// Fallback to copy if cross-device, though unlikely in a merge
-				copyFile(path, destPath)
+				// Fallback to copy+delete if cross-device
+				if copyErr := copyFile(path, destPath); copyErr != nil {
+					slog.Error("Failed to copy file during show folder merge, leaving original in place", "from", path, "to", destPath, "error", copyErr)
+					return nil
+				}
 				os.Remove(path)
 			}
 

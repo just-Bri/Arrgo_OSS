@@ -572,19 +572,23 @@ func PurgeMissingMovies() {
 	if err != nil {
 		return
 	}
-	defer rows.Close()
 
+	var toDelete []int
 	for rows.Next() {
 		var id int
 		var path string
 		if err := rows.Scan(&id, &path); err != nil {
 			continue
 		}
-
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			slog.Info("Removing missing movie from DB", "movie_id", id, "path", path)
-			database.DB.Exec("DELETE FROM movies WHERE id = $1", id)
+			toDelete = append(toDelete, id)
 		}
+	}
+	rows.Close()
+
+	for _, id := range toDelete {
+		slog.Info("Removing missing movie from DB", "movie_id", id)
+		database.DB.Exec("DELETE FROM movies WHERE id = $1", id)
 	}
 }
 
