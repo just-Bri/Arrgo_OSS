@@ -78,9 +78,12 @@ func SearchTorrents(ctx context.Context, query, searchType string, seasons strin
 			results = append(results, res...)
 		}
 	} else {
-		// Movie search
+		// Movie search — YTS only. It's reliable and covers the vast majority of films.
 		slog.Debug("Searching for movie", "query", query)
 		for _, idx := range indexerList {
+			if idx.Name() != "YTS" {
+				continue
+			}
 			res, err := idx.SearchMovies(ctx, query)
 			if err != nil {
 				slog.Debug("Indexer search failed", "indexer", idx.Name(), "error", err)

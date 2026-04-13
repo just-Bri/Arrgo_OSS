@@ -2,17 +2,36 @@ package services
 
 import "strings"
 
-// ExpandSearchQuery returns a slice of search query variants.
-// If the query contains "&", it returns both the original query and a version with "and" replacing "&".
-// This helps improve search results by matching titles that use either "&" or "and".
+// ExpandSearchQuery returns a slice of search query variants to maximize indexer recall.
+// It handles common differences between canonical titles and scene release naming:
+//   - "&" vs "and"
+//   - Colons stripped (scene releases drop "Avatar: The Last..." → "Avatar The Last...")
+//   - Apostrophes stripped ("It's Always Sunny" → "Its Always Sunny")
 func ExpandSearchQuery(query string) []string {
-	if !strings.Contains(query, "&") {
-		return []string{query}
+	variants := []string{query}
+
+	add := func(v string) {
+		v = strings.TrimSpace(strings.Join(strings.Fields(v), " ")) // normalize whitespace
+		for _, existing := range variants {
+			if existing == v {
+				return
+			}
+		}
+		variants = append(variants, v)
 	}
 
-	// Return both the original query and a version with "and" replacing "&"
-	variants := []string{query}
-	variants = append(variants, strings.ReplaceAll(query, "&", "and"))
+	// "&" → "and"
+	if strings.Contains(query, "&") {
+		add(strings.ReplaceAll(query, "&", "and"))
+	}
+
+	// Strip colons and apostrophes (scene naming convention)
+	stripped := query
+	stripped = strings.ReplaceAll(stripped, ":", "")
+	stripped = strings.ReplaceAll(stripped, "'", "")  // straight apostrophe
+	stripped = strings.ReplaceAll(stripped, "\u2019", "") // curly apostrophe
+	add(stripped)
+
 	return variants
 }
 

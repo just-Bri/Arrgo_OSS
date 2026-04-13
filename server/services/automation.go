@@ -1015,10 +1015,8 @@ func (s *AutomationService) processSingleSeason(ctx context.Context, r models.Re
 
 	if r.MediaType == "show" {
 		searchType = "show"
-		// include year if available to distinguish between versions
-		if r.Year > 0 {
-			searchQuery = fmt.Sprintf("%s %d", r.Title, r.Year)
-		}
+		// Do not include year in show queries — TV torrent titles rarely contain a year,
+		// so adding it tanks recall. Year is used only for scoring (reboot disambiguation).
 	} else if r.MediaType == "movie" && r.Year > 0 {
 		// For movies, include year in search query to improve matching
 		// Format: "Movie Title 2003"
@@ -1712,6 +1710,32 @@ func selectBestResult(results []TorrentSearchResult, mediaType string, requested
 		if r.Seeds == 0 {
 			zeroSeedCount++
 			continue
+		}
+
+		// For shows, filter out results that don't contain all significant words of the requested title.
+		// Scene releases use dots/underscores as separators, so we normalize before checking.
+		if mediaType == "show" && requestedTitle != "" {
+			resultTitleLower := strings.ToLower(r.Title)
+			resultNormalized := strings.NewReplacer(".", " ", "_", " ").Replace(resultTitleLower)
+			requestedWords := strings.Fields(requestedTitleLower)
+			allFound := true
+			for _, word := range requestedWords {
+				wordClean := strings.Trim(word, ".,!?:()[]{}'-\u2019")
+				if len(wordClean) <= 1 {
+					continue
+				}
+				if !strings.Contains(resultNormalized, wordClean) && !strings.Contains(resultTitleLower, wordClean) {
+					allFound = false
+					break
+				}
+			}
+			if !allFound {
+				titleMismatchCount++
+				slog.Debug("Filtered out show result due to title mismatch",
+					"requested", requestedTitle,
+					"result", r.Title)
+				continue
+			}
 		}
 
 		// For movies, filter out results that don't match the requested title
