@@ -69,7 +69,7 @@ func CreateRequest(req models.Request) error {
 			}
 
 			slog.Info("Updating existing show request with additional items", "request_id", existingID, "title", req.Title, "new_seasons", newSeasons, "new_episodes", newEpisodes)
-			_, err = database.DB.Exec("UPDATE requests SET seasons = $1, episodes = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $2", newSeasons, newEpisodes, existingID)
+			_, err = database.DB.Exec("UPDATE requests SET seasons = $1, episodes = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3", newSeasons, newEpisodes, existingID)
 			if err == nil {
 				slog.Info("Successfully updated existing request", "request_id", existingID, "seasons", newSeasons, "episodes", newEpisodes)
 			}

@@ -233,42 +233,48 @@ func (s *AutomationService) TriggerImmediateProcessing(ctx context.Context) {
 
 // ValidateDownloadingRequests checks requests marked as "downloading" and resets them to "pending" if they don't have active torrents
 func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
-	query := `SELECT id, title FROM requests WHERE status = 'downloading'`
-
 	slog.Debug("Validating downloading requests on startup")
-	rows, err := database.DB.Query(query)
+
+	// Collect all downloading requests first, then close the cursor before issuing any writes.
+	type downloadingRequest struct {
+		id    int
+		title string
+	}
+	var downloadingRequests []downloadingRequest
+
+	rows, err := database.DB.Query(`SELECT id, title FROM requests WHERE status = 'downloading'`)
 	if err != nil {
 		slog.Error("Error querying downloading requests", "error", err)
 		return
 	}
-	defer rows.Close()
-
-	var resetCount int
 	for rows.Next() {
-		var requestID int
-		var title string
-		if err := rows.Scan(&requestID, &title); err != nil {
+		var r downloadingRequest
+		if err := rows.Scan(&r.id, &r.title); err != nil {
 			slog.Error("Error scanning downloading request", "error", err)
 			continue
 		}
+		downloadingRequests = append(downloadingRequests, r)
+	}
+	rows.Close()
 
+	var resetCount int
+	for _, req := range downloadingRequests {
 		// Check if this request has an active torrent
 		var existingHash string
 		err := database.DB.QueryRow(`
-			SELECT torrent_hash 
-			FROM downloads 
-			WHERE request_id = $1 
-			AND torrent_hash IS NOT NULL 
+			SELECT torrent_hash
+			FROM downloads
+			WHERE request_id = $1
+			AND torrent_hash IS NOT NULL
 			AND torrent_hash != ''
-			ORDER BY created_at DESC 
-			LIMIT 1`, requestID).Scan(&existingHash)
+			ORDER BY created_at DESC
+			LIMIT 1`, req.id).Scan(&existingHash)
 
 		if err != nil || existingHash == "" {
-			// No torrent hash in downloads table, reset to pending
 			slog.Warn("Downloading request has no torrent hash, resetting to pending",
-				"request_id", requestID,
-				"title", title)
-			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
+				"request_id", req.id,
+				"title", req.title)
+			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", req.id)
 			resetCount++
 			continue
 		}
@@ -277,37 +283,34 @@ func (s *AutomationService) ValidateDownloadingRequests(ctx context.Context) {
 		normalizedHash := strings.ToLower(existingHash)
 		existingTorrent, err := s.qb.GetTorrentByHash(ctx, normalizedHash)
 		if err != nil || existingTorrent == nil {
-			// Torrent doesn't exist in qBittorrent, reset to pending
-			// Get request details for better logging
 			var requestYear int
 			var requestTVDBID string
 			var downloadTitle string
-			database.DB.QueryRow("SELECT year, tvdb_id FROM requests WHERE id = $1", requestID).Scan(&requestYear, &requestTVDBID)
-			database.DB.QueryRow("SELECT title FROM downloads WHERE request_id = $1 AND LOWER(torrent_hash) = $2 LIMIT 1", requestID, normalizedHash).Scan(&downloadTitle)
+			database.DB.QueryRow("SELECT year, tvdb_id FROM requests WHERE id = $1", req.id).Scan(&requestYear, &requestTVDBID)
+			database.DB.QueryRow("SELECT title FROM downloads WHERE request_id = $1 AND LOWER(torrent_hash) = $2 LIMIT 1", req.id, normalizedHash).Scan(&downloadTitle)
 
 			slog.Warn("Downloading request has no active torrent in qBittorrent, resetting to pending",
-				"request_id", requestID,
-				"title", title,
+				"request_id", req.id,
+				"title", req.title,
 				"year", requestYear,
 				"tvdb_id", requestTVDBID,
 				"torrent_hash", normalizedHash,
 				"download_title", downloadTitle,
 				"error", err)
-			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", requestID)
-			// Also clean up the downloads record
+			database.DB.Exec("UPDATE requests SET status = 'pending', updated_at = NOW() WHERE id = $1", req.id)
 			database.DB.Exec("DELETE FROM downloads WHERE LOWER(torrent_hash) = $1", normalizedHash)
 			resetCount++
 		} else {
-			// Torrent exists, update status based on progress
+			// Torrent exists — update status based on progress
 			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
-				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", requestID)
+				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", req.id)
+				database.DB.Exec("UPDATE downloads SET status = 'completed', updated_at = NOW() WHERE LOWER(torrent_hash) = $1", normalizedHash)
+			} else {
+				database.DB.Exec(`
+					UPDATE downloads SET progress = $1, status = $2, updated_at = NOW()
+					WHERE LOWER(torrent_hash) = $3`,
+					existingTorrent.Progress, existingTorrent.State, normalizedHash)
 			}
-			// Update download status
-			database.DB.Exec(`
-				UPDATE downloads
-				SET progress = $1, status = $2, updated_at = NOW()
-				WHERE LOWER(torrent_hash) = $3`,
-				existingTorrent.Progress, existingTorrent.State, normalizedHash)
 		}
 	}
 
@@ -705,6 +708,7 @@ func (s *AutomationService) processShowRequestWithSeasons(ctx context.Context, r
 		}
 		if allCompleted {
 			database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", r.ID)
+			database.DB.Exec("UPDATE downloads SET status = 'completed', updated_at = NOW() WHERE request_id = $1", r.ID)
 		} else {
 			database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
 		}
@@ -870,6 +874,7 @@ func (s *AutomationService) processSingleRequest(ctx context.Context, r models.R
 			// Update request status if torrent is completed
 			if existingTorrent.Progress >= 1.0 || existingTorrent.State == "uploading" || existingTorrent.State == "stalledUP" {
 				database.DB.Exec("UPDATE requests SET status = 'completed', updated_at = NOW() WHERE id = $1", r.ID)
+				database.DB.Exec("UPDATE downloads SET status = 'completed', updated_at = NOW() WHERE LOWER(torrent_hash) = $1", normalizedHash)
 			} else {
 				database.DB.Exec("UPDATE requests SET status = 'downloading', updated_at = NOW() WHERE id = $1", r.ID)
 			}
@@ -1512,24 +1517,29 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 					allCompleted := true
 
 					// First, verify all torrents belonging to this request are completed
-					rows, err := database.DB.Query(`
+					hashRows, err := database.DB.Query(`
 						SELECT torrent_hash FROM downloads WHERE request_id = $1
 					`, requestID)
 					if err == nil {
-						defer rows.Close()
-						for rows.Next() {
+						var hashesToCheck []string
+						for hashRows.Next() {
 							var hash string
-							if err := rows.Scan(&hash); err == nil {
-								normalizedCheckHash := strings.ToLower(hash)
-								torrent, err := s.qb.GetTorrentByHash(ctx, normalizedCheckHash)
-								if err != nil || torrent == nil {
-									allCompleted = false
-									break
-								}
-								if torrent.Progress < 1.0 && torrent.State != "uploading" && torrent.State != "stalledUP" {
-									allCompleted = false
-									break
-								}
+							if err := hashRows.Scan(&hash); err == nil {
+								hashesToCheck = append(hashesToCheck, hash)
+							}
+						}
+						hashRows.Close()
+
+						for _, hash := range hashesToCheck {
+							normalizedCheckHash := strings.ToLower(hash)
+							torrent, err := s.qb.GetTorrentByHash(ctx, normalizedCheckHash)
+							if err != nil || torrent == nil {
+								allCompleted = false
+								break
+							}
+							if torrent.Progress < 1.0 && torrent.State != "uploading" && torrent.State != "stalledUP" {
+								allCompleted = false
+								break
 							}
 						}
 					} else {
@@ -1537,10 +1547,6 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 					}
 
 					if allCompleted {
-						// For shows without a full season pack, it's possible we only downloaded some episodes
-						// We'll mark it complete for now if all active torrents are done, but it might get picked up again
-						// by processSingleSeason if it checks for missing episodes later.
-						// This at least ensures we don't mark a request complete while an episode is actively downloading.
 						_, err = database.DB.Exec(`
 							UPDATE requests
 							SET status = 'completed', updated_at = NOW()
@@ -1549,6 +1555,12 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 						if err != nil {
 							slog.Error("Error updating request status to completed", "error", err, "torrent_hash", normalizedHash, "request_id", requestID)
 						}
+						// Mark the download record as completed so the self-healing query does not
+						// reset this request to pending after the torrent is removed from qBittorrent.
+						database.DB.Exec(`
+							UPDATE downloads SET status = 'completed', updated_at = NOW()
+							WHERE LOWER(torrent_hash) = $1`,
+							normalizedHash)
 					}
 				}
 			}
