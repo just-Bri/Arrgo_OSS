@@ -30,13 +30,12 @@ var (
 	// syncMutex ensures only one ffsubsync process runs at a time to prevent CPU exhaustion.
 	syncMutex sync.Mutex
 
-	moviesPath string
-	showsPath  string
+	allowedPaths []string
 )
 
 func isPathAllowed(path string) bool {
-	// If paths aren't set, allow all (backward compatibility/default behavior)
-	if moviesPath == "" && showsPath == "" {
+	// If no paths are configured, allow all (backward compatibility/default behavior)
+	if len(allowedPaths) == 0 {
 		return true
 	}
 
@@ -45,19 +44,22 @@ func isPathAllowed(path string) bool {
 		return false
 	}
 
-	if moviesPath != "" && strings.HasPrefix(absPath, moviesPath) {
-		return true
-	}
-	if showsPath != "" && strings.HasPrefix(absPath, showsPath) {
-		return true
+	for _, p := range allowedPaths {
+		if p != "" && strings.HasPrefix(absPath, p) {
+			return true
+		}
 	}
 
 	return false
 }
 
 func main() {
-	moviesPath = os.Getenv("MOVIES_PATH")
-	showsPath = os.Getenv("SHOWS_PATH")
+	allowedPaths = []string{
+		os.Getenv("MOVIES_PATH"),
+		os.Getenv("SHOWS_PATH"),
+		os.Getenv("INCOMING_MOVIES_PATH"),
+		os.Getenv("INCOMING_SHOWS_PATH"),
+	}
 	env := os.Getenv("ENV")
 	if env == "" {
 		env = "development"
@@ -67,9 +69,7 @@ func main() {
 	// Initialize structured logging
 	sharedlogger.Init(env, debug)
 
-	slog.Info("SubSync API starting...",
-		"allowed_movies_path", moviesPath,
-		"allowed_shows_path", showsPath)
+	slog.Info("SubSync API starting...", "allowed_paths", allowedPaths)
 
 	r := chi.NewRouter()
 
