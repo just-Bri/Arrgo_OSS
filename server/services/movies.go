@@ -265,10 +265,11 @@ func processMovieDir(cfg *config.Config, root string, folderName string, cachedT
 	}
 
 	// Force rename the movie if its metadata or quality dictates a new path.
-	// This ensures existing items in /data/movies conform to the newest naming standard on every scan.
-	// If already correctly named, this becomes a fast no-op.
-	if err := RenameAndMoveMovie(cfg, id); err != nil {
-		slog.Debug("Error moving/renaming movie during scan", "movie_id", id, "title", title, "error", err)
+	// Only do this for library movies — incoming movies should stay put until the user manually imports them.
+	if !strings.HasPrefix(mainMovieFile, cfg.IncomingMoviesPath) {
+		if err := RenameAndMoveMovie(cfg, id); err != nil {
+			slog.Debug("Error moving/renaming movie during scan", "movie_id", id, "title", title, "error", err)
+		}
 	}
 }
 
