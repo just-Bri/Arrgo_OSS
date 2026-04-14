@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1490,17 +1492,19 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 			continue
 		}
 
-		// If no rows were affected, this might be a manually added torrent in qBittorrent
-		// that we should pick up as a new request
+		// If no rows were affected, this might be a manually added torrent in qBittorrent.
+		// We wait until the download is fully complete before importing so we can probe
+		// the actual video files for reliable title/year metadata.
 		if rows, _ := res.RowsAffected(); rows == 0 {
 			if t.Category == "arrgo-movies" || t.Category == "arrgo-shows" {
-				// Skip if qBittorrent is still downloading metadata — the name will be the
-				// raw info hash or otherwise unusable at this stage. Wait for next poll.
 				if t.State == "metaDL" || looksLikeInfoHash(t.Name) {
-					slog.Debug("Skipping external torrent import — metadata not ready yet",
-						"hash", t.Hash, "state", t.State, "name", t.Name)
-				} else {
+					slog.Debug("External torrent: metadata not ready yet, waiting",
+						"hash", t.Hash, "state", t.State)
+				} else if t.Progress >= 1.0 || t.State == "uploading" || t.State == "stalledUP" || t.State == "pausedUP" || t.State == "queuedUP" {
 					s.importExternalTorrent(ctx, t)
+				} else {
+					slog.Debug("External torrent still downloading, will import when complete",
+						"hash", t.Hash, "name", t.Name, "progress", t.Progress, "state", t.State)
 				}
 			}
 		}
@@ -2576,35 +2580,77 @@ func (s *AutomationService) importExternalTorrent(ctx context.Context, t Torrent
 		}
 	}
 
-	slog.Info("Starting import of external torrent", "name", t.Name, "category", t.Category, "hash", t.Hash, "user_id", userID)
+	slog.Info("Importing completed external torrent", "name", t.Name, "category", t.Category, "hash", t.Hash, "user_id", userID)
 
 	mediaType := "movie"
 	if t.Category == "arrgo-shows" {
 		mediaType = "show"
 	}
 
-	slog.Info("Attempting to import external torrent", "name", t.Name, "category", t.Category, "hash", t.Hash)
-
-	// Detect year and season from title
-	year := extractYear(t.Name)
+	// --- Step 1: probe actual video files for reliable title/year metadata ---
+	// The torrent is fully downloaded at this point, so we can inspect the files
+	// the same way the library scanner does, rather than guessing from the torrent name.
+	var cleanedName string
+	year := 0
 	season := extractSeason(t.Name)
 
-	// Clean name for metadata search
-	cleanedName := cleanTitleTags(t.Name)
-	// Remove SxxExx or Sxx or Exx patterns
-	epRegex := regexp.MustCompile(`(?i)\.?s\d{1,2}(e\d{1,2})?.*`)
-	cleanedName = epRegex.ReplaceAllString(cleanedName, "")
-	// Remove "Season X" patterns
-	seasonRegex := regexp.MustCompile(`(?i)\.?season\s*\d{1,2}.*`)
-	cleanedName = seasonRegex.ReplaceAllString(cleanedName, "")
-	// Replace dots with spaces and trim
-	cleanedName = strings.ReplaceAll(cleanedName, ".", " ")
-	cleanedName = strings.TrimSpace(cleanedName)
-
-	if cleanedName == "" {
-		cleanedName = t.Name
+	torrentRoot := t.SavePath
+	if t.Name != "" {
+		candidate := filepath.Join(t.SavePath, t.Name)
+		if _, err := os.Stat(candidate); err == nil {
+			torrentRoot = candidate
+		}
 	}
-	slog.Info("Cleaned name for metadata search", "original", t.Name, "cleaned", cleanedName)
+
+	// Walk files and probe the first video file we find
+	var probedTitle string
+	var probedYear int
+	filepath.WalkDir(torrentRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || probedTitle != "" {
+			return nil
+		}
+		if !MovieExtensions[strings.ToLower(filepath.Ext(path))] {
+			return nil
+		}
+		vidMeta, probeErr := ProbeVideo(ctx, path)
+		if probeErr != nil || vidMeta == nil {
+			return nil
+		}
+		if raw := vidMeta.GetTitle(); raw != "" {
+			parsed, parsedYear, _, _, _ := ParseMediaName(raw)
+			if parsed != "" {
+				probedTitle = parsed
+				probedYear = parsedYear
+				slog.Info("Got title from video file metadata",
+					"torrent", t.Name, "file", path,
+					"raw_title", raw, "parsed_title", parsed)
+			}
+		}
+		return nil
+	})
+
+	if probedTitle != "" {
+		cleanedName = probedTitle
+		year = probedYear
+	} else {
+		// Fallback: clean the torrent name itself.
+		// Scene releases use dots as separators with no spaces — convert first.
+		fallback := t.Name
+		if !strings.Contains(fallback, " ") {
+			fallback = strings.ReplaceAll(fallback, ".", " ")
+		}
+		// Strip season/episode markers (everything from S01 onward is junk for title matching)
+		fallback = regexp.MustCompile(`(?i)\s*s\d{1,2}(e\d{1,2})?\b.*`).ReplaceAllString(fallback, "")
+		fallback = regexp.MustCompile(`(?i)\s*season\s*\d{1,2}\b.*`).ReplaceAllString(fallback, "")
+		fallback = cleanTitleTags(fallback)
+		fallback = strings.TrimSpace(fallback)
+		if fallback == "" {
+			fallback = t.Name
+		}
+		cleanedName = fallback
+		year = extractYear(t.Name)
+		slog.Info("No embedded metadata found, falling back to torrent name", "original", t.Name, "cleaned", cleanedName)
+	}
 
 	var req models.Request
 	req.UserID = userID
