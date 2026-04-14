@@ -222,8 +222,6 @@ func ImportAllMoviesHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("Movie import failed", "movie_id", f.ID, "title", f.Title, "error", f.Err)
 	}
 
-	services.TriggerJellyfinRefresh(cfg, "movie import")
-
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
@@ -353,8 +351,6 @@ func ImportAllShowsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, f := range failures {
 		slog.Warn("Show import failed", "show_id", f.ID, "title", f.Title, "error", f.Err)
 	}
-
-	services.TriggerJellyfinRefresh(cfg, "show import")
 
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }

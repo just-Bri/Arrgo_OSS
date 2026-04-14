@@ -112,16 +112,6 @@ func RefreshJellyfinLibrary(cfg *config.Config) error {
 	return nil
 }
 
-// TriggerJellyfinRefresh fires a non-blocking Jellyfin library refresh in the background.
-// Use this instead of manually spawning goroutines with RefreshJellyfinLibrary.
-func TriggerJellyfinRefresh(cfg *config.Config, reason string) {
-	go func() {
-		if err := RefreshJellyfinLibrary(cfg); err != nil {
-			slog.Error("Failed to refresh Jellyfin library", "reason", reason, "error", err)
-		}
-	}()
-}
-
 // SyncExistingUsersToJellyfin creates Jellyfin accounts for all existing Arrgo users
 // that don't already have one in Jellyfin. Since we can't recover passwords, new
 // Jellyfin users are created with a temporary password they'll need to change.

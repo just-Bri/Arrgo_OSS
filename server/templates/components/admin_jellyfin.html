@@ -6,8 +6,11 @@
         <button id="jellyfin-sync-users-btn" onclick="jellyfinSyncUsers()" style="width: 100%;">
             Sync Users to Jellyfin
         </button>
-        <button id="jellyfin-refresh-btn" onclick="jellyfinRefreshLibrary()" style="width: 100%;">
-            Refresh Jellyfin Library
+        <button id="jellyfin-refresh-movies-btn" onclick="jellyfinRefreshLibrary('movies')" style="width: 100%;">
+            Scan Movies in Jellyfin
+        </button>
+        <button id="jellyfin-refresh-shows-btn" onclick="jellyfinRefreshLibrary('shows')" style="width: 100%;">
+            Scan Shows in Jellyfin
         </button>
     </div>
     <div id="jellyfin-result" style="display: none; margin-top: 1rem;">
@@ -40,27 +43,29 @@
             });
     }
 
-    function jellyfinRefreshLibrary() {
-        const btn = document.getElementById('jellyfin-refresh-btn');
+    function jellyfinRefreshLibrary(type) {
+        const btnId = type === 'movies' ? 'jellyfin-refresh-movies-btn' : 'jellyfin-refresh-shows-btn';
+        const originalText = type === 'movies' ? 'Scan Movies in Jellyfin' : 'Scan Shows in Jellyfin';
+        const btn = document.getElementById(btnId);
         const resultDiv = document.getElementById('jellyfin-result');
         const resultContent = document.getElementById('jellyfin-result-content');
 
         btn.disabled = true;
-        btn.textContent = 'Refreshing...';
+        btn.textContent = 'Scanning...';
 
-        fetch('/api/admin/jellyfin/refresh-library', { method: 'POST' })
+        fetch('/api/admin/jellyfin/refresh-library?type=' + type, { method: 'POST' })
             .then(response => response.json())
             .then(data => {
-                resultContent.textContent = data.message || 'Library refresh triggered';
+                resultContent.textContent = data.message || 'Library scan triggered';
                 resultDiv.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Refresh Jellyfin Library';
+                btn.textContent = originalText;
             })
             .catch(err => {
                 resultContent.textContent = 'Error: ' + err.message;
                 resultDiv.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Refresh Jellyfin Library';
+                btn.textContent = originalText;
             });
     }
 </script>

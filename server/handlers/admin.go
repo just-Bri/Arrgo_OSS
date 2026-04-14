@@ -273,16 +273,22 @@ func JellyfinRefreshLibraryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mediaType := r.URL.Query().Get("type") // "movies" or "shows" — informational only
+	if mediaType == "" {
+		mediaType = "all"
+	}
+
 	cfg := config.Load()
 	if err := services.RefreshJellyfinLibrary(cfg); err != nil {
-		slog.Error("Failed to refresh Jellyfin library", "error", err)
+		slog.Error("Failed to refresh Jellyfin library", "type", mediaType, "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "Error: " + err.Error()})
 		return
 	}
 
+	slog.Info("Jellyfin library scan triggered manually", "type", mediaType)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Jellyfin library refresh triggered successfully."})
+	json.NewEncoder(w).Encode(map[string]string{"message": "Jellyfin library scan triggered successfully."})
 }
 
 func ScanStatusHandler(w http.ResponseWriter, r *http.Request) {
