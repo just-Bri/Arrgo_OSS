@@ -775,9 +775,17 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 
 	cleanedShowTitle := cleanTitleTags(sh.Title)
 	sanitizedShowTitle := sanitizePath(cleanedShowTitle)
-	showDirName := fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
+	var showDirName string
 	if sh.TVDBID != "" {
-		showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
+		if sh.Year > 0 {
+			showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
+		} else {
+			showDirName = fmt.Sprintf("%s {tvdb-%s}", sanitizedShowTitle, sh.TVDBID)
+		}
+	} else if sh.Year > 0 {
+		showDirName = fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
+	} else {
+		showDirName = sanitizedShowTitle
 	}
 	destShowPath := filepath.Join(cfg.ShowsPath, showDirName)
 
