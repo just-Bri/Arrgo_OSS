@@ -179,6 +179,7 @@ func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
 		err := s.qb.Login(ctx)
 		if err == nil {
 			slog.Info("qBittorrent is now available", "attempt", attempt+1, "phase", "1")
+			s.qb.EnsureCategories(ctx)
 			return nil
 		}
 
@@ -205,6 +206,7 @@ func (s *AutomationService) waitForQBittorrent(ctx context.Context) error {
 		err := s.qb.Login(ctx)
 		if err == nil {
 			slog.Info("qBittorrent is now available", "attempt", attempt+1, "phase", "2")
+			s.qb.EnsureCategories(ctx)
 			return nil
 		}
 
@@ -1492,7 +1494,14 @@ func (s *AutomationService) UpdateDownloadStatus(ctx context.Context) {
 		// that we should pick up as a new request
 		if rows, _ := res.RowsAffected(); rows == 0 {
 			if t.Category == "arrgo-movies" || t.Category == "arrgo-shows" {
-				s.importExternalTorrent(ctx, t)
+				// Skip if qBittorrent is still downloading metadata — the name will be the
+				// raw info hash or otherwise unusable at this stage. Wait for next poll.
+				if t.State == "metaDL" || looksLikeInfoHash(t.Name) {
+					slog.Debug("Skipping external torrent import — metadata not ready yet",
+						"hash", t.Hash, "state", t.State, "name", t.Name)
+				} else {
+					s.importExternalTorrent(ctx, t)
+				}
 			}
 		}
 
@@ -2713,6 +2722,20 @@ func extractYear(s string) int {
 		return year
 	}
 	return 0
+}
+
+// looksLikeInfoHash returns true if s is a raw 40-character hex string, which is what
+// qBittorrent uses as the torrent name before metadata has been fetched.
+func looksLikeInfoHash(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func extractSeason(s string) string {

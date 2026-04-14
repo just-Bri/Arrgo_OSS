@@ -497,9 +497,10 @@ func CleanupTorrentOnImport(ctx context.Context, cfg *config.Config, qb *QBittor
 }
 
 // LinkTorrentHashToFile attempts to link a torrent hash to a file based on its path
-// This is called when files are scanned in incoming folders
-func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath string, mediaType string) {
-	if qb == nil {
+// This is called when files are scanned in incoming folders.
+// cachedTorrents should be fetched once per scan operation and passed in here.
+func LinkTorrentHashToFile(cfg *config.Config, cachedTorrents []TorrentStatus, filePath string, mediaType string) {
+	if len(cachedTorrents) == 0 {
 		return
 	}
 
@@ -511,52 +512,31 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 		return
 	}
 
-	// Try to find a torrent with matching save path
-	ctx := context.Background()
-	torrents, err := qb.GetTorrentsDetailed(ctx, "")
-	if err != nil {
-		slog.Debug("Failed to get torrents for hash linking", "file_path", filePath, "error", err)
-		return
-	}
-
+	filePathClean := filepath.Clean(filePath)
 	var matchedHash string
-	for _, torrent := range torrents {
+	for _, torrent := range cachedTorrents {
 		normalizedHash := strings.ToLower(torrent.Hash)
-
-		// Check if file is inside this torrent's save path
-		if strings.HasPrefix(filePath, torrent.SavePath) {
-			relPath, err := filepath.Rel(torrent.SavePath, filePath)
-			if err == nil {
-				// Fetch files for this torrent to see if our file is part of it
-				tFiles, err := qb.GetTorrentFiles(ctx, normalizedHash)
-				if err == nil {
-					for _, tf := range tFiles {
-						if tf.Name == relPath {
-							matchedHash = normalizedHash
-							slog.Debug("Linked torrent hash to file via exact file match",
-								"hash", normalizedHash,
-								"file_path", filePath,
-								"torrent_file", tf.Name,
-								"media_type", mediaType)
-							break
-						}
-					}
-				}
-			}
-		}
-
-		if matchedHash != "" {
+		// torrentRoot is where this torrent's content lives on disk.
+		// For multi-file torrents: SavePath/Name/ (the folder)
+		// For single-file torrents: SavePath/Name (the file itself)
+		torrentRoot := filepath.Clean(filepath.Join(torrent.SavePath, torrent.Name))
+		if filePathClean == torrentRoot || strings.HasPrefix(filePathClean, torrentRoot+string(filepath.Separator)) {
+			matchedHash = normalizedHash
+			slog.Debug("Linked torrent hash to file via path match",
+				"hash", normalizedHash,
+				"file_path", filePath,
+				"torrent_root", torrentRoot,
+				"media_type", mediaType)
 			break
 		}
 	}
 
-	// Link the hash if we found a match
 	if matchedHash != "" {
 		switch mediaType {
 		case "movie":
 			result, err := database.DB.Exec(`
-				UPDATE movies 
-				SET torrent_hash = $1 
+				UPDATE movies
+				SET torrent_hash = $1
 				WHERE path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
 				matchedHash, filePath)
 			if err != nil {
@@ -564,15 +544,13 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 			} else {
 				rowsAffected, _ := result.RowsAffected()
 				if rowsAffected > 0 {
-					slog.Info("Linked torrent hash to movie",
-						"hash", matchedHash,
-						"file_path", filePath)
+					slog.Info("Linked torrent hash to movie", "hash", matchedHash, "file_path", filePath)
 				}
 			}
 		case "show":
 			result, err := database.DB.Exec(`
-				UPDATE episodes 
-				SET torrent_hash = $1 
+				UPDATE episodes
+				SET torrent_hash = $1
 				WHERE file_path = $2 AND (torrent_hash IS NULL OR torrent_hash = '')`,
 				matchedHash, filePath)
 			if err != nil {
@@ -580,9 +558,7 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 			} else {
 				rowsAffected, _ := result.RowsAffected()
 				if rowsAffected > 0 {
-					slog.Info("Linked torrent hash to episode",
-						"hash", matchedHash,
-						"file_path", filePath)
+					slog.Info("Linked torrent hash to episode", "hash", matchedHash, "file_path", filePath)
 				}
 			}
 		}
@@ -590,7 +566,7 @@ func LinkTorrentHashToFile(cfg *config.Config, qb *QBittorrentClient, filePath s
 		slog.Debug("Could not find matching torrent for file",
 			"file_path", filePath,
 			"media_type", mediaType,
-			"torrent_count", len(torrents))
+			"torrent_count", len(cachedTorrents))
 	}
 }
 

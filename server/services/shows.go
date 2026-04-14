@@ -18,55 +18,29 @@ import (
 
 var scanShowsMutex sync.Mutex
 
-// findRequestTVDBIDFromPath attempts to find a request TVDB ID by checking if any files
-// in the show directory have a torrent hash linked to a request.
+// findRequestTVDBIDFromPath attempts to find a request TVDB ID by checking if any torrent
+// in the cached list covers the show directory, then looking up the request via downloads table.
 // This allows exact matching when scanning incoming shows that were requested.
-func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
-	// Try to find a torrent hash for files in this directory
-	qb, err := NewQBittorrentClient(cfg)
-	if err != nil {
+func findRequestTVDBIDFromPath(showPath string, cachedTorrents []TorrentStatus) string {
+	if len(cachedTorrents) == 0 {
 		return ""
 	}
 
-	ctx := context.Background()
-	torrents, err := qb.GetTorrentsDetailed(ctx, "")
-	if err != nil {
-		return ""
-	}
-
-	// Check if any torrent's file is inside the show directory
-	for _, torrent := range torrents {
+	showPathClean := filepath.Clean(showPath)
+	for _, torrent := range cachedTorrents {
 		normalizedHash := strings.ToLower(torrent.Hash)
-		showPathClean := filepath.Clean(showPath)
-
-		// Fetch files for this torrent
-		tFiles, err := qb.GetTorrentFiles(ctx, normalizedHash)
-		if err != nil {
-			continue
-		}
-
-		matched := false
-		for _, tf := range tFiles {
-			fullPath := filepath.Join(torrent.SavePath, tf.Name)
-			if strings.HasPrefix(fullPath, showPathClean) {
-				matched = true
-				break
-			}
-		}
-
-		if matched {
-			// Look up the request via downloads table
+		torrentRoot := filepath.Clean(filepath.Join(torrent.SavePath, torrent.Name))
+		if torrentRoot == showPathClean || strings.HasPrefix(showPathClean, torrentRoot+string(filepath.Separator)) {
 			var requestTVDBID sql.NullString
 			err := database.DB.QueryRow(`
-				SELECT r.tvdb_id 
-				FROM requests r 
-				JOIN downloads d ON r.id = d.request_id 
-				WHERE LOWER(d.torrent_hash) = $1 
+				SELECT r.tvdb_id
+				FROM requests r
+				JOIN downloads d ON r.id = d.request_id
+				WHERE LOWER(d.torrent_hash) = $1
 				AND r.media_type = 'show'
-				AND r.tvdb_id IS NOT NULL 
+				AND r.tvdb_id IS NOT NULL
 				AND r.tvdb_id != ''
 				LIMIT 1`, normalizedHash).Scan(&requestTVDBID)
-
 			if err == nil && requestTVDBID.Valid {
 				slog.Info("Found request TVDB ID from torrent hash",
 					"show_path", showPath,
@@ -76,7 +50,6 @@ func findRequestTVDBIDFromPath(cfg *config.Config, showPath string) string {
 			}
 		}
 	}
-
 	return ""
 }
 
@@ -147,6 +120,19 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 	taskChan := make(chan showTask, TaskChannelBufferSize)
 	var wg sync.WaitGroup
 
+	// Fetch torrents once for incoming scans so we can do hash linking without per-file QB calls
+	var cachedTorrents []TorrentStatus
+	if onlyIncoming {
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			if torrents, err := qb.GetTorrentsDetailed(context.Background(), ""); err == nil {
+				cachedTorrents = torrents
+				slog.Info("Fetched torrent list for incoming show scan", "count", len(cachedTorrents))
+			} else {
+				slog.Debug("Failed to fetch torrent list for incoming scan, hash linking will be skipped", "error", err)
+			}
+		}
+	}
+
 	// Start workers
 	for range DefaultWorkerCount {
 		wg.Add(1)
@@ -160,7 +146,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 					if !ok {
 						return
 					}
-					processShowDir(cfg, task.root, task.name)
+					processShowDir(cfg, task.root, task.name, cachedTorrents)
 				}
 			}
 		}()
@@ -220,7 +206,7 @@ func ScanShows(ctx context.Context, cfg *config.Config, onlyIncoming bool) error
 	return nil
 }
 
-func processShowDir(cfg *config.Config, root string, name string) {
+func processShowDir(cfg *config.Config, root string, name string, cachedTorrents []TorrentStatus) {
 	showPath := filepath.Join(root, name)
 	
 	// Fallback to parsing folder name for show info and IDs
@@ -279,7 +265,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 	// If this is an incoming show, try to find a request linked to torrent hash
 	// This allows us to use the exact TVDB ID from the request instead of fuzzy matching
 	if strings.HasPrefix(showPath, cfg.IncomingShowsPath) {
-		requestTVDBID := findRequestTVDBIDFromPath(cfg, showPath)
+		requestTVDBID := findRequestTVDBIDFromPath(showPath, cachedTorrents)
 		if requestTVDBID != "" {
 			slog.Info("Found request TVDB ID for incoming show", "path", showPath, "tvdb_id", requestTVDBID, "parsed_title", title)
 			tvdbID = requestTVDBID
@@ -384,7 +370,7 @@ func processShowDir(cfg *config.Config, root string, name string) {
 
 	// Always scan the current path's seasons/episodes
 	// Even if we reused an existing show, we need to scan this new path
-	scanSeasons(showID, showPath, title, cfg)
+	scanSeasons(showID, showPath, title, cfg, cachedTorrents)
 
 	// After scanning episodes, check if we can find a request TVDB ID from episode torrent hashes
 	// This is a fallback in case the initial check didn't find a match
@@ -433,12 +419,7 @@ func upsertShow(show models.Show) (int, error) {
 	return id, err
 }
 
-func scanSeasons(showID int, showPath string, showTitle string, cfg ...*config.Config) {
-	var c *config.Config
-	if len(cfg) > 0 {
-		c = cfg[0]
-	}
-
+func scanSeasons(showID int, showPath string, showTitle string, cfg *config.Config, cachedTorrents []TorrentStatus) {
 	if showTitle == "" {
 		database.DB.QueryRow("SELECT title FROM shows WHERE id = $1", showID).Scan(&showTitle)
 	}
@@ -474,7 +455,7 @@ func scanSeasons(showID int, showPath string, showTitle string, cfg ...*config.C
 			continue
 		}
 
-		scanEpisodes(showID, seasonID, seasonPath, showTitle, c)
+		scanEpisodes(showID, seasonID, seasonPath, showTitle, cfg, cachedTorrents)
 	}
 
 	// Second pass: if no standard Season folders found, try alternative patterns
@@ -497,7 +478,7 @@ func scanSeasons(showID int, showPath string, showTitle string, cfg ...*config.C
 				continue
 			}
 
-			scanEpisodes(showID, seasonID, seasonPath, showTitle, c)
+			scanEpisodes(showID, seasonID, seasonPath, showTitle, cfg, cachedTorrents)
 		}
 	}
 
@@ -518,18 +499,18 @@ func scanSeasons(showID int, showPath string, showTitle string, cfg ...*config.C
 			seasonNum, _ := strconv.Atoi(matches[1])
 			seasonID, err := upsertSeason(showID, seasonNum)
 			if err == nil {
-				scanEpisodes(showID, seasonID, showPath, showTitle, c)
+				scanEpisodes(showID, seasonID, showPath, showTitle, cfg, cachedTorrents)
 			}
 		} else {
 			// No season info in folder name, try to detect season from episode files
 			// Scan episodes directly from show folder and try to infer season from filenames
-			scanEpisodesFromShowFolder(showID, showPath, showTitle, c)
+			scanEpisodesFromShowFolder(showID, showPath, showTitle, cfg, cachedTorrents)
 		}
 	}
 }
 
 // scanEpisodesFromShowFolder scans episodes directly from show folder and infers season from filenames
-func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string, cfg *config.Config) {
+func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string, cfg *config.Config, cachedTorrents []TorrentStatus) {
 	entries, err := os.ReadDir(showPath)
 	if err != nil {
 		return
@@ -611,9 +592,7 @@ func scanEpisodesFromShowFolder(showID int, showPath string, showTitle string, c
 
 		// Try to link torrent hash if file is in incoming folder
 		if cfg != nil && strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
-			if qb, err := NewQBittorrentClient(cfg); err == nil {
-				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
-			}
+			LinkTorrentHashToFile(cfg, cachedTorrents, episodePath, "show")
 		}
 	}
 }
@@ -631,7 +610,7 @@ func upsertSeason(showID int, seasonNum int) (int, error) {
 	return id, err
 }
 
-func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string, cfg *config.Config) {
+func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string, cfg *config.Config, cachedTorrents []TorrentStatus) {
 	var seasonNum int
 	database.DB.QueryRow("SELECT season_number FROM seasons WHERE id = $1", seasonID).Scan(&seasonNum)
 
@@ -717,9 +696,7 @@ func scanEpisodes(showID int, seasonID int, seasonPath string, showTitle string,
 
 		// Try to link torrent hash if file is in incoming folder
 		if cfg != nil && strings.HasPrefix(episodePath, cfg.IncomingShowsPath) {
-			if qb, err := NewQBittorrentClient(cfg); err == nil {
-				LinkTorrentHashToFile(cfg, qb, episodePath, "show")
-			}
+			LinkTorrentHashToFile(cfg, cachedTorrents, episodePath, "show")
 		}
 	}
 }

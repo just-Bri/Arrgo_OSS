@@ -710,7 +710,7 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	if !skipRescan {
 		resolvedShowDirPath := showDirPath // capture already-resolved path (findExistingDirCaseInsensitive applied)
 		go func() {
-			scanSeasons(sh.ID, resolvedShowDirPath, sh.Title, cfg)
+			scanSeasons(sh.ID, resolvedShowDirPath, sh.Title, cfg, nil)
 			slog.Info("Rescanned show directory after episode import",
 				"show_id", sh.ID,
 				"show_title", sh.Title,
@@ -906,7 +906,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 
 	// Rescan the show directory once for all imported episodes
 	go func() {
-		scanSeasons(showID, destShowPath, sh.Title, cfg)
+		scanSeasons(showID, destShowPath, sh.Title, cfg, nil)
 		slog.Info("Rescanned show directory after full show import", "show_id", showID)
 	}()
 

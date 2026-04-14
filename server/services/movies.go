@@ -47,6 +47,19 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 	taskChan := make(chan movieTask, TaskChannelBufferSize)
 	var wg sync.WaitGroup
 
+	// Fetch torrents once for incoming scans so we can do hash linking without per-file QB calls
+	var cachedTorrents []TorrentStatus
+	if onlyIncoming {
+		if qb, err := NewQBittorrentClient(cfg); err == nil {
+			if torrents, err := qb.GetTorrentsDetailed(context.Background(), ""); err == nil {
+				cachedTorrents = torrents
+				slog.Info("Fetched torrent list for incoming movie scan", "count", len(cachedTorrents))
+			} else {
+				slog.Debug("Failed to fetch torrent list for incoming scan, hash linking will be skipped", "error", err)
+			}
+		}
+	}
+
 	// Start workers
 	for range DefaultWorkerCount {
 		wg.Add(1)
@@ -60,7 +73,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 					if !ok {
 						return
 					}
-					processMovieDir(cfg, task.root, task.name)
+					processMovieDir(cfg, task.root, task.name, cachedTorrents)
 				}
 			}
 		}()
@@ -125,7 +138,7 @@ func ScanMovies(ctx context.Context, cfg *config.Config, onlyIncoming bool) erro
 }
 
 // processMovieDir processes a movie folder and finds the main movie file
-func processMovieDir(cfg *config.Config, root string, folderName string) {
+func processMovieDir(cfg *config.Config, root string, folderName string, cachedTorrents []TorrentStatus) {
 	folderPath := filepath.Join(root, folderName)
 
 	// Skip common extra/subdirectory names (case-insensitive, with common variations)
@@ -245,11 +258,7 @@ func processMovieDir(cfg *config.Config, root string, folderName string) {
 
 	// Try to link torrent hash if file is in incoming folder
 	if strings.HasPrefix(mainMovieFile, cfg.IncomingMoviesPath) {
-		if qb, err := NewQBittorrentClient(cfg); err == nil {
-			LinkTorrentHashToFile(cfg, qb, mainMovieFile, "movie")
-		} else {
-			slog.Debug("Could not create qBittorrent client for hash linking", "error", err)
-		}
+		LinkTorrentHashToFile(cfg, cachedTorrents, mainMovieFile, "movie")
 	}
 	// Fetch metadata immediately
 	if err := globalMetadata.MatchMovie(id); err != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -241,6 +242,52 @@ func (q *QBittorrentClient) AddTorrentFile(ctx context.Context, torrentData []by
 	}
 
 	return nil
+}
+
+// EnsureCategories creates or updates the arrgo-movies and arrgo-shows categories in qBittorrent,
+// pinning their save paths to Arrgo's configured incoming folders. This ensures that torrents
+// manually added in the qBittorrent UI land in the correct directory regardless of what save path
+// was previously configured for those categories.
+func (q *QBittorrentClient) EnsureCategories(ctx context.Context) {
+	if err := q.ensureLogin(ctx); err != nil {
+		slog.Warn("Cannot ensure qBittorrent categories: not logged in", "error", err)
+		return
+	}
+
+	editURL := fmt.Sprintf("%s/api/v2/torrents/editCategory", q.cfg.QBittorrentURL)
+	categories := []struct {
+		name     string
+		savePath string
+	}{
+		{"arrgo-movies", q.cfg.IncomingMoviesPath},
+		{"arrgo-shows", q.cfg.IncomingShowsPath},
+	}
+
+	for _, cat := range categories {
+		data := url.Values{}
+		data.Set("category", cat.name)
+		data.Set("savePath", cat.savePath)
+
+		req, err := http.NewRequestWithContext(ctx, "POST", editURL, strings.NewReader(data.Encode()))
+		if err != nil {
+			slog.Warn("Failed to build category edit request", "category", cat.name, "error", err)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := q.client.Do(req)
+		if err != nil {
+			slog.Warn("Failed to set qBittorrent category", "category", cat.name, "error", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			slog.Info("qBittorrent category configured", "category", cat.name, "save_path", cat.savePath)
+		} else {
+			slog.Warn("Unexpected status setting qBittorrent category", "category", cat.name, "status", resp.StatusCode)
+		}
+	}
 }
 
 type TorrentStatus struct {
