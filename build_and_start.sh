@@ -13,11 +13,13 @@ echo "Building with Go version: ${GO_VERSION:-1.26.1}"
 docker compose stop arrgo db indexer ffsubsync-api 2>/dev/null || true
 docker compose rm -f arrgo db indexer ffsubsync-api 2>/dev/null || true
 
-# Nuke old images, build new ones
+# Force-rebuild arrgo and indexer (no cache — source changes frequently)
 docker rmi arrgo-arrgo 2>/dev/null || true
 docker rmi arrgo-indexer 2>/dev/null || true
-docker rmi arrgo-ffsubsync-api 2>/dev/null || true
-docker compose build --no-cache
+docker compose build --no-cache arrgo indexer
+
+# Build ffsubsync-api using cache — apt/pip layers are stable and take forever to redownload
+docker compose build ffsubsync-api
 
 # Start the services (qbittorrent should already be running)
 docker compose up -d --remove-orphans
