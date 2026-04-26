@@ -407,6 +407,7 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 		// Even if perfectly named, ensure it's marked as imported and ready
 		if !strings.HasPrefix(m.Path, cfg.IncomingMoviesPath) {
 			database.DB.Exec("UPDATE movies SET status = 'ready', imported_at = COALESCE(imported_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = $1", m.ID)
+			writeMovieNFO(destDirPath, m.TMDBID)
 		}
 		return nil // Already in correct place
 	}
@@ -460,6 +461,8 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 		}
 		slog.Info("Successfully moved movie", "old_path", oldPath, "new_path", destPath)
 	}
+
+	writeMovieNFO(destDirPath, m.TMDBID)
 
 	// Copy the poster if it exists and is in the same directory as the movie
 	newPosterPath := ""
@@ -845,6 +848,10 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 	// when renaming within the library. Skip incoming folders as those contain random torrent junk.
 	if sh.Path != destShowPath && !strings.HasPrefix(sh.Path, cfg.IncomingShowsPath) {
 		moveAncillaryFiles(sh.Path, destShowPath)
+	}
+
+	if sh.TVDBID != "" {
+		writeShowNFO(destShowPath, sh.TVDBID)
 	}
 
 	// Update show status and path in DB, handling potential duplicates
