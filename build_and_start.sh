@@ -16,8 +16,11 @@ docker compose build --no-cache arrgo
 # ffsubsync builds with cache — pip wheels are preserved via BuildKit cache mount
 docker compose build ffsubsync-api
 
-# Start all services (leaves qbittorrent untouched if already running)
-docker compose up -d --remove-orphans
+# Restart only the services we rebuilt; byparr and qbittorrent stay untouched
+docker compose up -d arrgo db ffsubsync-api
+
+# Start byparr and qbittorrent if they aren't already running
+docker compose up -d --no-recreate byparr qbittorrent
 
 # Show logs
 docker compose logs -f arrgo
