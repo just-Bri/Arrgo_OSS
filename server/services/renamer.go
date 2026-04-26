@@ -370,8 +370,7 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 	}
 
 	ext := filepath.Ext(m.Path)
-	cleanedTitle := cleanTitleTags(m.Title)
-	sanitizedTitle := sanitizePath(cleanedTitle)
+	sanitizedTitle := sanitizePath(m.Title)
 
 	qualitySuffix := ""
 	if m.Quality != "" {
@@ -588,8 +587,7 @@ func renameAndMoveEpisodeInternal(cfg *config.Config, episodeID int, doCleanup b
 	// TV Shows: Title (Year) {tvdb-ID}/Season XX/Title - SXXEXX - Episode Title.ext
 	ext := filepath.Ext(e.FilePath)
 
-	cleanedShowTitle := cleanTitleTags(sh.Title)
-	sanitizedShowTitle := sanitizePath(cleanedShowTitle)
+	sanitizedShowTitle := sanitizePath(sh.Title)
 
 	// Better episode title cleaning
 	epTitle := e.Title
@@ -773,8 +771,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 		return err
 	}
 
-	cleanedShowTitle := cleanTitleTags(sh.Title)
-	sanitizedShowTitle := sanitizePath(cleanedShowTitle)
+	sanitizedShowTitle := sanitizePath(sh.Title)
 	var showDirName string
 	if sh.TVDBID != "" {
 		if sh.Year > 0 {
