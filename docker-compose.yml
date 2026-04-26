@@ -106,6 +106,7 @@ services:
       - VPN_USER=${PIA_USER}
       - VPN_PASS=${PIA_PASSWORD}
       - LAN_NETWORK=${LAN_NETWORK:-192.168.10.0/24}
+      - VPN_CONFIG=ca_montreal
       - WEBUI_PORT=8080
       - UMASK=000
       - PUID=99
