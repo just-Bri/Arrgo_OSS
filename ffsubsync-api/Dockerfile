@@ -30,7 +30,7 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Give priority to pip installation of ffsubsync inside the virtualenv
-RUN pip install --no-cache-dir ffsubsync
+RUN --mount=type=cache,target=/root/.cache/pip pip install ffsubsync==0.4.26
 
 WORKDIR /app
 # Copy the built Go API binary from the builder stage
