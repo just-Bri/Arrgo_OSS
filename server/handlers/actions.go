@@ -249,7 +249,7 @@ func RenameAllLibraryMoviesHandler(w http.ResponseWriter, r *http.Request) {
 
 	count := 0
 	for _, m := range allMovies {
-		if m.Status == "matched" {
+		if m.Status == "matched" || m.Status == "ready" {
 			if err := services.RenameAndMoveMovie(cfg, m.ID); err != nil {
 				slog.Error("Error renaming movie", "movie_id", m.ID, "title", m.Title, "error", err)
 			} else {
@@ -379,7 +379,7 @@ func RenameAllLibraryShowsHandler(w http.ResponseWriter, r *http.Request) {
 
 	count := 0
 	for _, s := range allShows {
-		if s.Status == "matched" {
+		if s.Status == "matched" || s.Status == "ready" {
 			if err := services.RenameAndMoveShow(cfg, s.ID); err != nil {
 				slog.Error("Error renaming show", "show_id", s.ID, "title", s.Title, "error", err)
 			} else {
