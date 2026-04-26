@@ -19,6 +19,7 @@ services:
       - BUILD_VERSION=1
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
+      - UMASK=${UMASK:-002}
       - GOLOG_LOG_LEVEL=${GOLOG_LOG_LEVEL:-error}
       - MOVIES_PATH=${MOVIES_PATH:-/data/movies}
       - SHOWS_PATH=${SHOWS_PATH:-/data/shows}
