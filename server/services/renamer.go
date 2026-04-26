@@ -379,7 +379,7 @@ func RenameAndMoveMovieWithCleanup(cfg *config.Config, movieID int, doCleanup bo
 
 	newName := fmt.Sprintf("%s (%d) {tmdb-%s}%s%s", sanitizedTitle, m.Year, m.TMDBID, qualitySuffix, ext)
 
-	// Create destination directory: Movies/Title (Year) {tmdb-id} [Quality]/Title (Year) {tmdb-id} [Quality].ext
+	// Create destination directory: Movies/Title (Year) {tmdb-id} [Quality]/
 	destDirName := fmt.Sprintf("%s (%d) {tmdb-%s}%s", sanitizedTitle, m.Year, m.TMDBID, qualitySuffix)
 	destDirPath := filepath.Join(cfg.MoviesPath, destDirName)
 
@@ -777,13 +777,7 @@ func RenameAndMoveShowWithCleanup(cfg *config.Config, showID int, doCleanup bool
 	sanitizedShowTitle := sanitizePath(sh.Title)
 	var showDirName string
 	if sh.TVDBID != "" {
-		if sh.Year > 0 {
-			showDirName = fmt.Sprintf("%s (%d) {tvdb-%s}", sanitizedShowTitle, sh.Year, sh.TVDBID)
-		} else {
-			showDirName = fmt.Sprintf("%s {tvdb-%s}", sanitizedShowTitle, sh.TVDBID)
-		}
-	} else if sh.Year > 0 {
-		showDirName = fmt.Sprintf("%s (%d)", sanitizedShowTitle, sh.Year)
+		showDirName = fmt.Sprintf("%s {tvdb-%s}", sanitizedShowTitle, sh.TVDBID)
 	} else {
 		showDirName = sanitizedShowTitle
 	}
